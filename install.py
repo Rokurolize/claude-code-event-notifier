@@ -1,15 +1,150 @@
 #!/usr/bin/env python3
 """
-Quick installation script for Claude Code Event Notifier
+Simple installer for Claude Code Discord Notifier.
+
+Usage: python3 install_simple.py [--uninstall]
 """
 
+import argparse
+import json
+import shutil
 import sys
-import os
+from pathlib import Path
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from hook_installer import main
+def main():
+    parser = argparse.ArgumentParser(description="Install Claude Code Discord Notifier")
+    parser.add_argument("--uninstall", action="store_true", help="Remove the notifier")
+    args = parser.parse_args()
+
+    # Paths
+    claude_dir = Path.home() / ".claude"
+    hooks_dir = claude_dir / "hooks"
+    settings_file = claude_dir / "settings.json"
+
+    # Source and target for the notifier script
+    source_script = Path(__file__).parent / "src" / "discord_notifier.py"
+    target_script = hooks_dir / "discord_notifier.py"
+
+    if args.uninstall:
+        print("Removing Claude Code Discord Notifier...")
+
+        # Remove script
+        if target_script.exists():
+            target_script.unlink()
+            print(f"✓ Removed {target_script}")
+
+        # Remove from settings.json
+        if settings_file.exists():
+            with open(settings_file) as f:
+                settings = json.load(f)
+
+            # Remove discord notifier hooks
+            if "hooks" in settings:
+                for event_type in settings["hooks"]:
+                    settings["hooks"][event_type] = [
+                        hook
+                        for hook in settings["hooks"][event_type]
+                        if "discord_notifier.py"
+                        not in hook.get("hooks", [{}])[0].get("command", "")
+                    ]
+
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=2)
+
+            print("✓ Removed hooks from settings.json")
+
+        print("\nUninstall complete!")
+        return 0
+
+    # Install mode
+    print("Installing Claude Code Discord Notifier...")
+
+    # Check source exists
+    if not source_script.exists():
+        print(f"Error: Source script not found at {source_script}")
+        return 1
+
+    # Create directories
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy script
+    shutil.copy2(source_script, target_script)
+    target_script.chmod(0o755)  # Make executable
+    print(f"✓ Copied notifier to {target_script}")
+
+    # Update settings.json
+    if settings_file.exists():
+        with open(settings_file) as f:
+            settings = json.load(f)
+    else:
+        settings = {}
+
+    if "hooks" not in settings:
+        settings["hooks"] = {}
+
+    # Define hooks for each event type
+    events = ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
+
+    for event in events:
+        if event not in settings["hooks"]:
+            settings["hooks"][event] = []
+
+        # Remove any existing discord notifier hooks
+        settings["hooks"][event] = [
+            hook
+            for hook in settings["hooks"][event]
+            if "discord_notifier.py"
+            not in hook.get("hooks", [{}])[0].get("command", "")
+        ]
+
+        # Add new hook
+        hook_config = {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"CLAUDE_HOOK_EVENT={event} python3 {target_script}",
+                }
+            ]
+        }
+
+        # Add matcher for tool events
+        if event in ["PreToolUse", "PostToolUse"]:
+            hook_config["matcher"] = ""
+
+        settings["hooks"][event].append(hook_config)
+
+    # Save settings
+    claude_dir.mkdir(exist_ok=True)
+    with open(settings_file, "w") as f:
+        json.dump(settings, f, indent=2)
+
+    print("✓ Updated settings.json")
+
+    # Create example config if it doesn't exist
+    env_example = hooks_dir / ".env.discord.example"
+    if not env_example.exists():
+        env_example.write_text("""# Discord Configuration
+# Option 1: Webhook (recommended)
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
+
+# Option 2: Bot Token
+# DISCORD_TOKEN=your_bot_token_here
+# DISCORD_CHANNEL_ID=your_channel_id_here
+
+# Optional: Enable debug logging
+# DISCORD_DEBUG=1
+""")
+        print(f"✓ Created example config at {env_example}")
+
+    print("\n✅ Installation complete!")
+    print("\nNext steps:")
+    print(f"1. Copy {env_example} to {hooks_dir / '.env.discord'}")
+    print("2. Edit .env.discord with your Discord credentials")
+    print("3. Restart Claude Code")
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
