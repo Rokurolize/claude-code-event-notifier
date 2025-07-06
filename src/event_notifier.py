@@ -16,8 +16,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .message_formatter import EventMessageFormatter
-from .discord_sender import DiscordNotificationSender
+try:
+    # Try relative imports first (for package usage)
+    from .message_formatter import EventMessageFormatter
+    from .discord_sender import DiscordNotificationSender
+except ImportError:
+    # Fall back to absolute imports (for direct execution)
+    from message_formatter import EventMessageFormatter
+    from discord_sender import DiscordNotificationSender
 
 
 class ClaudeEventNotifier:
