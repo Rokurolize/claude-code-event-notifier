@@ -5,11 +5,13 @@ Send Claude Code events to Discord. One file, no dependencies, simple setup.
 ## Quick Start
 
 1. **Install:**
+
    ```bash
    python3 install.py
    ```
 
 2. **Configure Discord:**
+
    ```bash
    cp ~/.claude/hooks/.env.discord.example ~/.claude/hooks/.env.discord
    # Edit the file with your Discord webhook URL or bot token
