@@ -14,8 +14,52 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List, TypedDict, Literal, Callable
+from typing import (
+    Dict,
+    Any,
+    Optional,
+    Union,
+    List,
+    TypedDict,
+    Literal,
+    Callable,
+    TypeGuard,
+    Protocol,
+    Final,
+)
 from enum import Enum
+from dataclasses import dataclass
+
+
+# Custom exceptions
+class DiscordNotifierError(Exception):
+    """Base exception for Discord notifier."""
+
+    pass
+
+
+class ConfigurationError(DiscordNotifierError):
+    """Configuration related errors."""
+
+    pass
+
+
+class DiscordAPIError(DiscordNotifierError):
+    """Discord API related errors."""
+
+    pass
+
+
+class EventProcessingError(DiscordNotifierError):
+    """Event processing related errors."""
+
+    pass
+
+
+class InvalidEventTypeError(EventProcessingError):
+    """Invalid event type error."""
+
+    pass
 
 
 # Type definitions
@@ -28,6 +72,12 @@ class Config(TypedDict):
     debug: bool
 
 
+class DiscordFooter(TypedDict):
+    """Discord footer structure."""
+
+    text: str
+
+
 class DiscordEmbed(TypedDict, total=False):
     """Discord embed structure."""
 
@@ -35,7 +85,7 @@ class DiscordEmbed(TypedDict, total=False):
     description: str
     color: int
     timestamp: str
-    footer: Dict[str, str]
+    footer: DiscordFooter
 
 
 class DiscordMessage(TypedDict):
@@ -44,6 +94,7 @@ class DiscordMessage(TypedDict):
     embeds: List[DiscordEmbed]
 
 
+# Tool input types
 class BashToolInput(TypedDict, total=False):
     """Bash tool input structure."""
 
@@ -84,6 +135,72 @@ class WebToolInput(TypedDict, total=False):
     prompt: str
 
 
+# Tool response types
+class BashToolResponse(TypedDict):
+    """Bash tool response structure."""
+
+    stdout: str
+    stderr: str
+    interrupted: bool
+    isImage: bool
+
+
+class FileOperationResponse(TypedDict):
+    """File operation response structure."""
+
+    success: bool
+    error: Optional[str]
+    filePath: Optional[str]
+
+
+# Event data types
+class BaseEventData(TypedDict):
+    """Base event data structure."""
+
+    session_id: str
+    transcript_path: str
+    hook_event_name: str
+
+
+class PreToolUseEventData(BaseEventData):
+    """PreToolUse event data structure."""
+
+    tool_name: str
+    tool_input: Dict[str, Any]
+
+
+class PostToolUseEventData(PreToolUseEventData):
+    """PostToolUse event data structure."""
+
+    tool_response: Union[str, Dict[str, Any], List[Any]]
+
+
+class NotificationEventData(BaseEventData):
+    """Notification event data structure."""
+
+    message: str
+    title: Optional[str]
+
+
+class StopEventData(BaseEventData):
+    """Stop event data structure."""
+
+    stop_hook_active: Optional[bool]
+    duration: Optional[float]
+    tools_used: Optional[int]
+    messages_exchanged: Optional[int]
+
+
+class SubagentStopEventData(StopEventData):
+    """SubagentStop event data structure."""
+
+    task_description: Optional[str]
+    result: Optional[Union[str, Dict[str, Any]]]
+    execution_time: Optional[float]
+    status: Optional[str]
+
+
+# Union types
 ToolInput = Union[
     BashToolInput,
     FileToolInput,
@@ -92,22 +209,21 @@ ToolInput = Union[
     WebToolInput,
     Dict[str, Any],
 ]
-ToolResponse = Union[str, Dict[str, Any], List[Any]]
+
+ToolResponse = Union[
+    str, BashToolResponse, FileOperationResponse, Dict[str, Any], List[Any]
+]
+
+EventData = Union[
+    PreToolUseEventData,
+    PostToolUseEventData,
+    NotificationEventData,
+    StopEventData,
+    SubagentStopEventData,
+    Dict[str, Any],
+]
 
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
-
-
-def is_valid_event_type(event_type: str) -> bool:
-    """Check if event_type is a valid EventType."""
-    return event_type in (
-        "PreToolUse",
-        "PostToolUse",
-        "Notification",
-        "Stop",
-        "SubagentStop",
-    )
-
-
 ToolName = Literal[
     "Bash",
     "Read",
@@ -122,7 +238,7 @@ ToolName = Literal[
 ]
 
 
-# Constants
+# Constants and Enums
 class ToolNames(str, Enum):
     """Tool name constants."""
 
@@ -138,52 +254,122 @@ class ToolNames(str, Enum):
     WEB_FETCH = "WebFetch"
 
 
-# Length limits
+class EventTypes(str, Enum):
+    """Event type constants."""
+
+    PRE_TOOL_USE = "PreToolUse"
+    POST_TOOL_USE = "PostToolUse"
+    NOTIFICATION = "Notification"
+    STOP = "Stop"
+    SUBAGENT_STOP = "SubagentStop"
+
+
+@dataclass(frozen=True)
 class TruncationLimits:
     """Character limits for truncation."""
 
-    COMMAND_PREVIEW = 100
-    COMMAND_FULL = 500
-    STRING_PREVIEW = 100
-    PROMPT_PREVIEW = 200
-    OUTPUT_PREVIEW = 500
-    ERROR_PREVIEW = 300
-    RESULT_PREVIEW = 300
-    JSON_PREVIEW = 400
+    COMMAND_PREVIEW: int = 100
+    COMMAND_FULL: int = 500
+    STRING_PREVIEW: int = 100
+    PROMPT_PREVIEW: int = 200
+    OUTPUT_PREVIEW: int = 500
+    ERROR_PREVIEW: int = 300
+    RESULT_PREVIEW: int = 300
+    JSON_PREVIEW: int = 400
 
 
-# Discord API limits
-MAX_TITLE_LENGTH = 256
-MAX_DESCRIPTION_LENGTH = 4096
-MAX_FIELD_VALUE_LENGTH = 1024
+@dataclass(frozen=True)
+class DiscordLimits:
+    """Discord API limits."""
 
-# Event colors for Discord embeds
-EVENT_COLORS: Dict[EventType, int] = {
-    "PreToolUse": 0x3498DB,  # Blue
-    "PostToolUse": 0x2ECC71,  # Green
-    "Notification": 0xF39C12,  # Orange
-    "Stop": 0x95A5A6,  # Gray
-    "SubagentStop": 0x9B59B6,  # Purple
+    MAX_TITLE_LENGTH: int = 256
+    MAX_DESCRIPTION_LENGTH: int = 4096
+    MAX_FIELD_VALUE_LENGTH: int = 1024
+    MAX_EMBED_COUNT: int = 10
+
+
+@dataclass(frozen=True)
+class DiscordColors:
+    """Discord embed colors."""
+
+    BLUE: int = 0x3498DB
+    GREEN: int = 0x2ECC71
+    ORANGE: int = 0xF39C12
+    GRAY: int = 0x95A5A6
+    PURPLE: int = 0x9B59B6
+    DEFAULT: int = 0x808080
+
+
+# Event colors mapping
+EVENT_COLORS: Final[Dict[EventType, int]] = {
+    "PreToolUse": DiscordColors.BLUE,
+    "PostToolUse": DiscordColors.GREEN,
+    "Notification": DiscordColors.ORANGE,
+    "Stop": DiscordColors.GRAY,
+    "SubagentStop": DiscordColors.PURPLE,
 }
 
-# Tool emojis for visual distinction
-TOOL_EMOJIS: Dict[str, str] = {
-    ToolNames.BASH: "🔧",
-    ToolNames.READ: "📖",
-    ToolNames.WRITE: "✏️",
-    ToolNames.EDIT: "✂️",
-    ToolNames.MULTI_EDIT: "📝",
-    ToolNames.GLOB: "🔍",
-    ToolNames.GREP: "🔎",
-    ToolNames.LS: "📁",
-    ToolNames.TASK: "🤖",
-    ToolNames.WEB_FETCH: "🌐",
+# Tool emojis mapping
+TOOL_EMOJIS: Final[Dict[str, str]] = {
+    ToolNames.BASH.value: "🔧",
+    ToolNames.READ.value: "📖",
+    ToolNames.WRITE.value: "✏️",
+    ToolNames.EDIT.value: "✂️",
+    ToolNames.MULTI_EDIT.value: "📝",
+    ToolNames.GLOB.value: "🔍",
+    ToolNames.GREP.value: "🔎",
+    ToolNames.LS.value: "📁",
+    ToolNames.TASK.value: "🤖",
+    ToolNames.WEB_FETCH.value: "🌐",
     "mcp__human-in-the-loop__ask_human": "💬",
 }
 
+# Environment variable keys
+ENV_WEBHOOK_URL: Final[str] = "DISCORD_WEBHOOK_URL"
+ENV_BOT_TOKEN: Final[str] = "DISCORD_TOKEN"
+ENV_CHANNEL_ID: Final[str] = "DISCORD_CHANNEL_ID"
+ENV_DEBUG: Final[str] = "DISCORD_DEBUG"
+ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"
+
+# Other constants
+USER_AGENT: Final[str] = "ClaudeCodeDiscordNotifier/1.0"
+DEFAULT_TIMEOUT: Final[int] = 10
+TRUNCATION_SUFFIX: Final[str] = "..."
+
+
+# Type guards
+def is_valid_event_type(event_type: str) -> TypeGuard[EventType]:
+    """Check if event type is valid."""
+    return event_type in {e.value for e in EventTypes}
+
+
+def is_bash_tool(tool_name: str) -> bool:
+    """Check if tool is Bash."""
+    return tool_name == ToolNames.BASH.value
+
+
+def is_file_tool(tool_name: str) -> bool:
+    """Check if tool is a file operation tool."""
+    return tool_name in {
+        ToolNames.READ.value,
+        ToolNames.WRITE.value,
+        ToolNames.EDIT.value,
+        ToolNames.MULTI_EDIT.value,
+    }
+
+
+def is_search_tool(tool_name: str) -> bool:
+    """Check if tool is a search tool."""
+    return tool_name in {ToolNames.GLOB.value, ToolNames.GREP.value}
+
+
+def is_list_tool(tool_name: str) -> bool:
+    """Check if tool returns list results."""
+    return tool_name in {ToolNames.GLOB.value, ToolNames.GREP.value, ToolNames.LS.value}
+
 
 # Utility functions
-def truncate_string(text: str, max_length: int, suffix: str = "...") -> str:
+def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
     """Truncate string to maximum length with suffix."""
     if len(text) <= max_length:
         return text
@@ -199,11 +385,7 @@ def format_file_path(file_path: str) -> str:
         path = Path(file_path)
         return str(path.relative_to(Path.cwd()))
     except (ValueError, OSError):
-        # Fallback: try to get just the filename, or return original if Path creation failed
-        try:
-            return Path(file_path).name
-        except (ValueError, OSError):
-            return file_path
+        return path.name
 
 
 def parse_env_file(file_path: Path) -> Dict[str, str]:
@@ -219,51 +401,162 @@ def parse_env_file(file_path: Path) -> Dict[str, str]:
                     value = value.strip('"').strip("'")
                     env_vars[key] = value
     except (IOError, ValueError) as e:
-        raise RuntimeError(f"Error reading {file_path}: {e}")
+        raise ConfigurationError(f"Error reading {file_path}: {e}")
 
     return env_vars
 
 
-def load_config() -> Config:
-    """Load Discord configuration with clear precedence: env vars override file config."""
-    # 1. Start with defaults
-    config: Config = {
-        "webhook_url": None,
-        "bot_token": None,
-        "channel_id": None,
-        "debug": False,
-    }
+def get_truncation_suffix(original_length: int, limit: int) -> str:
+    """Get truncation suffix if text was truncated."""
+    return f" {TRUNCATION_SUFFIX}" if original_length > limit else ""
 
-    # 2. Load from .env.discord file if it exists
-    env_file = Path.home() / ".claude" / "hooks" / ".env.discord"
-    if env_file.exists():
+
+def add_field(
+    desc_parts: List[str], label: str, value: str, code: bool = False
+) -> None:
+    """Add a field to description parts."""
+    if code:
+        desc_parts.append(f"**{label}:** `{value}`")
+    else:
+        desc_parts.append(f"**{label}:** {value}")
+
+
+def format_json_field(
+    value: Any, label: str, limit: int = TruncationLimits.JSON_PREVIEW
+) -> str:
+    """Format a JSON value as a field."""
+    value_str = json.dumps(value, indent=2)
+    truncated = truncate_string(value_str, limit)
+    suffix = get_truncation_suffix(len(value_str), limit)
+    return f"**{label}:**\n```json\n{truncated}{suffix}\n```"
+
+
+# HTTP Client
+class HTTPClient:
+    """HTTP client for Discord API calls."""
+
+    def __init__(self, logger: logging.Logger, timeout: int = DEFAULT_TIMEOUT):
+        self.logger = logger
+        self.timeout = timeout
+        self.headers_base = {"User-Agent": USER_AGENT}
+
+    def post_webhook(self, url: str, data: DiscordMessage) -> bool:
+        """Send message via Discord webhook."""
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+        }
+
+        return self._make_request(url, data, headers, "Webhook", 204)
+
+    def post_bot_api(self, url: str, data: DiscordMessage, token: str) -> bool:
+        """Send message via Discord bot API."""
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        return self._make_request(
+            url, data, headers, "Bot API", lambda s: 200 <= s < 300
+        )
+
+    def _make_request(
+        self,
+        url: str,
+        data: DiscordMessage,
+        headers: Dict[str, str],
+        api_name: str,
+        success_check: Union[int, Callable[[int], bool]],
+    ) -> bool:
+        """Make HTTP request with error handling."""
         try:
-            env_vars = parse_env_file(env_file)
+            json_data = json.dumps(data).encode("utf-8")
+            req = urllib.request.Request(url, data=json_data, headers=headers)
 
-            if "DISCORD_WEBHOOK_URL" in env_vars:
-                config["webhook_url"] = env_vars["DISCORD_WEBHOOK_URL"]
-            if "DISCORD_TOKEN" in env_vars:
-                config["bot_token"] = env_vars["DISCORD_TOKEN"]
-            if "DISCORD_CHANNEL_ID" in env_vars:
-                config["channel_id"] = env_vars["DISCORD_CHANNEL_ID"]
-            if "DISCORD_DEBUG" in env_vars:
-                config["debug"] = env_vars["DISCORD_DEBUG"] == "1"
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"{api_name} response: {status}")
 
-        except RuntimeError as e:
-            print(str(e), file=sys.stderr)
-            sys.exit(1)
+                if callable(success_check):
+                    return success_check(status)
+                return status == success_check
 
-    # 3. Environment variables override file config
-    if os.environ.get("DISCORD_WEBHOOK_URL"):
-        config["webhook_url"] = os.environ.get("DISCORD_WEBHOOK_URL")
-    if os.environ.get("DISCORD_TOKEN"):
-        config["bot_token"] = os.environ.get("DISCORD_TOKEN")
-    if os.environ.get("DISCORD_CHANNEL_ID"):
-        config["channel_id"] = os.environ.get("DISCORD_CHANNEL_ID")
-    if os.environ.get("DISCORD_DEBUG"):
-        config["debug"] = os.environ.get("DISCORD_DEBUG") == "1"
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"{api_name} HTTP error {e.code}: {e.reason}")
+            raise DiscordAPIError(f"{api_name} failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"{api_name} URL error: {e.reason}")
+            raise DiscordAPIError(f"{api_name} connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"{api_name} unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"{api_name} unexpected error: {e}")
 
-    return config
+
+# Formatter base class
+class EventFormatter(Protocol):
+    """Protocol for event formatters."""
+
+    def format(self, event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+        """Format event data into Discord embed."""
+        ...
+
+
+# Configuration loader
+class ConfigLoader:
+    """Configuration loader with validation."""
+
+    @staticmethod
+    def load() -> Config:
+        """Load Discord configuration with clear precedence: env vars override file config."""
+        # 1. Start with defaults
+        config: Config = {
+            "webhook_url": None,
+            "bot_token": None,
+            "channel_id": None,
+            "debug": False,
+        }
+
+        # 2. Load from .env.discord file if it exists
+        env_file = Path.home() / ".claude" / "hooks" / ".env.discord"
+        if env_file.exists():
+            try:
+                env_vars = parse_env_file(env_file)
+
+                if ENV_WEBHOOK_URL in env_vars:
+                    config["webhook_url"] = env_vars[ENV_WEBHOOK_URL]
+                if ENV_BOT_TOKEN in env_vars:
+                    config["bot_token"] = env_vars[ENV_BOT_TOKEN]
+                if ENV_CHANNEL_ID in env_vars:
+                    config["channel_id"] = env_vars[ENV_CHANNEL_ID]
+                if ENV_DEBUG in env_vars:
+                    config["debug"] = env_vars[ENV_DEBUG] == "1"
+
+            except ConfigurationError as e:
+                print(str(e), file=sys.stderr)
+                sys.exit(1)
+
+        # 3. Environment variables override file config
+        if os.environ.get(ENV_WEBHOOK_URL):
+            config["webhook_url"] = os.environ.get(ENV_WEBHOOK_URL)
+        if os.environ.get(ENV_BOT_TOKEN):
+            config["bot_token"] = os.environ.get(ENV_BOT_TOKEN)
+        if os.environ.get(ENV_CHANNEL_ID):
+            config["channel_id"] = os.environ.get(ENV_CHANNEL_ID)
+        if os.environ.get(ENV_DEBUG):
+            config["debug"] = os.environ.get(ENV_DEBUG) == "1"
+
+        return config
+
+    @staticmethod
+    def validate(config: Config) -> None:
+        """Validate configuration."""
+        if not config["webhook_url"] and not (
+            config["bot_token"] and config["channel_id"]
+        ):
+            raise ConfigurationError(
+                "No Discord configuration found. Please set webhook URL or bot token/channel ID."
+            )
 
 
 def setup_logging(debug: bool) -> logging.Logger:
@@ -299,16 +592,16 @@ def setup_logging(debug: bool) -> logging.Logger:
 # Tool-specific formatters
 def format_bash_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     """Format Bash tool pre-use details."""
-    desc_parts = []
+    desc_parts: List[str] = []
     command = tool_input.get("command", "")
     desc = tool_input.get("description", "")
 
     # Show full command up to limit
     truncated_command = truncate_string(command, TruncationLimits.COMMAND_FULL)
-    desc_parts.append(f"**Command:** `{truncated_command}`")
+    add_field(desc_parts, "Command", truncated_command, code=True)
 
     if desc:
-        desc_parts.append(f"**Description:** {desc}")
+        add_field(desc_parts, "Description", desc)
 
     return desc_parts
 
@@ -317,126 +610,101 @@ def format_file_operation_pre_use(
     tool_name: str, tool_input: Dict[str, Any]
 ) -> List[str]:
     """Format file operation tool pre-use details."""
-    desc_parts = []
+    desc_parts: List[str] = []
     file_path = tool_input.get("file_path", "")
 
     if file_path:
         formatted_path = format_file_path(file_path)
-        desc_parts.append(f"**File:** `{formatted_path}`")
+        add_field(desc_parts, "File", formatted_path, code=True)
 
     # Add specific details for each file operation
-    if tool_name == ToolNames.EDIT:
-        old_str = truncate_string(
-            tool_input.get("old_string", ""), TruncationLimits.STRING_PREVIEW
-        )
-        new_str = truncate_string(
-            tool_input.get("new_string", ""), TruncationLimits.STRING_PREVIEW
-        )
+    if tool_name == ToolNames.EDIT.value:
+        old_str = tool_input.get("old_string", "")
+        new_str = tool_input.get("new_string", "")
 
         if old_str:
-            suffix = (
-                " ..."
-                if len(tool_input.get("old_string", ""))
-                > TruncationLimits.STRING_PREVIEW
-                else ""
+            truncated = truncate_string(old_str, TruncationLimits.STRING_PREVIEW)
+            suffix = get_truncation_suffix(
+                len(old_str), TruncationLimits.STRING_PREVIEW
             )
-            desc_parts.append(f"**Replacing:** `{old_str}`{suffix}")
+            add_field(desc_parts, "Replacing", f"{truncated}{suffix}", code=True)
+
         if new_str:
-            suffix = (
-                " ..."
-                if len(tool_input.get("new_string", ""))
-                > TruncationLimits.STRING_PREVIEW
-                else ""
+            truncated = truncate_string(new_str, TruncationLimits.STRING_PREVIEW)
+            suffix = get_truncation_suffix(
+                len(new_str), TruncationLimits.STRING_PREVIEW
             )
-            desc_parts.append(f"**With:** `{new_str}`{suffix}")
+            add_field(desc_parts, "With", f"{truncated}{suffix}", code=True)
 
-    elif tool_name == ToolNames.MULTI_EDIT:
+    elif tool_name == ToolNames.MULTI_EDIT.value:
         edits = tool_input.get("edits", [])
-        desc_parts.append(f"**Number of edits:** {len(edits)}")
+        add_field(desc_parts, "Number of edits", str(len(edits)))
 
-    elif tool_name == ToolNames.READ:
+    elif tool_name == ToolNames.READ.value:
         offset = tool_input.get("offset")
         limit = tool_input.get("limit")
         if offset or limit:
-            start_line = offset or 1
-            if limit:
-                end_line = start_line + limit - 1
-                desc_parts.append(f"**Range:** lines {start_line}-{end_line}")
-            else:
-                desc_parts.append(f"**Range:** lines {start_line}-end")
+            range_str = f"lines {offset or 1}-{(offset or 1) + (limit or 'end')}"
+            add_field(desc_parts, "Range", range_str)
 
     return desc_parts
 
 
 def format_search_tool_pre_use(tool_name: str, tool_input: Dict[str, Any]) -> List[str]:
     """Format search tool pre-use details."""
-    desc_parts = []
+    desc_parts: List[str] = []
     pattern = tool_input.get("pattern", "")
-    desc_parts.append(f"**Pattern:** `{pattern}`")
+    add_field(desc_parts, "Pattern", pattern, code=True)
 
     path = tool_input.get("path", "")
     if path:
-        desc_parts.append(f"**Path:** `{path}`")
+        add_field(desc_parts, "Path", path, code=True)
 
-    if tool_name == ToolNames.GREP:
+    if tool_name == ToolNames.GREP.value:
         include = tool_input.get("include", "")
         if include:
-            desc_parts.append(f"**Include:** `{include}`")
+            add_field(desc_parts, "Include", include, code=True)
 
     return desc_parts
 
 
 def format_task_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     """Format Task tool pre-use details."""
-    desc_parts = []
+    desc_parts: List[str] = []
     desc = tool_input.get("description", "")
-    prompt = truncate_string(
-        tool_input.get("prompt", ""), TruncationLimits.PROMPT_PREVIEW
-    )
+    prompt = tool_input.get("prompt", "")
 
     if desc:
-        desc_parts.append(f"**Task:** {desc}")
+        add_field(desc_parts, "Task", desc)
+
     if prompt:
-        suffix = (
-            " ..."
-            if len(tool_input.get("prompt", "")) > TruncationLimits.PROMPT_PREVIEW
-            else ""
-        )
-        desc_parts.append(f"**Prompt:** {prompt}{suffix}")
+        truncated = truncate_string(prompt, TruncationLimits.PROMPT_PREVIEW)
+        suffix = get_truncation_suffix(len(prompt), TruncationLimits.PROMPT_PREVIEW)
+        add_field(desc_parts, "Prompt", f"{truncated}{suffix}")
 
     return desc_parts
 
 
 def format_web_fetch_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     """Format WebFetch tool pre-use details."""
-    desc_parts = []
+    desc_parts: List[str] = []
     url = tool_input.get("url", "")
-    prompt = truncate_string(
-        tool_input.get("prompt", ""), TruncationLimits.STRING_PREVIEW
-    )
+    prompt = tool_input.get("prompt", "")
 
     if url:
-        desc_parts.append(f"**URL:** `{url}`")
+        add_field(desc_parts, "URL", url, code=True)
+
     if prompt:
-        suffix = (
-            " ..."
-            if len(tool_input.get("prompt", "")) > TruncationLimits.STRING_PREVIEW
-            else ""
-        )
-        desc_parts.append(f"**Query:** {prompt}{suffix}")
+        truncated = truncate_string(prompt, TruncationLimits.STRING_PREVIEW)
+        suffix = get_truncation_suffix(len(prompt), TruncationLimits.STRING_PREVIEW)
+        add_field(desc_parts, "Query", f"{truncated}{suffix}")
 
     return desc_parts
 
 
 def format_unknown_tool_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     """Format unknown tool pre-use details."""
-    input_str = truncate_string(
-        json.dumps(tool_input, indent=2), TruncationLimits.JSON_PREVIEW
-    )
-    suffix = (
-        " ..." if len(json.dumps(tool_input)) > TruncationLimits.JSON_PREVIEW else ""
-    )
-    return [f"**Input:**\n```json\n{input_str}{suffix}\n```"]
+    return [format_json_field(tool_input, "Input")]
 
 
 def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -448,31 +716,26 @@ def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordE
     embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
 
     # Build detailed description
-    desc_parts = []
-    desc_parts.append(f"**Session:** `{session_id}`")
+    desc_parts: List[str] = []
+    add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
-    if tool_name == ToolNames.BASH:
+    if is_bash_tool(tool_name):
         desc_parts.extend(format_bash_pre_use(tool_input))
-    elif tool_name in [
-        ToolNames.WRITE,
-        ToolNames.EDIT,
-        ToolNames.MULTI_EDIT,
-        ToolNames.READ,
-    ]:
+    elif is_file_tool(tool_name):
         desc_parts.extend(format_file_operation_pre_use(tool_name, tool_input))
-    elif tool_name in [ToolNames.GLOB, ToolNames.GREP]:
+    elif is_search_tool(tool_name):
         desc_parts.extend(format_search_tool_pre_use(tool_name, tool_input))
-    elif tool_name == ToolNames.TASK:
+    elif tool_name == ToolNames.TASK.value:
         desc_parts.extend(format_task_pre_use(tool_input))
-    elif tool_name == ToolNames.WEB_FETCH:
+    elif tool_name == ToolNames.WEB_FETCH.value:
         desc_parts.extend(format_web_fetch_pre_use(tool_input))
     else:
         desc_parts.extend(format_unknown_tool_pre_use(tool_input))
 
     # Add timestamp
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    desc_parts.append(f"**Time:** {timestamp}")
+    add_field(desc_parts, "Time", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
     return embed
@@ -483,12 +746,12 @@ def format_bash_post_use(
     tool_input: Dict[str, Any], tool_response: ToolResponse
 ) -> List[str]:
     """Format Bash tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
     command = truncate_string(
         tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW
     )
-    desc_parts.append(f"**Command:** `{command}`")
+    add_field(desc_parts, "Command", command, code=True)
 
     if isinstance(tool_response, dict):
         stdout = tool_response.get("stdout", "").strip()
@@ -498,9 +761,11 @@ def format_bash_post_use(
         if stdout:
             truncated_stdout = truncate_string(stdout, TruncationLimits.OUTPUT_PREVIEW)
             desc_parts.append(f"**Output:**\n```\n{truncated_stdout}\n```")
+
         if stderr:
             truncated_stderr = truncate_string(stderr, TruncationLimits.ERROR_PREVIEW)
             desc_parts.append(f"**Error:**\n```\n{truncated_stderr}\n```")
+
         if interrupted:
             desc_parts.append("**Status:** ⚠️ Interrupted")
 
@@ -511,21 +776,21 @@ def format_read_operation_post_use(
     tool_name: str, tool_input: Dict[str, Any], tool_response: ToolResponse
 ) -> List[str]:
     """Format read operation tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
-    if tool_name == ToolNames.READ:
+    if tool_name == ToolNames.READ.value:
         file_path = format_file_path(tool_input.get("file_path", ""))
-        desc_parts.append(f"**File:** `{file_path}`")
+        add_field(desc_parts, "File", file_path, code=True)
 
         if isinstance(tool_response, str):
             lines = tool_response.count("\n") + 1
-            desc_parts.append(f"**Lines read:** {lines}")
+            add_field(desc_parts, "Lines read", str(lines))
         elif isinstance(tool_response, dict) and tool_response.get("error"):
-            desc_parts.append(f"**Error:** {tool_response['error']}")
+            add_field(desc_parts, "Error", str(tool_response["error"]))
 
-    elif tool_name in [ToolNames.GLOB, ToolNames.GREP, ToolNames.LS]:
+    elif is_list_tool(tool_name):
         if isinstance(tool_response, list):
-            desc_parts.append(f"**Results found:** {len(tool_response)}")
+            add_field(desc_parts, "Results found", str(len(tool_response)))
             if tool_response:
                 preview = tool_response[:5]
                 preview_str = "\n".join(f"  • `{item}`" for item in preview)
@@ -534,7 +799,7 @@ def format_read_operation_post_use(
                     desc_parts.append(f"  *... and {len(tool_response) - 5} more*")
         elif isinstance(tool_response, str):
             lines = tool_response.strip().split("\n") if tool_response.strip() else []
-            desc_parts.append(f"**Results found:** {len(lines)}")
+            add_field(desc_parts, "Results found", str(len(lines)))
 
     return desc_parts
 
@@ -543,20 +808,19 @@ def format_write_operation_post_use(
     tool_input: Dict[str, Any], tool_response: ToolResponse
 ) -> List[str]:
     """Format write operation tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
     file_path = format_file_path(tool_input.get("file_path", ""))
-    desc_parts.append(f"**File:** `{file_path}`")
+    add_field(desc_parts, "File", file_path, code=True)
 
     if isinstance(tool_response, dict):
         if tool_response.get("success"):
             desc_parts.append("**Status:** ✅ Success")
         elif tool_response.get("error"):
-            desc_parts.append(f"**Error:** {tool_response['error']}")
+            add_field(desc_parts, "Error", str(tool_response["error"]))
     elif isinstance(tool_response, str) and "error" in tool_response.lower():
-        desc_parts.append(
-            f"**Error:** {truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)}"
-        )
+        error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
+        add_field(desc_parts, "Error", error_msg)
     else:
         desc_parts.append("**Status:** ✅ Completed")
 
@@ -567,11 +831,11 @@ def format_task_post_use(
     tool_input: Dict[str, Any], tool_response: ToolResponse
 ) -> List[str]:
     """Format Task tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
     desc = tool_input.get("description", "")
     if desc:
-        desc_parts.append(f"**Task:** {desc}")
+        add_field(desc_parts, "Task", desc)
 
     if isinstance(tool_response, str):
         summary = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
@@ -584,39 +848,34 @@ def format_web_fetch_post_use(
     tool_input: Dict[str, Any], tool_response: ToolResponse
 ) -> List[str]:
     """Format WebFetch tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
     url = tool_input.get("url", "")
-    desc_parts.append(f"**URL:** `{url}`")
+    add_field(desc_parts, "URL", url, code=True)
 
     if isinstance(tool_response, str):
         if "error" in tool_response.lower():
-            desc_parts.append(
-                f"**Error:** {truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)}"
-            )
+            error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
+            add_field(desc_parts, "Error", error_msg)
         else:
-            desc_parts.append(f"**Content length:** {len(tool_response)} chars")
+            add_field(desc_parts, "Content length", f"{len(tool_response)} chars")
 
     return desc_parts
 
 
 def format_unknown_tool_post_use(tool_response: ToolResponse) -> List[str]:
     """Format unknown tool post-use results."""
-    desc_parts = []
+    desc_parts: List[str] = []
 
     if isinstance(tool_response, dict):
-        response_str = truncate_string(
-            json.dumps(tool_response, indent=2), TruncationLimits.RESULT_PREVIEW
+        desc_parts.append(
+            format_json_field(
+                tool_response, "Response", TruncationLimits.RESULT_PREVIEW
+            )
         )
-        suffix = (
-            " ..."
-            if len(json.dumps(tool_response)) > TruncationLimits.RESULT_PREVIEW
-            else ""
-        )
-        desc_parts.append(f"**Response:**\n```json\n{response_str}{suffix}\n```")
     elif isinstance(tool_response, str):
         response_str = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
-        desc_parts.append(f"**Response:** {response_str}")
+        add_field(desc_parts, "Response", response_str)
 
     return desc_parts
 
@@ -631,28 +890,32 @@ def format_post_tool_use(event_data: Dict[str, Any], session_id: str) -> Discord
     embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}
 
     # Build detailed description
-    desc_parts = []
-    desc_parts.append(f"**Session:** `{session_id}`")
+    desc_parts: List[str] = []
+    add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
-    if tool_name == ToolNames.BASH:
+    if is_bash_tool(tool_name):
         desc_parts.extend(format_bash_post_use(tool_input, tool_response))
-    elif tool_name in [ToolNames.READ, ToolNames.GLOB, ToolNames.GREP, ToolNames.LS]:
+    elif tool_name == ToolNames.READ.value:
         desc_parts.extend(
             format_read_operation_post_use(tool_name, tool_input, tool_response)
         )
-    elif tool_name in [ToolNames.WRITE, ToolNames.EDIT, ToolNames.MULTI_EDIT]:
+    elif is_list_tool(tool_name):
+        desc_parts.extend(
+            format_read_operation_post_use(tool_name, tool_input, tool_response)
+        )
+    elif is_file_tool(tool_name):
         desc_parts.extend(format_write_operation_post_use(tool_input, tool_response))
-    elif tool_name == ToolNames.TASK:
+    elif tool_name == ToolNames.TASK.value:
         desc_parts.extend(format_task_post_use(tool_input, tool_response))
-    elif tool_name == ToolNames.WEB_FETCH:
+    elif tool_name == ToolNames.WEB_FETCH.value:
         desc_parts.extend(format_web_fetch_post_use(tool_input, tool_response))
     else:
         desc_parts.extend(format_unknown_tool_post_use(tool_response))
 
     # Add execution time
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    desc_parts.append(f"**Completed at:** {timestamp}")
+    add_field(desc_parts, "Completed at", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
     return embed
@@ -662,7 +925,7 @@ def format_notification(event_data: Dict[str, Any], session_id: str) -> DiscordE
     """Format Notification event with full details."""
     message = event_data.get("message", "System notification")
 
-    desc_parts = [
+    desc_parts: List[str] = [
         f"**Message:** {message}",
         f"**Session:** `{session_id}`",
         f"**Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
@@ -679,19 +942,13 @@ def format_notification(event_data: Dict[str, Any], session_id: str) -> DiscordE
         for key in extra_keys:
             value = event_data[key]
             if isinstance(value, (str, int, float, bool)):
-                desc_parts.append(f"**{key.title()}:** {value}")
+                add_field(desc_parts, key.title(), str(value))
             else:
                 # For complex types, show as JSON
-                value_str = truncate_string(
-                    json.dumps(value, indent=2), TruncationLimits.PROMPT_PREVIEW
-                )
-                suffix = (
-                    " ..."
-                    if len(json.dumps(value)) > TruncationLimits.PROMPT_PREVIEW
-                    else ""
-                )
                 desc_parts.append(
-                    f"**{key.title()}:**\n```json\n{value_str}{suffix}\n```"
+                    format_json_field(
+                        value, key.title(), TruncationLimits.PROMPT_PREVIEW
+                    )
                 )
 
     return {"title": "📢 Notification", "description": "\n".join(desc_parts)}
@@ -699,35 +956,36 @@ def format_notification(event_data: Dict[str, Any], session_id: str) -> DiscordE
 
 def format_stop(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format Stop event with session details."""
-    desc_parts = [
-        f"**Session ID:** `{session_id}`",
-        f"**Ended at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-    ]
+    desc_parts: List[str] = []
+
+    add_field(desc_parts, "Session ID", session_id, code=True)
+    add_field(desc_parts, "Ended at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     # Add transcript path if available
     transcript_path = event_data.get("transcript_path", "")
     if transcript_path:
-        desc_parts.append(f"**Transcript:** `{transcript_path}`")
+        add_field(desc_parts, "Transcript", transcript_path, code=True)
 
     # Add any session statistics if available
     for key in ["duration", "tools_used", "messages_exchanged"]:
         if key in event_data:
-            desc_parts.append(f"**{key.replace('_', ' ').title()}:** {event_data[key]}")
+            label = key.replace("_", " ").title()
+            add_field(desc_parts, label, str(event_data[key]))
 
     return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}
 
 
 def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format SubagentStop event with task results."""
-    desc_parts = [
-        f"**Session:** `{session_id}`",
-        f"**Completed at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-    ]
+    desc_parts: List[str] = []
+
+    add_field(desc_parts, "Session", session_id, code=True)
+    add_field(desc_parts, "Completed at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     # Add task description if available
     task_desc = event_data.get("task_description", "")
     if task_desc:
-        desc_parts.append(f"**Task:** {task_desc}")
+        add_field(desc_parts, "Task", task_desc)
 
     # Add result summary if available
     result = event_data.get("result", "")
@@ -736,20 +994,15 @@ def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> Discord
             result_summary = truncate_string(result, TruncationLimits.JSON_PREVIEW)
             desc_parts.append(f"**Result:**\n{result_summary}")
         else:
-            result_str = truncate_string(
-                json.dumps(result, indent=2), TruncationLimits.JSON_PREVIEW
+            desc_parts.append(
+                format_json_field(result, "Result", TruncationLimits.JSON_PREVIEW)
             )
-            suffix = (
-                " ..."
-                if len(json.dumps(result)) > TruncationLimits.JSON_PREVIEW
-                else ""
-            )
-            desc_parts.append(f"**Result:**\n```json\n{result_str}{suffix}\n```")
 
     # Add execution stats if available
     for key in ["execution_time", "tools_used", "status"]:
         if key in event_data:
-            desc_parts.append(f"**{key.replace('_', ' ').title()}:** {event_data[key]}")
+            label = key.replace("_", " ").title()
+            add_field(desc_parts, label, str(event_data[key]))
 
     return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
 
@@ -761,78 +1014,82 @@ def format_default(
     return {"title": f"⚡ {event_type}", "description": "Unknown event type"}
 
 
-# Event formatter dispatch table
-EVENT_FORMATTERS: Dict[EventType, Callable[[Dict[str, Any], str], DiscordEmbed]] = {
-    "PreToolUse": format_pre_tool_use,
-    "PostToolUse": format_post_tool_use,
-    "Notification": format_notification,
-    "Stop": format_stop,
-    "SubagentStop": format_subagent_stop,
-}
+# Event formatter registry
+class FormatterRegistry:
+    """Registry for event formatters."""
+
+    def __init__(self):
+        self._formatters: Dict[str, Callable[[Dict[str, Any], str], DiscordEmbed]] = {
+            EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
+            EventTypes.POST_TOOL_USE.value: format_post_tool_use,
+            EventTypes.NOTIFICATION.value: format_notification,
+            EventTypes.STOP.value: format_stop,
+            EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
+        }
+
+    def get_formatter(
+        self, event_type: str
+    ) -> Callable[[Dict[str, Any], str], DiscordEmbed]:
+        """Get formatter for event type."""
+        return self._formatters.get(event_type, format_default)
+
+    def register(
+        self, event_type: str, formatter: Callable[[Dict[str, Any], str], DiscordEmbed]
+    ) -> None:
+        """Register a new formatter."""
+        self._formatters[event_type] = formatter
 
 
-def format_event(event_type: str, event_data: Dict[str, Any]) -> DiscordMessage:
+def format_event(
+    event_type: str, event_data: Dict[str, Any], registry: FormatterRegistry
+) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits."""
     timestamp = datetime.now().isoformat()
     session_id = event_data.get("session_id", "unknown")[:8]
 
     # Get formatter for event type
-    if is_valid_event_type(event_type):
-        formatter = EVENT_FORMATTERS.get(event_type)
-        if formatter:
-            embed = formatter(event_data, session_id)
-        else:
-            embed = format_default(event_type, event_data, session_id)
-    else:
-        embed = format_default(event_type, event_data, session_id)
+    formatter = registry.get_formatter(event_type)
+    embed = formatter(event_data, session_id)
 
     # Enforce Discord's length limits
-    if "title" in embed and len(embed["title"]) > MAX_TITLE_LENGTH:
-        embed["title"] = truncate_string(embed["title"], MAX_TITLE_LENGTH)
+    if "title" in embed and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
+        embed["title"] = truncate_string(embed["title"], DiscordLimits.MAX_TITLE_LENGTH)
 
-    if "description" in embed and len(embed["description"]) > MAX_DESCRIPTION_LENGTH:
+    if (
+        "description" in embed
+        and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH
+    ):
         embed["description"] = truncate_string(
-            embed["description"], MAX_DESCRIPTION_LENGTH
+            embed["description"], DiscordLimits.MAX_DESCRIPTION_LENGTH
         )
 
     # Add common fields
     embed["timestamp"] = timestamp
+
+    # Get color for event type
     if is_valid_event_type(event_type):
-        embed["color"] = EVENT_COLORS.get(event_type, 0x808080)
+        embed["color"] = EVENT_COLORS.get(event_type, DiscordColors.DEFAULT)
     else:
-        embed["color"] = 0x808080  # Default color for unknown events
+        embed["color"] = DiscordColors.DEFAULT
+
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
     return {"embeds": [embed]}
 
 
 def send_to_discord(
-    message: DiscordMessage, config: Config, logger: logging.Logger
+    message: DiscordMessage,
+    config: Config,
+    logger: logging.Logger,
+    http_client: HTTPClient,
 ) -> bool:
     """Send message to Discord via webhook or bot API."""
     # Try webhook first
     if config["webhook_url"]:
         try:
-            data = json.dumps(message).encode("utf-8")
-            req = urllib.request.Request(
-                config["webhook_url"],
-                data=data,
-                headers={
-                    "Content-Type": "application/json",
-                    "User-Agent": "ClaudeCodeDiscordNotifier/1.0",
-                },
-            )
-
-            with urllib.request.urlopen(req, timeout=10) as response:
-                logger.debug(f"Webhook response: {response.status}")
-                return response.status == 204
-
-        except urllib.error.HTTPError as e:
-            logger.error(f"Webhook HTTP error {e.code}: {e.reason}")
-        except urllib.error.URLError as e:
-            logger.error(f"Webhook URL error: {e.reason}")
-        except Exception as e:
-            logger.error(f"Webhook unexpected error: {type(e).__name__}: {e}")
+            return http_client.post_webhook(config["webhook_url"], message)
+        except DiscordAPIError:
+            pass  # Fall through to bot API
 
     # Try bot API as fallback
     if config["bot_token"] and config["channel_id"]:
@@ -840,27 +1097,9 @@ def send_to_discord(
             url = (
                 f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
             )
-            data = json.dumps(message).encode("utf-8")
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={
-                    "Authorization": f"Bot {config['bot_token']}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "ClaudeCodeDiscordNotifier/1.0",
-                },
-            )
-
-            with urllib.request.urlopen(req, timeout=10) as response:
-                logger.debug(f"Bot API response: {response.status}")
-                return 200 <= response.status < 300
-
-        except urllib.error.HTTPError as e:
-            logger.error(f"Bot API HTTP error {e.code}: {e.reason}")
-        except urllib.error.URLError as e:
-            logger.error(f"Bot API URL error: {e.reason}")
-        except Exception as e:
-            logger.error(f"Bot API unexpected error: {type(e).__name__}: {e}")
+            return http_client.post_bot_api(url, message, config["bot_token"])
+        except DiscordAPIError:
+            pass
 
     return False
 
@@ -868,13 +1107,19 @@ def send_to_discord(
 def main() -> None:
     """Main entry point - read event from stdin and send to Discord."""
     # Load configuration
-    config = load_config()
+    config = ConfigLoader.load()
     logger = setup_logging(config["debug"])
 
     # Check if Discord is configured
-    if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
+    try:
+        ConfigLoader.validate(config)
+    except ConfigurationError:
         logger.debug("No Discord configuration found")
         sys.exit(0)  # Exit gracefully
+
+    # Initialize components
+    http_client = HTTPClient(logger)
+    formatter_registry = FormatterRegistry()
 
     try:
         # Read event data from stdin
@@ -882,14 +1127,14 @@ def main() -> None:
         event_data = json.loads(raw_input)
 
         # Get event type from environment
-        event_type = os.environ.get("CLAUDE_HOOK_EVENT", "Unknown")
+        event_type = os.environ.get(ENV_HOOK_EVENT, "Unknown")
 
         logger.info(f"Processing {event_type} event")
         logger.debug(f"Event data: {json.dumps(event_data, indent=2)}")
 
         # Format and send message
-        message = format_event(event_type, event_data)
-        success = send_to_discord(message, config, logger)
+        message = format_event(event_type, event_data, formatter_registry)
+        success = send_to_discord(message, config, logger, http_client)
 
         if success:
             logger.info(f"{event_type} notification sent successfully")
@@ -898,10 +1143,8 @@ def main() -> None:
 
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error: {e}")
-    except KeyError as e:
-        logger.error(f"Missing required field: {e}")
-    except TypeError as e:
-        logger.error(f"Type error in event data: {e}")
+    except EventProcessingError as e:
+        logger.error(f"Event processing error: {e}")
     except Exception as e:
         # Catch any other unexpected errors to ensure we don't block Claude Code
         logger.error(f"Unexpected error: {type(e).__name__}: {e}")

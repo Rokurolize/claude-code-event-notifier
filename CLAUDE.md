@@ -28,7 +28,7 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 ## Architecture
 
 ### Core Implementation
-- **src/discord_notifier.py** - Single-file implementation (~780 lines)
+- **src/discord_notifier.py** - Single-file implementation (~1160 lines)
   - `load_config()`: Loads Discord credentials with env vars overriding file config
   - `send_discord_message()`: Sends formatted embeds via webhook or bot API
   - `main()`: Reads event from stdin, formats and sends to Discord
