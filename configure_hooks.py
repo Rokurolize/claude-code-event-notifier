@@ -15,9 +15,46 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any, TypedDict, cast, Literal
 
 
-def atomic_write(filepath, content):
+# Type definitions for Claude settings structure
+class HookEntry(TypedDict):
+    """Individual hook command entry."""
+    type: Literal["command"]  # Currently only "command" type is supported
+    command: str
+
+
+class HookConfig(TypedDict, total=False):
+    """Hook configuration with hooks list and optional matcher."""
+    hooks: list[HookEntry]
+    matcher: str  # Optional, only for PreToolUse/PostToolUse
+
+
+# Define supported event types
+EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
+
+
+class EnvironmentConfig(TypedDict, total=False):
+    """Environment variables configuration."""
+    ANTHROPIC_BASE_URL: str
+    CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: str
+    ENABLE_BACKGROUND_TASKS: str
+
+
+class PermissionsConfig(TypedDict, total=False):
+    """Permissions configuration."""
+    defaultMode: Literal["bypassPermissions", "askPermissions"]
+
+
+class ClaudeSettings(TypedDict, total=False):
+    """Claude Code settings structure."""
+    hooks: dict[EventType, list[HookConfig]]
+    env: EnvironmentConfig
+    permissions: PermissionsConfig
+
+
+def atomic_write(filepath: str | Path, content: str) -> None:
     """Write content to file atomically using temp file + rename."""
     filepath = Path(filepath)
     # Create temp file in same directory for same filesystem
@@ -39,7 +76,43 @@ def atomic_write(filepath, content):
         raise
 
 
-def main():
+def should_keep_hook(hook: Any) -> bool:
+    """Check if a hook should be kept (i.e., it's not a discord notifier hook).
+    
+    This function safely navigates the hook structure to check if it contains
+    a discord_notifier.py command, using type guards at each level.
+    """
+    # First level: ensure hook is a dict
+    if not isinstance(hook, dict):
+        return True
+    
+    # Second level: get hooks list
+    hooks_list: Any = hook.get("hooks")
+    if not isinstance(hooks_list, list) or not hooks_list:
+        return True
+    
+    # Third level: get first hook entry
+    first_hook: Any = hooks_list[0]
+    if not isinstance(first_hook, dict):
+        return True
+    
+    # Fourth level: get command
+    command: Any = first_hook.get("command")
+    if not isinstance(command, str):
+        return True
+    
+    # Check if it's a discord notifier command
+    return "discord_notifier.py" not in command
+
+
+def filter_hooks(event_hooks: Any) -> list[HookConfig]:
+    """Filter out discord notifier hooks from a list of hooks."""
+    if not isinstance(event_hooks, list):
+        return []
+    return [hook for hook in event_hooks if should_keep_hook(hook)]
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(
         description="Configure Claude Code hooks for Discord notifications"
     )
@@ -68,20 +141,19 @@ def main():
         # Remove from settings.json
         if settings_file.exists():
             with open(settings_file) as f:
-                settings = json.load(f)
+                settings_data = json.load(f)
+            
+            # Type cast to ensure proper typing
+            settings = cast(ClaudeSettings, settings_data)
 
             # Remove discord notifier hooks
             if "hooks" in settings:
-                for event_type in settings["hooks"]:
-                    settings["hooks"][event_type] = [
-                        hook
-                        for hook in settings["hooks"][event_type]
-                        if "discord_notifier.py"
-                        not in hook.get("hooks", [{}])[0].get("command", "")
-                    ]
+                for event_type in list(settings["hooks"].keys()):
+                    settings["hooks"][event_type] = filter_hooks(
+                        settings["hooks"][event_type]
+                    )
 
             atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
-
             print("✓ Removed hooks from settings.json")
 
         print("\nRemoval complete!")
@@ -106,35 +178,35 @@ def main():
     # Update settings.json
     if settings_file.exists():
         with open(settings_file) as f:
-            settings = json.load(f)
+            settings_data = json.load(f)
     else:
-        settings = {}
+        settings_data = {}
+
+    # Type cast to ensure proper typing
+    settings = cast(ClaudeSettings, settings_data)
 
     if "hooks" not in settings:
         settings["hooks"] = {}
 
     # Define hooks for each event type
-    events = ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
+    events: list[EventType] = ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 
     for event in events:
         if event not in settings["hooks"]:
             settings["hooks"][event] = []
 
         # Remove any existing discord notifier hooks
-        settings["hooks"][event] = [
-            hook
-            for hook in settings["hooks"][event]
-            if "discord_notifier.py"
-            not in hook.get("hooks", [{}])[0].get("command", "")
-        ]
+        hooks_list = settings["hooks"][event]
+        settings["hooks"][event] = filter_hooks(hooks_list)
 
         # Add new hook
-        hook_entry = {
+        hook_entry: HookEntry = {
             "type": "command",
             "command": f"CLAUDE_HOOK_EVENT={event} python3 {target_script}",
         }
         
         # Create hook configuration with proper structure
+        hook_config: HookConfig
         if event in ["PreToolUse", "PostToolUse"]:
             # For tool events, include matcher at the correct level
             hook_config = {
@@ -147,6 +219,7 @@ def main():
                 "hooks": [hook_entry]
             }
 
+        # Append the new config - now properly typed
         settings["hooks"][event].append(hook_config)
 
     # Save settings
