@@ -37,7 +37,7 @@ DISCORD_DEBUG=0
         ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch("builtins.open", mock_open(read_data=file_content)):
-                    config = discord_notifier.load_config()
+                    config = discord_notifier.ConfigLoader.load()
 
                     # Env vars should override file
                     self.assertEqual(config["webhook_url"], "env_webhook")
@@ -55,7 +55,7 @@ DISCORD_DEBUG=1
         with patch.dict(os.environ, {}, clear=True):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch("builtins.open", mock_open(read_data=file_content)):
-                    config = discord_notifier.load_config()
+                    config = discord_notifier.ConfigLoader.load()
 
                     self.assertEqual(config["webhook_url"], "test_webhook")
                     self.assertIsNone(config["bot_token"])
@@ -65,7 +65,7 @@ DISCORD_DEBUG=1
         """Test when config file doesn't exist."""
         with patch.dict(os.environ, {"DISCORD_WEBHOOK_URL": "env_only"}):
             with patch("pathlib.Path.exists", return_value=False):
-                config = discord_notifier.load_config()
+                config = discord_notifier.ConfigLoader.load()
 
                 self.assertEqual(config["webhook_url"], "env_only")
                 self.assertIsNone(config["bot_token"])
@@ -101,8 +101,9 @@ class TestEventFormatting(unittest.TestCase):
 
     def test_format_event_with_unknown_type(self):
         """Test formatting unknown event types."""
+        registry = discord_notifier.FormatterRegistry()
         result = discord_notifier.format_event(
-            "UnknownEvent", {"session_id": "test123"}
+            "UnknownEvent", {"session_id": "test123"}, registry
         )
 
         embed = result["embeds"][0]
@@ -119,6 +120,9 @@ class TestDiscordSending(unittest.TestCase):
             "bot_token": "bot_token_123",
             "channel_id": "channel_123",
             "debug": False,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
         }
         self.logger = Mock()
 
@@ -132,7 +136,10 @@ class TestDiscordSending(unittest.TestCase):
         mock_urlopen.return_value = mock_response
 
         message = {"embeds": [{"title": "Test"}]}
-        result = discord_notifier.send_to_discord(message, self.config, self.logger)
+        http_client = discord_notifier.HTTPClient(self.logger)
+        result = discord_notifier.send_to_discord(
+            message, self.config, self.logger, http_client
+        )
 
         self.assertTrue(result)
         mock_urlopen.assert_called_once()
@@ -159,7 +166,10 @@ class TestDiscordSending(unittest.TestCase):
         ]
 
         message = {"embeds": [{"title": "Test"}]}
-        result = discord_notifier.send_to_discord(message, self.config, self.logger)
+        http_client = discord_notifier.HTTPClient(self.logger)
+        result = discord_notifier.send_to_discord(
+            message, self.config, self.logger, http_client
+        )
 
         self.assertTrue(result)
         self.assertEqual(mock_urlopen.call_count, 2)
@@ -175,7 +185,10 @@ class TestDiscordSending(unittest.TestCase):
         mock_urlopen.side_effect = urllib.error.URLError("Network error")
 
         message = {"embeds": [{"title": "Test"}]}
-        result = discord_notifier.send_to_discord(message, self.config, self.logger)
+        http_client = discord_notifier.HTTPClient(self.logger)
+        result = discord_notifier.send_to_discord(
+            message, self.config, self.logger, http_client
+        )
 
         self.assertFalse(result)
         self.assertEqual(self.logger.error.call_count, 2)
@@ -193,7 +206,7 @@ class TestMainFunction(unittest.TestCase):
 
     @patch("sys.stdin.read")
     @patch("discord_notifier.send_to_discord")
-    @patch("discord_notifier.load_config")
+    @patch("discord_notifier.ConfigLoader.load")
     def test_main_success(self, mock_load_config, mock_send, mock_stdin):
         """Test successful event processing."""
         # Mock configuration
@@ -202,6 +215,9 @@ class TestMainFunction(unittest.TestCase):
             "bot_token": None,
             "channel_id": None,
             "debug": False,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
         }
 
         # Mock stdin with valid event
@@ -228,10 +244,18 @@ class TestMainFunction(unittest.TestCase):
         self.assertIn("embeds", sent_message)
 
     @patch("sys.stdin.read")
-    @patch("discord_notifier.load_config")
+    @patch("discord_notifier.ConfigLoader.load")
     def test_main_invalid_json(self, mock_load_config, mock_stdin):
         """Test handling of invalid JSON input."""
-        mock_load_config.return_value = {"webhook_url": "test", "debug": True}
+        mock_load_config.return_value = {
+            "webhook_url": "test",
+            "debug": True,
+            "bot_token": None,
+            "channel_id": None,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
+        }
         mock_stdin.return_value = "invalid json{{"
 
         with patch("sys.exit", side_effect=SystemExit) as mock_exit:
@@ -240,7 +264,7 @@ class TestMainFunction(unittest.TestCase):
             mock_exit.assert_called_once_with(0)  # Should still exit 0
 
     @patch("sys.stdin.read")
-    @patch("discord_notifier.load_config")
+    @patch("discord_notifier.ConfigLoader.load")
     def test_main_no_credentials(self, mock_load_config, mock_stdin):
         """Test when no Discord credentials are configured."""
         mock_load_config.return_value = {
@@ -248,6 +272,9 @@ class TestMainFunction(unittest.TestCase):
             "bot_token": None,
             "channel_id": None,
             "debug": False,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
         }
         # Mock stdin in case it somehow continues past the early exit
         mock_stdin.return_value = ""

@@ -163,6 +163,11 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
 
 # Optional: Enable debug logging
 # DISCORD_DEBUG=1
+
+# Optional: Thread support for session organization
+# DISCORD_USE_THREADS=1
+# DISCORD_CHANNEL_TYPE=text          # "text" or "forum"
+# DISCORD_THREAD_PREFIX=Session      # Custom thread name prefix
 """)
         print(f"✓ Created example config at {env_example}")
 

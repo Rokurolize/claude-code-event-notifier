@@ -70,6 +70,9 @@ class Config(TypedDict):
     bot_token: Optional[str]
     channel_id: Optional[str]
     debug: bool
+    use_threads: bool
+    channel_type: Literal["text", "forum"]
+    thread_prefix: str
 
 
 class DiscordFooter(TypedDict):
@@ -92,6 +95,13 @@ class DiscordMessage(TypedDict):
     """Discord message structure."""
 
     embeds: List[DiscordEmbed]
+
+
+class DiscordThreadMessage(TypedDict, total=False):
+    """Discord message structure with thread support."""
+
+    embeds: List[DiscordEmbed]
+    thread_name: str  # For creating new threads in forum channels
 
 
 # Tool input types
@@ -329,12 +339,18 @@ ENV_WEBHOOK_URL: Final[str] = "DISCORD_WEBHOOK_URL"
 ENV_BOT_TOKEN: Final[str] = "DISCORD_TOKEN"
 ENV_CHANNEL_ID: Final[str] = "DISCORD_CHANNEL_ID"
 ENV_DEBUG: Final[str] = "DISCORD_DEBUG"
+ENV_USE_THREADS: Final[str] = "DISCORD_USE_THREADS"
+ENV_CHANNEL_TYPE: Final[str] = "DISCORD_CHANNEL_TYPE"
+ENV_THREAD_PREFIX: Final[str] = "DISCORD_THREAD_PREFIX"
 ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"
 
 # Other constants
 USER_AGENT: Final[str] = "ClaudeCodeDiscordNotifier/1.0"
 DEFAULT_TIMEOUT: Final[int] = 10
 TRUNCATION_SUFFIX: Final[str] = "..."
+
+# Thread management
+SESSION_THREAD_CACHE: Dict[str, str] = {}  # session_id -> thread_id mapping
 
 
 # Type guards
@@ -492,6 +508,94 @@ class HTTPClient:
             self.logger.error(f"{api_name} unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"{api_name} unexpected error: {e}")
 
+    def post_webhook_to_thread(
+        self, url: str, data: DiscordMessage, thread_id: str
+    ) -> bool:
+        """Send message to existing thread via Discord webhook."""
+        thread_url = f"{url}?thread_id={thread_id}"
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+        }
+
+        return self._make_request(thread_url, data, headers, "Webhook Thread", 204)
+
+    def create_forum_thread(
+        self, url: str, data: DiscordThreadMessage, thread_name: str
+    ) -> Optional[str]:
+        """Create new forum thread via Discord webhook. Returns thread_id if successful."""
+        thread_data = {**data, "thread_name": thread_name}
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+        }
+
+        try:
+            json_data = json.dumps(thread_data).encode("utf-8")
+            req = urllib.request.Request(url, data=json_data, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Forum Thread Creation response: {status}")
+
+                if status == 200:
+                    # Parse response to get thread_id
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    return response_data.get("id")  # thread_id
+                return None
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"Forum Thread Creation HTTP error {e.code}: {e.reason}")
+            raise DiscordAPIError(f"Forum thread creation failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Forum Thread Creation URL error: {e.reason}")
+            raise DiscordAPIError(
+                f"Forum thread creation connection failed: {e.reason}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Forum Thread Creation unexpected error: {type(e).__name__}: {e}"
+            )
+            raise DiscordAPIError(f"Forum thread creation unexpected error: {e}")
+
+    def create_text_thread(
+        self, channel_id: str, name: str, token: str
+    ) -> Optional[str]:
+        """Create new text channel thread via Discord bot API. Returns thread_id if successful."""
+        url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
+        data = {"name": name, "type": 11}  # 11 = public thread
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            json_data = json.dumps(data).encode("utf-8")
+            req = urllib.request.Request(url, data=json_data, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Text Thread Creation response: {status}")
+
+                if 200 <= status < 300:
+                    # Parse response to get thread_id
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    return response_data.get("id")  # thread_id
+                return None
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"Text Thread Creation HTTP error {e.code}: {e.reason}")
+            raise DiscordAPIError(f"Text thread creation failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Text Thread Creation URL error: {e.reason}")
+            raise DiscordAPIError(f"Text thread creation connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(
+                f"Text Thread Creation unexpected error: {type(e).__name__}: {e}"
+            )
+            raise DiscordAPIError(f"Text thread creation unexpected error: {e}")
+
 
 # Formatter base class
 class EventFormatter(Protocol):
@@ -500,6 +604,67 @@ class EventFormatter(Protocol):
     def format(self, event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
         """Format event data into Discord embed."""
         ...
+
+
+# Thread management
+def get_or_create_thread(
+    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+) -> Optional[str]:
+    """Get existing thread ID or create new thread for session. Returns thread_id if successful."""
+    if not config["use_threads"]:
+        return None
+
+    # Check cache first
+    if session_id in SESSION_THREAD_CACHE:
+        logger.debug(
+            f"Found existing thread for session {session_id}: {SESSION_THREAD_CACHE[session_id]}"
+        )
+        return SESSION_THREAD_CACHE[session_id]
+
+    # Create thread name
+    thread_name = f"{config['thread_prefix']} {session_id[:8]}"
+    logger.debug(f"Creating new thread: {thread_name}")
+
+    try:
+        thread_id = None
+
+        if config["channel_type"] == "forum":
+            # Forum channels: Use webhook with thread_name
+            if config["webhook_url"]:
+                # We'll handle thread creation in the actual message sending
+                # For now, just return None to indicate we need to create it
+                return None
+            else:
+                logger.warning("Forum channel threads require webhook URL")
+                return None
+
+        elif config["channel_type"] == "text":
+            # Text channels: Use bot API to create thread
+            if config["bot_token"] and config["channel_id"]:
+                thread_id = http_client.create_text_thread(
+                    config["channel_id"], thread_name, config["bot_token"]
+                )
+                if thread_id:
+                    SESSION_THREAD_CACHE[session_id] = thread_id
+                    logger.info(
+                        f"Created text thread {thread_id} for session {session_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to create text thread for session {session_id}"
+                    )
+            else:
+                logger.warning("Text channel threads require bot token and channel ID")
+                return None
+
+        return thread_id
+
+    except DiscordAPIError as e:
+        logger.error(f"Failed to create thread for session {session_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error creating thread for session {session_id}: {e}")
+        return None
 
 
 # Configuration loader
@@ -515,6 +680,9 @@ class ConfigLoader:
             "bot_token": None,
             "channel_id": None,
             "debug": False,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
         }
 
         # 2. Load from .env.discord file if it exists
@@ -531,6 +699,14 @@ class ConfigLoader:
                     config["channel_id"] = env_vars[ENV_CHANNEL_ID]
                 if ENV_DEBUG in env_vars:
                     config["debug"] = env_vars[ENV_DEBUG] == "1"
+                if ENV_USE_THREADS in env_vars:
+                    config["use_threads"] = env_vars[ENV_USE_THREADS] == "1"
+                if ENV_CHANNEL_TYPE in env_vars:
+                    channel_type = env_vars[ENV_CHANNEL_TYPE]
+                    if channel_type in ["text", "forum"]:
+                        config["channel_type"] = channel_type
+                if ENV_THREAD_PREFIX in env_vars:
+                    config["thread_prefix"] = env_vars[ENV_THREAD_PREFIX]
 
             except ConfigurationError as e:
                 print(str(e), file=sys.stderr)
@@ -545,6 +721,14 @@ class ConfigLoader:
             config["channel_id"] = os.environ.get(ENV_CHANNEL_ID)
         if os.environ.get(ENV_DEBUG):
             config["debug"] = os.environ.get(ENV_DEBUG) == "1"
+        if os.environ.get(ENV_USE_THREADS):
+            config["use_threads"] = os.environ.get(ENV_USE_THREADS) == "1"
+        if os.environ.get(ENV_CHANNEL_TYPE):
+            channel_type = os.environ.get(ENV_CHANNEL_TYPE)
+            if channel_type in ["text", "forum"]:
+                config["channel_type"] = channel_type
+        if os.environ.get(ENV_THREAD_PREFIX):
+            config["thread_prefix"] = os.environ.get(ENV_THREAD_PREFIX)
 
         return config
 
@@ -1007,11 +1191,16 @@ def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> Discord
     return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
 
 
-def format_default(
+def format_default_impl(
     event_type: str, event_data: Dict[str, Any], session_id: str
 ) -> DiscordEmbed:
     """Format unknown event types."""
     return {"title": f"⚡ {event_type}", "description": "Unknown event type"}
+
+
+def format_default(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+    """Wrapper for format_default_impl that matches the formatter signature."""
+    return format_default_impl("Unknown", event_data, session_id)
 
 
 # Event formatter registry
@@ -1031,7 +1220,13 @@ class FormatterRegistry:
         self, event_type: str
     ) -> Callable[[Dict[str, Any], str], DiscordEmbed]:
         """Get formatter for event type."""
-        return self._formatters.get(event_type, format_default)
+        if event_type in self._formatters:
+            return self._formatters[event_type]
+        else:
+            # Return a lambda that captures the event_type for unknown events
+            return lambda event_data, session_id: format_default_impl(
+                event_type, event_data, session_id
+            )
 
     def register(
         self, event_type: str, formatter: Callable[[Dict[str, Any], str], DiscordEmbed]
@@ -1082,8 +1277,53 @@ def send_to_discord(
     config: Config,
     logger: logging.Logger,
     http_client: HTTPClient,
+    session_id: str = "",
 ) -> bool:
-    """Send message to Discord via webhook or bot API."""
+    """Send message to Discord via webhook or bot API, with optional thread support."""
+    # Handle thread support if enabled
+    if config["use_threads"] and session_id:
+        thread_id = get_or_create_thread(session_id, config, http_client, logger)
+
+        if thread_id:
+            # Send to existing thread
+            if config["webhook_url"]:
+                try:
+                    return http_client.post_webhook_to_thread(
+                        config["webhook_url"], message, thread_id
+                    )
+                except DiscordAPIError:
+                    logger.warning(
+                        "Failed to send to thread, falling back to regular channel"
+                    )
+
+        elif config["channel_type"] == "forum" and config["webhook_url"]:
+            # Create forum thread with first message
+            thread_name = f"{config['thread_prefix']} {session_id[:8]}"
+            thread_message: DiscordThreadMessage = {
+                "embeds": message["embeds"],
+                "thread_name": thread_name,
+            }
+
+            try:
+                thread_id = http_client.create_forum_thread(
+                    config["webhook_url"], thread_message, thread_name
+                )
+                if thread_id:
+                    SESSION_THREAD_CACHE[session_id] = thread_id
+                    logger.info(
+                        f"Created forum thread {thread_id} for session {session_id}"
+                    )
+                    return True
+                else:
+                    logger.warning(
+                        "Forum thread creation failed, falling back to regular channel"
+                    )
+            except DiscordAPIError:
+                logger.warning(
+                    "Forum thread creation failed, falling back to regular channel"
+                )
+
+    # Regular channel messaging (no threads or fallback)
     # Try webhook first
     if config["webhook_url"]:
         try:
@@ -1134,7 +1374,8 @@ def main() -> None:
 
         # Format and send message
         message = format_event(event_type, event_data, formatter_registry)
-        success = send_to_discord(message, config, logger, http_client)
+        session_id = event_data.get("session_id", "")
+        success = send_to_discord(message, config, logger, http_client, session_id)
 
         if success:
             logger.info(f"{event_type} notification sent successfully")
