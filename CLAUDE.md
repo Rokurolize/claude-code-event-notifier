@@ -21,6 +21,14 @@ python3 test.py
 # Run unit tests (no network calls)
 python3 -m unittest test_discord_notifier.py
 
+# Run comprehensive type safety tests
+python3 run_type_safety_tests.py
+
+# Type checking and linting
+mypy src/ configure_hooks.py
+ruff check .
+ruff format .
+
 # View debug logs (requires DISCORD_DEBUG=1)
 tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 ```
@@ -113,6 +121,52 @@ DISCORD_MENTION_USER_ID=123456789012345678  # Discord user ID to mention
 
 **Note:** Mentions work for Notification and Stop events to avoid spam. The mention appears above the embed message.
 
+### Event Filtering Configuration
+The notifier supports filtering events to only process specific types. This allows for focused notifications (e.g., only session completions) without modifying hook installation:
+
+```bash
+# Environment variables for event filtering
+DISCORD_ENABLED_EVENTS=Stop,Notification    # Only process these events
+DISCORD_DISABLED_EVENTS=PreToolUse         # Skip these events
+```
+
+**Event Filtering in .env.discord:**
+```bash
+# Option 1: Only send specific events (whitelist approach)
+DISCORD_ENABLED_EVENTS=Stop,Notification
+
+# Option 2: Skip specific events (blacklist approach)  
+DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
+
+# Option 3: No filtering (default - process all events)
+# Leave both variables unset or empty
+```
+
+**Filtering Logic:**
+- **DISCORD_ENABLED_EVENTS** takes precedence if both are set
+- **DISCORD_DISABLED_EVENTS** is used if enabled_events is not set
+- **Default behavior**: Process all events if neither is configured
+- **Invalid event names** are silently ignored (graceful degradation)
+
+**Valid Event Types:**
+- `PreToolUse`: Before tool execution
+- `PostToolUse`: After tool execution  
+- `Notification`: System notifications
+- `Stop`: Session end events
+- `SubagentStop`: Subagent completion events
+
+**Common Use Cases:**
+```bash
+# Only session completion notifications
+DISCORD_ENABLED_EVENTS=Stop,Notification
+
+# Everything except verbose tool executions
+DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
+
+# Only critical events
+DISCORD_ENABLED_EVENTS=Stop,Notification
+```
+
 **Thread Behavior:**
 - **Text Channels**: Creates public threads using bot API (requires bot token + channel ID)
 - **Forum Channels**: Creates forum posts using webhook URL (bot token not required)
@@ -167,3 +221,23 @@ DISCORD_MENTION_USER_ID=123456789012345678  # Discord user ID to mention
 - Tool-specific formatters for pre/post-use events
 - Event formatter dispatch table for clean routing
 - Specific exception handling instead of bare except clauses
+
+### Module Structure
+- **src/discord_notifier.py**: Main notifier implementation with event processing
+- **src/settings_types.py**: TypedDict definitions for Claude Code settings.json structure
+- **src/type_guards.py**: Runtime type validation and narrowing functions
+- **configure_hooks.py**: Claude Code hook configuration management
+- **run_type_safety_tests.py**: Comprehensive type safety test runner
+
+### Development Workflow
+- **Strict type checking**: MyPy configuration with Python 3.9+ target
+- **Comprehensive linting**: Ruff with 30+ rule categories
+- **Multi-tier testing**: Unit tests (mocked), integration tests (network calls), type safety tests
+- **JSON handling**: Flexible typing for `json.loads()` operations while maintaining strict typing elsewhere
+- **Error handling**: Custom exception hierarchy with specific error types
+
+### Testing Structure
+- **Unit tests**: `test_discord_notifier.py` (mocked, no network calls)
+- **Integration tests**: `test.py` (actual Discord messages)
+- **Type safety tests**: `test_config_type_safety.py`, `test_runtime_type_validation.py`, `test_type_guards_validation.py`
+- **Feature tests**: `test_mentions.py`, `test_error_handling.py`

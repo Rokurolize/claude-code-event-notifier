@@ -245,6 +245,13 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
 
 # Optional: User mention for notifications
 # DISCORD_MENTION_USER_ID=123456789012345678  # Your Discord user ID
+
+# Optional: Event filtering (choose one approach)
+# Only send specific events (comma-separated list)
+# DISCORD_ENABLED_EVENTS=Stop,Notification
+# Skip specific events (comma-separated list)
+# DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
+# Valid events: PreToolUse, PostToolUse, Notification, Stop, SubagentStop
 """)
         print(f"✓ Created example config at {env_example}")
 
