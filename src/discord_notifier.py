@@ -71,13 +71,18 @@ from typing import (
     Any,
     TypedDict,
     Literal,
-    TypeGuard,
     Protocol,
     Final,
     cast,
-    NotRequired,
+    Optional,
+    Union,
 )
 from collections.abc import Callable
+
+try:
+    from typing import TypeGuard, NotRequired  # type: ignore[attr-defined]
+except (ImportError, AttributeError):
+    from typing_extensions import TypeGuard, NotRequired
 from enum import Enum
 from dataclasses import dataclass
 
@@ -401,9 +406,9 @@ class DiscordThreadMessage(DiscordMessageBase):
 
 class DiscordCredentials(TypedDict):
     """Discord authentication credentials."""
-    webhook_url: str | None
-    bot_token: str | None
-    channel_id: str | None
+    webhook_url: Optional[str]
+    bot_token: Optional[str]
+    channel_id: Optional[str]
 
 
 class ThreadConfiguration(TypedDict):
@@ -415,11 +420,17 @@ class ThreadConfiguration(TypedDict):
 
 class NotificationConfiguration(TypedDict):
     """Notification-specific configuration."""
-    mention_user_id: str | None
+    mention_user_id: Optional[str]
     debug: bool
 
 
-class Config(DiscordCredentials, ThreadConfiguration, NotificationConfiguration):
+class EventFilterConfiguration(TypedDict):
+    """Event filtering configuration."""
+    enabled_events: Optional[list[str]]
+    disabled_events: Optional[list[str]]
+
+
+class Config(DiscordCredentials, ThreadConfiguration, NotificationConfiguration, EventFilterConfiguration):
     """Complete configuration combining all aspects."""
     pass
 
@@ -512,8 +523,8 @@ class FileToolInput(TypedDict, total=False):
     old_string: str
     new_string: str
     edits: list[FileEditOperation]
-    offset: int | None
-    limit: int | None
+    offset: Optional[int]
+    limit: Optional[int]
 
 
 # Legacy SearchToolInput for backward compatibility
@@ -525,21 +536,21 @@ class SearchToolInput(TypedDict, total=False):
 
 
 # Union type for all tool inputs
-ToolInput = (
-    BashToolInput |
-    ReadToolInput |
-    WriteToolInput |
-    EditToolInput |
-    MultiEditToolInput |
-    ListToolInput |
-    GlobToolInput |
-    GrepToolInput |
-    TaskToolInput |
-    WebToolInput |
-    FileToolInput |  # Legacy compatibility
-    SearchToolInput |  # Legacy compatibility
+ToolInput = Union[
+    BashToolInput,
+    ReadToolInput,
+    WriteToolInput,
+    EditToolInput,
+    MultiEditToolInput,
+    ListToolInput,
+    GlobToolInput,
+    GrepToolInput,
+    TaskToolInput,
+    WebToolInput,
+    FileToolInput,  # Legacy compatibility
+    SearchToolInput,  # Legacy compatibility
     dict[str, Any]
-)
+]
 
 
 # ------------------------------------------------------------------------------
@@ -572,14 +583,14 @@ class SearchResponse(ToolResponseBase):
 
 
 # Union type for all tool responses
-ToolResponse = (
-    BashToolResponse |
-    FileOperationResponse |
-    SearchResponse |
-    str |
-    dict[str, Any] |
+ToolResponse = Union[
+    BashToolResponse,
+    FileOperationResponse,
+    SearchResponse,
+    str,
+    dict[str, Any],
     list[Any]
-)
+]
 
 
 # ------------------------------------------------------------------------------
@@ -630,20 +641,20 @@ class StopEventData(StopEventDataBase):
 class SubagentStopEventData(StopEventData):
     """SubagentStop event data structure."""
     task_description: NotRequired[str]
-    result: NotRequired[str | dict[str, Any]]
+    result: NotRequired[Union[str, dict[str, Any]]]
     execution_time: NotRequired[float]
     status: NotRequired[str]
 
 
 # Union type for all event data
-EventData = (
-    PreToolUseEventData |
-    PostToolUseEventData |
-    NotificationEventData |
-    StopEventData |
-    SubagentStopEventData |
+EventData = Union[
+    PreToolUseEventData,
+    PostToolUseEventData,
+    NotificationEventData,
+    StopEventData,
+    SubagentStopEventData,
     dict[str, Any]
-)
+]
 
 # ------------------------------------------------------------------------------
 # 7. ENHANCED TYPE SAFETY FEATURES
@@ -773,13 +784,14 @@ class ConfigValidator:
         if not config.get("use_threads", False):
             return True
         
-        channel_type = config.get("channel_type", "text")
+        channel_type = cast(str, config.get("channel_type", "text"))
         if channel_type == "forum":
             return bool(config.get("webhook_url"))
         elif channel_type == "text":
             return bool(config.get("bot_token") and config.get("channel_id"))
-        
-        return False
+        else:
+            # Invalid channel type
+            return False
     
     @staticmethod
     def validate_mention_config(config: Config) -> bool:
@@ -1041,6 +1053,8 @@ ENV_USE_THREADS: Final[str] = "DISCORD_USE_THREADS"
 ENV_CHANNEL_TYPE: Final[str] = "DISCORD_CHANNEL_TYPE"
 ENV_THREAD_PREFIX: Final[str] = "DISCORD_THREAD_PREFIX"
 ENV_MENTION_USER_ID: Final[str] = "DISCORD_MENTION_USER_ID"
+ENV_ENABLED_EVENTS: Final[str] = "DISCORD_ENABLED_EVENTS"
+ENV_DISABLED_EVENTS: Final[str] = "DISCORD_DISABLED_EVENTS"
 ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"
 
 # Other constants
@@ -1217,6 +1231,90 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
     return env_vars
 
 
+def parse_event_list(event_list_str: str) -> list[str]:
+    """Parse comma-separated event list string into validated list.
+    
+    Parses environment variable values like "Stop,Notification" into a list
+    of valid event type strings. Invalid event types are filtered out with
+    debug logging.
+    
+    Args:
+        event_list_str: Comma-separated string of event types
+        
+    Returns:
+        list[str]: List of valid event type strings
+        
+    Example:
+        >>> parse_event_list("Stop,Notification,InvalidEvent")
+        ['Stop', 'Notification']
+        >>> parse_event_list("")
+        []
+        >>> parse_event_list("  PreToolUse  ,  PostToolUse  ")
+        ['PreToolUse', 'PostToolUse']
+    """
+    if not event_list_str:
+        return []
+    
+    # Split and clean up event names
+    events = [event.strip() for event in event_list_str.split(",")]
+    valid_events = []
+    
+    # Filter to only valid event types
+    for event in events:
+        if event and is_valid_event_type(event):
+            valid_events.append(event)
+        elif event:  # Non-empty but invalid
+            # Note: We can't access logger here, so invalid events are silently filtered
+            # This maintains the principle of graceful degradation
+            pass
+    
+    return valid_events
+
+
+def should_process_event(event_type: str, config: Config) -> bool:
+    """Determine if an event should be processed based on filtering configuration.
+    
+    Implements event filtering logic with the following precedence:
+    1. If enabled_events is configured, only process events in that list
+    2. If disabled_events is configured, skip events in that list
+    3. If both are configured, enabled_events takes precedence
+    4. If neither is configured, process all events (default behavior)
+    
+    Args:
+        event_type: The event type to check (e.g., "Stop", "Notification")
+        config: Configuration containing filtering settings
+        
+    Returns:
+        bool: True if the event should be processed, False otherwise
+        
+    Examples:
+        >>> config = {"enabled_events": ["Stop", "Notification"], "disabled_events": None}
+        >>> should_process_event("Stop", config)
+        True
+        >>> should_process_event("PreToolUse", config)
+        False
+        >>> 
+        >>> config = {"enabled_events": None, "disabled_events": ["PreToolUse"]}
+        >>> should_process_event("PreToolUse", config)
+        False
+        >>> should_process_event("Stop", config)
+        True
+    """
+    enabled_events = config.get("enabled_events")
+    disabled_events = config.get("disabled_events")
+    
+    # If enabled_events is configured, only process events in that list
+    if enabled_events:
+        return event_type in enabled_events
+    
+    # If disabled_events is configured, skip events in that list
+    if disabled_events:
+        return event_type not in disabled_events
+    
+    # Default: process all events
+    return True
+
+
 def get_truncation_suffix(original_length: int, limit: int) -> str:
     """Get truncation suffix if text was truncated.
     
@@ -1365,7 +1463,7 @@ class HTTPClient:
         data: DiscordMessage,
         headers: dict[str, str],
         api_name: str,
-        success_check: int | Callable[[int], bool],
+        success_check: Union[int, Callable[[int], bool]],
     ) -> bool:
         """Make HTTP request with error handling."""
         try:
@@ -1377,8 +1475,8 @@ class HTTPClient:
                 self.logger.debug(f"{api_name} response: {status}")
 
                 if callable(success_check):
-                    return success_check(status)
-                return status == success_check
+                    return bool(success_check(status))
+                return bool(status == success_check)
 
         except urllib.error.HTTPError as e:
             self.logger.error(f"{api_name} HTTP error {e.code}: {e.reason}")
@@ -1404,7 +1502,7 @@ class HTTPClient:
 
     def create_forum_thread(
         self, url: str, data: DiscordThreadMessage, thread_name: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Create new forum thread via Discord webhook. Returns thread_id if successful."""
         thread_data = {**data, "thread_name": thread_name}
         headers = {
@@ -1423,7 +1521,7 @@ class HTTPClient:
                 if status == 200:
                     # Parse response to get thread_id
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return response_data.get("id")  # thread_id
+                    return cast(Optional[str], response_data.get("id"))  # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
@@ -1442,7 +1540,7 @@ class HTTPClient:
 
     def create_text_thread(
         self, channel_id: str, name: str, token: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Create new text channel thread via Discord bot API. Returns thread_id if successful."""
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
         data = {"name": name, "type": 11}  # 11 = public thread
@@ -1463,7 +1561,7 @@ class HTTPClient:
                 if 200 <= status < 300:
                     # Parse response to get thread_id
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return response_data.get("id")  # thread_id
+                    return cast(Optional[str], response_data.get("id"))  # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
@@ -1491,7 +1589,7 @@ class EventFormatter(Protocol):
 # Thread management
 def get_or_create_thread(
     session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-) -> str | None:
+) -> Optional[str]:
     """Get existing thread ID or create new thread for session. Returns thread_id if successful."""
     if not config["use_threads"]:
         return None
@@ -1566,6 +1664,8 @@ class ConfigLoader:
             "channel_type": "text",
             "thread_prefix": "Session",
             "mention_user_id": None,
+            "enabled_events": None,
+            "disabled_events": None,
         }
 
         # 2. Load from .env.discord file if it exists
@@ -1592,6 +1692,12 @@ class ConfigLoader:
                     config["thread_prefix"] = env_vars[ENV_THREAD_PREFIX]
                 if ENV_MENTION_USER_ID in env_vars:
                     config["mention_user_id"] = env_vars[ENV_MENTION_USER_ID]
+                if ENV_ENABLED_EVENTS in env_vars:
+                    enabled_events = parse_event_list(env_vars[ENV_ENABLED_EVENTS])
+                    config["enabled_events"] = enabled_events if enabled_events else None
+                if ENV_DISABLED_EVENTS in env_vars:
+                    disabled_events = parse_event_list(env_vars[ENV_DISABLED_EVENTS])
+                    config["disabled_events"] = disabled_events if disabled_events else None
 
             except ConfigurationError as e:
                 print(str(e), file=sys.stderr)
@@ -1609,15 +1715,21 @@ class ConfigLoader:
         if os.environ.get(ENV_USE_THREADS):
             config["use_threads"] = os.environ.get(ENV_USE_THREADS) == "1"
         if os.environ.get(ENV_CHANNEL_TYPE):
-            channel_type = os.environ.get(ENV_CHANNEL_TYPE)
-            if channel_type in ["text", "forum"]:
-                config["channel_type"] = cast(Literal["text", "forum"], channel_type)
+            env_channel_type: Optional[str] = os.environ.get(ENV_CHANNEL_TYPE)
+            if env_channel_type is not None and env_channel_type in ["text", "forum"]:
+                config["channel_type"] = cast(Literal["text", "forum"], env_channel_type)
         if os.environ.get(ENV_THREAD_PREFIX):
             thread_prefix = os.environ.get(ENV_THREAD_PREFIX)
             if thread_prefix is not None:
                 config["thread_prefix"] = thread_prefix
         if os.environ.get(ENV_MENTION_USER_ID):
             config["mention_user_id"] = os.environ.get(ENV_MENTION_USER_ID)
+        if os.environ.get(ENV_ENABLED_EVENTS):
+            enabled_events = parse_event_list(os.environ.get(ENV_ENABLED_EVENTS, ""))
+            config["enabled_events"] = enabled_events if enabled_events else None
+        if os.environ.get(ENV_DISABLED_EVENTS):
+            disabled_events = parse_event_list(os.environ.get(ENV_DISABLED_EVENTS, ""))
+            config["disabled_events"] = disabled_events if disabled_events else None
 
         return config
 
@@ -1791,7 +1903,7 @@ def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordE
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
+    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}  # type: ignore[typeddict-item]
 
     # Build detailed description
     desc_parts: list[str] = []
@@ -1832,8 +1944,8 @@ def format_bash_post_use(
     add_field(desc_parts, "Command", command, code=True)
 
     if isinstance(tool_response, dict):
-        stdout = tool_response.get("stdout", "").strip()
-        stderr = tool_response.get("stderr", "").strip()
+        stdout = str(tool_response.get("stdout", "")).strip()
+        stderr = str(tool_response.get("stderr", "")).strip()
         interrupted = tool_response.get("interrupted", False)
 
         if stdout:
@@ -1879,8 +1991,8 @@ def format_read_operation_post_use(
                 if len(tool_response) > 5:
                     desc_parts.append(f"  *... and {len(tool_response) - 5} more*")
         elif isinstance(tool_response, str):
-            lines = tool_response.strip().split("\n") if tool_response.strip() else []
-            add_field(desc_parts, "Results found", str(len(lines)))
+            result_lines: list[str] = tool_response.strip().split("\n") if tool_response.strip() else []
+            add_field(desc_parts, "Results found", str(len(result_lines)))
 
     return desc_parts
 
@@ -1971,7 +2083,7 @@ def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> Discord
     tool_response = event_data.get("tool_response", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}
+    embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}  # type: ignore[typeddict-item]
 
     # Build detailed description
     desc_parts: list[str] = []
@@ -2035,7 +2147,7 @@ def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordE
                     )
                 )
 
-    return {"title": "📢 Notification", "description": "\n".join(desc_parts)}
+    return {"title": "📢 Notification", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
 
 
 def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2056,7 +2168,7 @@ def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
             label = key.replace("_", " ").title()
             add_field(desc_parts, label, str(event_data[key]))
 
-    return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}
+    return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
 
 
 def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2088,7 +2200,7 @@ def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> Discord
             label = key.replace("_", " ").title()
             add_field(desc_parts, label, str(event_data[key]))
 
-    return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
+    return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
 
 
 def format_default_impl(
@@ -2104,7 +2216,7 @@ def format_default_impl(
         desc_parts.append("\n**Event Data:**")
         desc_parts.append(format_json_field(event_data, "", TruncationLimits.JSON_PREVIEW))
     
-    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}
+    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
 
 
 def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2116,7 +2228,7 @@ def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
 class FormatterRegistry:
     """Registry for event formatters."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._formatters: dict[str, Callable[[dict[str, Any], str], DiscordEmbed]] = {
             EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
             EventTypes.POST_TOOL_USE.value: format_post_tool_use,
@@ -2175,14 +2287,14 @@ def format_event(
 
     # Get color for event type
     if is_valid_event_type(event_type):
-        embed["color"] = EVENT_COLORS.get(event_type, DiscordColors.DEFAULT)
+        embed["color"] = EVENT_COLORS.get(event_type, DiscordColors.DEFAULT)  # type: ignore[call-overload]
     else:
         embed["color"] = DiscordColors.DEFAULT
 
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
     # Create message with embeds
-    message: DiscordMessage = {"embeds": [embed]}
+    message: DiscordMessage = {"embeds": [embed]}  # type: ignore[typeddict-item]
 
     # Add user mention for Notification and Stop events if configured
     if event_type in [EventTypes.NOTIFICATION.value, EventTypes.STOP.value] and config.get("mention_user_id"):
@@ -2293,6 +2405,11 @@ def main() -> None:
 
         # Get event type from environment
         event_type = os.environ.get(ENV_HOOK_EVENT, "Unknown")
+
+        # Check if this event should be processed based on filtering configuration
+        if not should_process_event(event_type, config):
+            logger.debug(f"Event {event_type} filtered out by configuration")
+            sys.exit(0)  # Exit gracefully without processing
 
         logger.info(f"Processing {event_type} event")
         logger.debug(f"Event data: {json.dumps(event_data, indent=2)}")

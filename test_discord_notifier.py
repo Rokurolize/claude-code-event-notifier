@@ -368,5 +368,174 @@ class TestMainFunction(unittest.TestCase):
             mock_exit.assert_called_once_with(0)
 
 
+class TestEventFiltering(unittest.TestCase):
+    """Test event filtering functionality."""
+
+    def test_parse_event_list_valid(self) -> None:
+        """Test parsing valid event lists."""
+        # Test basic parsing
+        result = discord_notifier.parse_event_list("Stop,Notification")
+        self.assertEqual(result, ["Stop", "Notification"])
+
+        # Test with spaces
+        result = discord_notifier.parse_event_list("  Stop  ,  Notification  ")
+        self.assertEqual(result, ["Stop", "Notification"])
+
+        # Test single event
+        result = discord_notifier.parse_event_list("Stop")
+        self.assertEqual(result, ["Stop"])
+
+        # Test empty string
+        result = discord_notifier.parse_event_list("")
+        self.assertEqual(result, [])
+
+        # Test all valid events
+        result = discord_notifier.parse_event_list("PreToolUse,PostToolUse,Notification,Stop,SubagentStop")
+        self.assertEqual(result, ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"])
+
+    def test_parse_event_list_invalid(self) -> None:
+        """Test parsing event lists with invalid events."""
+        # Invalid events should be filtered out
+        result = discord_notifier.parse_event_list("Stop,InvalidEvent,Notification")
+        self.assertEqual(result, ["Stop", "Notification"])
+
+        # All invalid events
+        result = discord_notifier.parse_event_list("Invalid1,Invalid2")
+        self.assertEqual(result, [])
+
+        # Mixed valid and invalid with spaces
+        result = discord_notifier.parse_event_list("  Stop  , Invalid ,  Notification  ")
+        self.assertEqual(result, ["Stop", "Notification"])
+
+    def test_should_process_event_enabled_events(self) -> None:
+        """Test event processing with enabled_events configuration."""
+        config = {
+            "enabled_events": ["Stop", "Notification"],
+            "disabled_events": None,
+        }
+
+        # Should process enabled events
+        self.assertTrue(discord_notifier.should_process_event("Stop", config))
+        self.assertTrue(discord_notifier.should_process_event("Notification", config))
+
+        # Should not process non-enabled events
+        self.assertFalse(discord_notifier.should_process_event("PreToolUse", config))
+        self.assertFalse(discord_notifier.should_process_event("PostToolUse", config))
+
+    def test_should_process_event_disabled_events(self) -> None:
+        """Test event processing with disabled_events configuration."""
+        config = {
+            "enabled_events": None,
+            "disabled_events": ["PreToolUse", "PostToolUse"],
+        }
+
+        # Should not process disabled events
+        self.assertFalse(discord_notifier.should_process_event("PreToolUse", config))
+        self.assertFalse(discord_notifier.should_process_event("PostToolUse", config))
+
+        # Should process non-disabled events
+        self.assertTrue(discord_notifier.should_process_event("Stop", config))
+        self.assertTrue(discord_notifier.should_process_event("Notification", config))
+
+    def test_should_process_event_precedence(self) -> None:
+        """Test that enabled_events takes precedence over disabled_events."""
+        config = {
+            "enabled_events": ["Stop", "PreToolUse"],
+            "disabled_events": ["PreToolUse", "PostToolUse"],  # This should be ignored
+        }
+
+        # enabled_events should take precedence
+        self.assertTrue(discord_notifier.should_process_event("Stop", config))
+        self.assertTrue(discord_notifier.should_process_event("PreToolUse", config))
+        self.assertFalse(discord_notifier.should_process_event("Notification", config))
+
+    def test_should_process_event_no_filtering(self) -> None:
+        """Test that all events are processed when no filtering is configured."""
+        config = {
+            "enabled_events": None,
+            "disabled_events": None,
+        }
+
+        # Should process all events when no filtering is configured
+        self.assertTrue(discord_notifier.should_process_event("PreToolUse", config))
+        self.assertTrue(discord_notifier.should_process_event("PostToolUse", config))
+        self.assertTrue(discord_notifier.should_process_event("Notification", config))
+        self.assertTrue(discord_notifier.should_process_event("Stop", config))
+        self.assertTrue(discord_notifier.should_process_event("SubagentStop", config))
+
+    def test_config_loading_with_event_filtering(self) -> None:
+        """Test that event filtering configuration is loaded correctly."""
+        file_content = """DISCORD_WEBHOOK_URL=test_webhook
+DISCORD_ENABLED_EVENTS=Stop,Notification
+DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
+"""
+
+        with patch("pathlib.Path.exists", return_value=True):
+            with patch("builtins.open", mock_open(read_data=file_content)):
+                config = discord_notifier.ConfigLoader.load()
+
+                self.assertEqual(config.get("enabled_events"), ["Stop", "Notification"])
+                self.assertEqual(config.get("disabled_events"), ["PreToolUse", "PostToolUse"])
+
+    def test_config_loading_env_override_event_filtering(self) -> None:
+        """Test that environment variables override file config for event filtering."""
+        file_content = """DISCORD_ENABLED_EVENTS=Stop
+DISCORD_DISABLED_EVENTS=PreToolUse
+"""
+
+        with patch.dict(
+            os.environ,
+            {
+                "DISCORD_ENABLED_EVENTS": "Notification,Stop",
+                "DISCORD_DISABLED_EVENTS": "PostToolUse,SubagentStop",
+            },
+        ):
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch("builtins.open", mock_open(read_data=file_content)):
+                    config = discord_notifier.ConfigLoader.load()
+
+                    # Environment variables should override file
+                    self.assertEqual(config.get("enabled_events"), ["Notification", "Stop"])
+                    self.assertEqual(config.get("disabled_events"), ["PostToolUse", "SubagentStop"])
+
+    @patch("os.environ.get")
+    @patch("sys.stdin.read")
+    @patch("discord_notifier.ConfigLoader.load")
+    def test_main_event_filtering_early_exit(
+        self, 
+        mock_load_config: MagicMock, 
+        mock_stdin: MagicMock,
+        mock_env_get: MagicMock
+    ) -> None:
+        """Test that main() exits early when event is filtered out."""
+        mock_load_config.return_value = {
+            "webhook_url": "test",
+            "debug": False,
+            "bot_token": None,
+            "channel_id": None,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
+            "mention_user_id": None,
+            "enabled_events": ["Stop", "Notification"],
+            "disabled_events": None,
+        }
+        
+        # Mock event type environment variable
+        def env_get_side_effect(key: str, default: str = "") -> str:
+            if key == "CLAUDE_HOOK_EVENT":
+                return "PreToolUse"  # This should be filtered out
+            return default
+        
+        mock_env_get.side_effect = env_get_side_effect
+        mock_stdin.return_value = '{"session_id": "test"}'
+
+        with patch("sys.exit", side_effect=SystemExit) as mock_exit:
+            with self.assertRaises(SystemExit):
+                discord_notifier.main()
+            # Should exit early due to filtering
+            mock_exit.assert_called_once_with(0)
+
+
 if __name__ == "__main__":
     unittest.main()
