@@ -102,13 +102,34 @@ class TestEventFormatting(unittest.TestCase):
     def test_format_event_with_unknown_type(self):
         """Test formatting unknown event types."""
         registry = discord_notifier.FormatterRegistry()
+        config = {"mention_user_id": None}
         result = discord_notifier.format_event(
-            "UnknownEvent", {"session_id": "test123"}, registry
+            "UnknownEvent", {"session_id": "test123"}, registry, config
         )
 
         embed = result["embeds"][0]
         self.assertIn("UnknownEvent", embed["title"])
         self.assertEqual(embed["color"], 0x808080)  # Default gray color
+
+    def test_format_notification_with_mention(self):
+        """Test formatting Notification event with user mention."""
+        registry = discord_notifier.FormatterRegistry()
+        config = {"mention_user_id": "123456789012345678"}
+        result = discord_notifier.format_event(
+            "Notification",
+            {"session_id": "test123", "message": "Test notification"},
+            registry,
+            config,
+        )
+
+        # Should have content field with mention
+        self.assertIn("content", result)
+        self.assertEqual(result["content"], "<@123456789012345678>")
+
+        # Should still have embed
+        embed = result["embeds"][0]
+        self.assertIn("Notification", embed["title"])
+        self.assertIn("Test notification", embed["description"])
 
 
 class TestDiscordSending(unittest.TestCase):
@@ -123,6 +144,7 @@ class TestDiscordSending(unittest.TestCase):
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "mention_user_id": None,
         }
         self.logger = Mock()
 
@@ -218,6 +240,7 @@ class TestMainFunction(unittest.TestCase):
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "mention_user_id": None,
         }
 
         # Mock stdin with valid event
@@ -255,6 +278,7 @@ class TestMainFunction(unittest.TestCase):
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "mention_user_id": None,
         }
         mock_stdin.return_value = "invalid json{{"
 
@@ -275,6 +299,7 @@ class TestMainFunction(unittest.TestCase):
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "mention_user_id": None,
         }
         # Mock stdin in case it somehow continues past the early exit
         mock_stdin.return_value = ""

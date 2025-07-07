@@ -92,6 +92,27 @@ DISCORD_TOKEN=your_bot_token_here
 DISCORD_CHANNEL_ID=your_channel_id_here
 ```
 
+### User Mention Configuration
+The notifier can mention a Discord user when Notification events are sent:
+
+```bash
+# Environment variable for user mentions
+DISCORD_MENTION_USER_ID=123456789012345678  # Your Discord user ID
+```
+
+**Mention Configuration in .env.discord:**
+```bash
+# User mention for notifications
+DISCORD_MENTION_USER_ID=123456789012345678  # Discord user ID to mention
+```
+
+**How to find your Discord User ID:**
+1. Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)
+2. Right-click on your username in any channel
+3. Select "Copy User ID"
+
+**Note:** Mentions only work for Notification events to avoid spam. The mention appears above the embed message.
+
 **Thread Behavior:**
 - **Text Channels**: Creates public threads using bot API (requires bot token + channel ID)
 - **Forum Channels**: Creates forum posts using webhook URL (bot token not required)
