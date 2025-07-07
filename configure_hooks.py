@@ -140,7 +140,7 @@ def main():
 
         # Add matcher for tool events
         if event in ["PreToolUse", "PostToolUse"]:
-            hook_config["matcher"] = []
+            hook_config["matcher"] = ".*"
 
         settings["hooks"][event].append(hook_config)
 
@@ -168,6 +168,9 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
 # DISCORD_USE_THREADS=1
 # DISCORD_CHANNEL_TYPE=text          # "text" or "forum"
 # DISCORD_THREAD_PREFIX=Session      # Custom thread name prefix
+
+# Optional: User mention for notifications
+# DISCORD_MENTION_USER_ID=123456789012345678  # Your Discord user ID
 """)
         print(f"✓ Created example config at {env_example}")
 

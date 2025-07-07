@@ -73,6 +73,7 @@ class Config(TypedDict):
     use_threads: bool
     channel_type: Literal["text", "forum"]
     thread_prefix: str
+    mention_user_id: Optional[str]
 
 
 class DiscordFooter(TypedDict):
@@ -91,10 +92,11 @@ class DiscordEmbed(TypedDict, total=False):
     footer: DiscordFooter
 
 
-class DiscordMessage(TypedDict):
+class DiscordMessage(TypedDict, total=False):
     """Discord message structure."""
 
     embeds: List[DiscordEmbed]
+    content: str  # Optional content for mentions
 
 
 class DiscordThreadMessage(TypedDict, total=False):
@@ -342,6 +344,7 @@ ENV_DEBUG: Final[str] = "DISCORD_DEBUG"
 ENV_USE_THREADS: Final[str] = "DISCORD_USE_THREADS"
 ENV_CHANNEL_TYPE: Final[str] = "DISCORD_CHANNEL_TYPE"
 ENV_THREAD_PREFIX: Final[str] = "DISCORD_THREAD_PREFIX"
+ENV_MENTION_USER_ID: Final[str] = "DISCORD_MENTION_USER_ID"
 ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"
 
 # Other constants
@@ -683,6 +686,7 @@ class ConfigLoader:
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "mention_user_id": None,
         }
 
         # 2. Load from .env.discord file if it exists
@@ -707,6 +711,8 @@ class ConfigLoader:
                         config["channel_type"] = channel_type
                 if ENV_THREAD_PREFIX in env_vars:
                     config["thread_prefix"] = env_vars[ENV_THREAD_PREFIX]
+                if ENV_MENTION_USER_ID in env_vars:
+                    config["mention_user_id"] = env_vars[ENV_MENTION_USER_ID]
 
             except ConfigurationError as e:
                 print(str(e), file=sys.stderr)
@@ -729,6 +735,8 @@ class ConfigLoader:
                 config["channel_type"] = channel_type
         if os.environ.get(ENV_THREAD_PREFIX):
             config["thread_prefix"] = os.environ.get(ENV_THREAD_PREFIX)
+        if os.environ.get(ENV_MENTION_USER_ID):
+            config["mention_user_id"] = os.environ.get(ENV_MENTION_USER_ID)
 
         return config
 
@@ -1236,7 +1244,10 @@ class FormatterRegistry:
 
 
 def format_event(
-    event_type: str, event_data: Dict[str, Any], registry: FormatterRegistry
+    event_type: str,
+    event_data: Dict[str, Any],
+    registry: FormatterRegistry,
+    config: Config,
 ) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits."""
     timestamp = datetime.now().isoformat()
@@ -1269,7 +1280,14 @@ def format_event(
 
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
-    return {"embeds": [embed]}
+    # Create message with embeds
+    message: DiscordMessage = {"embeds": [embed]}
+
+    # Add user mention for Notification events if configured
+    if event_type == EventTypes.NOTIFICATION.value and config.get("mention_user_id"):
+        message["content"] = f"<@{config['mention_user_id']}>"
+
+    return message
 
 
 def send_to_discord(
@@ -1373,7 +1391,7 @@ def main() -> None:
         logger.debug(f"Event data: {json.dumps(event_data, indent=2)}")
 
         # Format and send message
-        message = format_event(event_type, event_data, formatter_registry)
+        message = format_event(event_type, event_data, formatter_registry, config)
         session_id = event_data.get("session_id", "")
         success = send_to_discord(message, config, logger, http_client, session_id)
 
