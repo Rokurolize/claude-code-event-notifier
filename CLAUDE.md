@@ -28,10 +28,16 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 ## Architecture
 
 ### Core Implementation
-- **src/discord_notifier.py** - Single-file implementation (~240 lines)
+- **src/discord_notifier.py** - Single-file implementation (~560 lines)
   - `load_config()`: Loads Discord credentials with env vars overriding file config
   - `send_discord_message()`: Sends formatted embeds via webhook or bot API
   - `main()`: Reads event from stdin, formats and sends to Discord
+  - Enhanced formatting functions with detailed JSON information:
+    - `format_pre_tool_use()`: Shows command details, file paths, patterns, etc.
+    - `format_post_tool_use()`: Includes execution results, output, errors
+    - `format_notification()`: Displays all event data fields
+    - `format_stop()`: Shows session details and transcript path
+    - `format_subagent_stop()`: Includes task results and execution stats
 
 ### Hook Integration
 The notifier integrates with Claude Code's hook system by modifying `~/.claude/settings.json`:
@@ -62,11 +68,27 @@ The notifier integrates with Claude Code's hook system by modifying `~/.claude/s
 3. Built-in defaults
 
 ### Supported Events
-- **PreToolUse** (blue): Before tool execution, includes tool name and input
-- **PostToolUse** (green): After tool execution, includes execution time
-- **Notification** (orange): System notifications with messages
-- **Stop** (gray): Session end events
-- **SubagentStop** (purple): Subagent completion with results
+- **PreToolUse** (blue): Before tool execution with detailed information
+  - Shows tool name, session ID, timestamp
+  - Tool-specific details (commands, file paths, patterns, URLs, etc.)
+  - Full command text for Bash (up to 500 chars)
+  - File operation details for Edit/Write/Read
+- **PostToolUse** (green): After tool execution with results
+  - Includes execution output (stdout/stderr for Bash)
+  - File operation success/error status
+  - Result summaries for search/list operations
+  - Execution timestamp
+- **Notification** (orange): System notifications with full event data
+  - Message content and session details
+  - Any additional event fields displayed
+- **Stop** (gray): Session end events with details
+  - Session ID and end timestamp
+  - Transcript path if available
+  - Session statistics (duration, tools used, etc.)
+- **SubagentStop** (purple): Subagent completion with task results
+  - Task description and completion time
+  - Result summary (up to 400 chars)
+  - Execution statistics
 
 ## Key Implementation Details
 
@@ -76,3 +98,5 @@ The notifier integrates with Claude Code's hook system by modifying `~/.claude/s
 - Tool-specific emojis in `TOOL_EMOJIS` dict for visual distinction
 - Webhook auth: Direct POST to webhook URL
 - Bot auth: Requires bot token + channel ID with proper headers
+- User-Agent header required: "ClaudeCodeDiscordNotifier/1.0" (prevents Discord 403 errors)
+- Discord embed length limits enforced (4096 chars for description, 256 for title)
