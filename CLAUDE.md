@@ -67,6 +67,38 @@ The notifier integrates with Claude Code's hook system by modifying `~/.claude/s
 2. ~/.claude/hooks/.env.discord file
 3. Built-in defaults
 
+### Thread Support Configuration
+The notifier supports creating separate Discord threads for each Claude Code session to improve organization:
+
+```bash
+# Environment variables for thread support
+DISCORD_USE_THREADS=1              # Enable thread support (default: 0)
+DISCORD_CHANNEL_TYPE=text          # Channel type: "text" or "forum" (default: "text")
+DISCORD_THREAD_PREFIX=Session      # Thread name prefix (default: "Session")
+```
+
+**Thread Configuration in .env.discord:**
+```bash
+# Basic Discord setup
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
+
+# Thread support options
+DISCORD_USE_THREADS=1
+DISCORD_CHANNEL_TYPE=forum         # forum for forum channels, text for text channels
+DISCORD_THREAD_PREFIX=Claude       # Custom prefix for thread names
+
+# For bot API (required for text channel threads)
+DISCORD_TOKEN=your_bot_token_here
+DISCORD_CHANNEL_ID=your_channel_id_here
+```
+
+**Thread Behavior:**
+- **Text Channels**: Creates public threads using bot API (requires bot token + channel ID)
+- **Forum Channels**: Creates forum posts using webhook URL (bot token not required)
+- **Thread Names**: Format is `{THREAD_PREFIX} {session_id[:8]}` (e.g., "Session 1a2b3c4d")
+- **Session Mapping**: Each unique session_id gets its own thread, cached for the session duration
+- **Fallback**: If thread creation fails, messages fall back to the main channel
+
 ### Supported Events
 - **PreToolUse** (blue): Before tool execution with detailed information
   - Shows tool name, session ID, timestamp
