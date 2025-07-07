@@ -122,9 +122,9 @@ class TestEventFormatting(unittest.TestCase):
             config,
         )
 
-        # Should have content field with mention
+        # Should have content field with mention and message
         self.assertIn("content", result)
-        self.assertEqual(result["content"], "<@123456789012345678>")
+        self.assertEqual(result["content"], "<@123456789012345678> Test notification")
 
         # Should still have embed
         embed = result["embeds"][0]
