@@ -1285,7 +1285,10 @@ def format_event(
 
     # Add user mention for Notification events if configured
     if event_type == EventTypes.NOTIFICATION.value and config.get("mention_user_id"):
-        message["content"] = f"<@{config['mention_user_id']}>"
+        # Extract notification message from event data
+        notification_message = event_data.get("message", "System notification")
+        # Include both mention and message for better Windows notification visibility
+        message["content"] = f"<@{config['mention_user_id']}> {notification_message}"
 
     return message
 
