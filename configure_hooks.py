@@ -15,7 +15,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, TypedDict, cast, Literal
+from typing import Any, TypedDict, cast, Literal, TypeGuard
 
 
 # Type definitions for Claude settings structure
@@ -35,23 +35,8 @@ class HookConfig(TypedDict, total=False):
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 
 
-class EnvironmentConfig(TypedDict, total=False):
-    """Environment variables configuration."""
-    ANTHROPIC_BASE_URL: str
-    CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: str
-    ENABLE_BACKGROUND_TASKS: str
-
-
-class PermissionsConfig(TypedDict, total=False):
-    """Permissions configuration."""
-    defaultMode: Literal["bypassPermissions", "askPermissions"]
-
-
-class ClaudeSettings(TypedDict, total=False):
-    """Claude Code settings structure."""
-    hooks: dict[EventType, list[HookConfig]]
-    env: EnvironmentConfig
-    permissions: PermissionsConfig
+# ClaudeSettings and related types are now imported from src.settings_types
+from src.settings_types import ClaudeSettings
 
 
 def atomic_write(filepath: str | Path, content: str) -> None:
@@ -67,48 +52,59 @@ def atomic_write(filepath: str | Path, content: str) -> None:
 
         # Atomic rename
         os.rename(temp_path, filepath)
-    except:
+    except Exception as e:
         # Clean up temp file on error
         try:
             os.unlink(temp_path)
         except OSError:
             pass
-        raise
+        raise e
 
 
-def should_keep_hook(hook: Any) -> bool:
+def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
+    """Type guard to check if a value is a valid HookConfig."""
+    if not isinstance(value, dict):
+        return False
+    
+    hooks_list = value.get("hooks")
+    if not isinstance(hooks_list, list) or not hooks_list:
+        return False
+    
+    # Check if all entries in hooks list are valid HookEntry
+    for hook in hooks_list:
+        if not isinstance(hook, dict):
+            return False
+        if not isinstance(hook.get("type"), str):
+            return False
+        if not isinstance(hook.get("command"), str):
+            return False
+    
+    # Check optional matcher field for tool events
+    if "matcher" in value and not isinstance(value["matcher"], str):
+        return False
+    
+    return True
+
+
+def should_keep_hook(hook: HookConfig) -> bool:
     """Check if a hook should be kept (i.e., it's not a discord notifier hook).
     
     This function safely navigates the hook structure to check if it contains
     a discord_notifier.py command, using type guards at each level.
     """
-    # First level: ensure hook is a dict
-    if not isinstance(hook, dict):
+    if not is_hook_config(hook):
         return True
     
-    # Second level: get hooks list
-    hooks_list: Any = hook.get("hooks")
-    if not isinstance(hooks_list, list) or not hooks_list:
-        return True
-    
-    # Third level: get first hook entry
-    first_hook: Any = hooks_list[0]
-    if not isinstance(first_hook, dict):
-        return True
-    
-    # Fourth level: get command
-    command: Any = first_hook.get("command")
-    if not isinstance(command, str):
-        return True
+    # Now we know hook is a valid HookConfig, so we can safely access fields
+    first_hook = hook["hooks"][0]
+    command = first_hook["command"]
     
     # Check if it's a discord notifier command
     return "discord_notifier.py" not in command
 
 
-def filter_hooks(event_hooks: Any) -> list[HookConfig]:
+def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
     """Filter out discord notifier hooks from a list of hooks."""
-    if not isinstance(event_hooks, list):
-        return []
     return [hook for hook in event_hooks if should_keep_hook(hook)]
 
 
@@ -196,7 +192,7 @@ def main() -> int:
             settings["hooks"][event] = []
 
         # Remove any existing discord notifier hooks
-        hooks_list = settings["hooks"][event]
+        hooks_list: list[HookConfig] = settings["hooks"][event]
         settings["hooks"][event] = filter_hooks(hooks_list)
 
         # Add new hook
