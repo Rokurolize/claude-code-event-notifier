@@ -8,7 +8,6 @@ Tests the internal logic without making actual network calls.
 import json
 import os
 import sys
-import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
@@ -90,14 +89,15 @@ class TestEventFormatting(unittest.TestCase):
 
     def test_format_pre_tool_use_long_command(self):
         """Test truncation of long commands."""
-        long_command = "x" * 200
+        # PreToolUse now uses COMMAND_FULL (500 chars), so test with a longer command
+        long_command = "x" * 600
         event_data = {"tool_name": "Bash", "tool_input": {"command": long_command}}
 
         result = discord_notifier.format_pre_tool_use(event_data, "12345678")
 
         self.assertIn("...", result["description"])
-        # Should be truncated to 100 chars + ...
-        self.assertLess(len(result["description"]), 120)
+        # Should contain the truncated command (500 chars) + ...
+        self.assertIn("x" * 497 + "...", result["description"])
 
     def test_format_event_with_unknown_type(self):
         """Test formatting unknown event types."""
@@ -140,7 +140,13 @@ class TestDiscordSending(unittest.TestCase):
         # Verify the request
         request = mock_urlopen.call_args[0][0]
         self.assertEqual(request.full_url, self.config["webhook_url"])
-        self.assertEqual(request.headers["Content-type"], "application/json")
+        # Check Content-Type header (case-insensitive)
+        content_type = None
+        for header_name, header_value in request.headers.items():
+            if header_name.lower() == "content-type":
+                content_type = header_value
+                break
+        self.assertEqual(content_type, "application/json")
 
     @patch("urllib.request.urlopen")
     def test_send_webhook_failure_fallback_to_bot(self, mock_urlopen):

@@ -14,7 +14,11 @@ from pathlib import Path
 
 def test_notifier():
     """Test the Discord notifier with sample events."""
-    script_path = Path(__file__).parent / "src" / "discord_notifier.py"
+    # Allow testing v2 with USE_V2 env var
+    if os.environ.get("USE_V2", ""):
+        script_path = Path(__file__).parent / "src" / "discord_notifier_v2.py"
+    else:
+        script_path = Path(__file__).parent / "src" / "discord_notifier.py"
 
     if not script_path.exists():
         print(f"Error: Notifier script not found at {script_path}")
@@ -36,6 +40,12 @@ def test_notifier():
                 "session_id": "test-session-123",
                 "tool_name": "Bash",
                 "execution_time": 0.25,
+                "tool_input": {"command": "echo 'Hello World'"},
+                "tool_response": {
+                    "stdout": "Hello World\n",
+                    "stderr": "",
+                    "exit_code": 0,
+                },
             },
         },
         {

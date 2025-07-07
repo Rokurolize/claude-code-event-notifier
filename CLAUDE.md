@@ -28,7 +28,7 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 ## Architecture
 
 ### Core Implementation
-- **src/discord_notifier.py** - Single-file implementation (~560 lines)
+- **src/discord_notifier.py** - Single-file implementation (~780 lines)
   - `load_config()`: Loads Discord credentials with env vars overriding file config
   - `send_discord_message()`: Sends formatted embeds via webhook or bot API
   - `main()`: Reads event from stdin, formats and sends to Discord
@@ -100,3 +100,17 @@ The notifier integrates with Claude Code's hook system by modifying `~/.claude/s
 - Bot auth: Requires bot token + channel ID with proper headers
 - User-Agent header required: "ClaudeCodeDiscordNotifier/1.0" (prevents Discord 403 errors)
 - Discord embed length limits enforced (4096 chars for description, 256 for title)
+
+### Type Safety
+- Comprehensive type annotations using TypedDict, Literal, Union types
+- Config, DiscordEmbed, DiscordMessage types for structured data
+- Tool-specific input types (BashToolInput, FileToolInput, etc.)
+- EventType and ToolName literal types for compile-time safety
+- ToolNames enum for consistent tool name references
+
+### Code Organization
+- Utility functions: `truncate_string()`, `format_file_path()`, `parse_env_file()`
+- TruncationLimits class centralizes all character limits
+- Tool-specific formatters for pre/post-use events
+- Event formatter dispatch table for clean routing
+- Specific exception handling instead of bare except clauses

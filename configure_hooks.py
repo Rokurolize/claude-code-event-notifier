@@ -34,7 +34,7 @@ def atomic_write(filepath, content):
         # Clean up temp file on error
         try:
             os.unlink(temp_path)
-        except:
+        except OSError:
             pass
         raise
 
@@ -140,7 +140,7 @@ def main():
 
         # Add matcher for tool events
         if event in ["PreToolUse", "PostToolUse"]:
-            hook_config["matcher"] = ""
+            hook_config["matcher"] = []
 
         settings["hooks"][event].append(hook_config)
 
