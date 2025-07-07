@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Unit tests for discord_notifier.py with proper mocking.
+"""Unit tests for discord_notifier.py with proper mocking.
 
 Tests the internal logic without making actual network calls.
 """
@@ -11,7 +10,7 @@ import sys
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open, MagicMock
+from unittest.mock import MagicMock, Mock, mock_open, patch
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -220,7 +219,9 @@ class TestDiscordSending(unittest.TestCase):
         self.assertEqual(content_type, "application/json")
 
     @patch("urllib.request.urlopen")
-    def test_send_webhook_failure_fallback_to_bot(self, mock_urlopen: MagicMock) -> None:
+    def test_send_webhook_failure_fallback_to_bot(
+        self, mock_urlopen: MagicMock
+    ) -> None:
         """Test fallback to bot API when webhook fails."""
         # First call (webhook) fails
         mock_urlopen.side_effect = [
@@ -274,10 +275,7 @@ class TestMainFunction(unittest.TestCase):
     @patch("discord_notifier.send_to_discord")
     @patch("discord_notifier.ConfigLoader.load")
     def test_main_success(
-        self, 
-        mock_load_config: MagicMock, 
-        mock_send: MagicMock, 
-        mock_stdin: MagicMock
+        self, mock_load_config: MagicMock, mock_send: MagicMock, mock_stdin: MagicMock
     ) -> None:
         """Test successful event processing."""
         # Mock configuration
@@ -318,9 +316,7 @@ class TestMainFunction(unittest.TestCase):
     @patch("sys.stdin.read")
     @patch("discord_notifier.ConfigLoader.load")
     def test_main_invalid_json(
-        self, 
-        mock_load_config: MagicMock, 
-        mock_stdin: MagicMock
+        self, mock_load_config: MagicMock, mock_stdin: MagicMock
     ) -> None:
         """Test handling of invalid JSON input."""
         mock_load_config.return_value = {
@@ -343,9 +339,7 @@ class TestMainFunction(unittest.TestCase):
     @patch("sys.stdin.read")
     @patch("discord_notifier.ConfigLoader.load")
     def test_main_no_credentials(
-        self, 
-        mock_load_config: MagicMock, 
-        mock_stdin: MagicMock
+        self, mock_load_config: MagicMock, mock_stdin: MagicMock
     ) -> None:
         """Test when no Discord credentials are configured."""
         mock_load_config.return_value = {
@@ -390,8 +384,13 @@ class TestEventFiltering(unittest.TestCase):
         self.assertEqual(result, [])
 
         # Test all valid events
-        result = discord_notifier.parse_event_list("PreToolUse,PostToolUse,Notification,Stop,SubagentStop")
-        self.assertEqual(result, ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"])
+        result = discord_notifier.parse_event_list(
+            "PreToolUse,PostToolUse,Notification,Stop,SubagentStop"
+        )
+        self.assertEqual(
+            result,
+            ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"],
+        )
 
     def test_parse_event_list_invalid(self) -> None:
         """Test parsing event lists with invalid events."""
@@ -404,7 +403,9 @@ class TestEventFiltering(unittest.TestCase):
         self.assertEqual(result, [])
 
         # Mixed valid and invalid with spaces
-        result = discord_notifier.parse_event_list("  Stop  , Invalid ,  Notification  ")
+        result = discord_notifier.parse_event_list(
+            "  Stop  , Invalid ,  Notification  "
+        )
         self.assertEqual(result, ["Stop", "Notification"])
 
     def test_should_process_event_enabled_events(self) -> None:
@@ -475,7 +476,9 @@ DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
                 config = discord_notifier.ConfigLoader.load()
 
                 self.assertEqual(config.get("enabled_events"), ["Stop", "Notification"])
-                self.assertEqual(config.get("disabled_events"), ["PreToolUse", "PostToolUse"])
+                self.assertEqual(
+                    config.get("disabled_events"), ["PreToolUse", "PostToolUse"]
+                )
 
     def test_config_loading_env_override_event_filtering(self) -> None:
         """Test that environment variables override file config for event filtering."""
@@ -495,17 +498,21 @@ DISCORD_DISABLED_EVENTS=PreToolUse
                     config = discord_notifier.ConfigLoader.load()
 
                     # Environment variables should override file
-                    self.assertEqual(config.get("enabled_events"), ["Notification", "Stop"])
-                    self.assertEqual(config.get("disabled_events"), ["PostToolUse", "SubagentStop"])
+                    self.assertEqual(
+                        config.get("enabled_events"), ["Notification", "Stop"]
+                    )
+                    self.assertEqual(
+                        config.get("disabled_events"), ["PostToolUse", "SubagentStop"]
+                    )
 
     @patch("os.environ.get")
     @patch("sys.stdin.read")
     @patch("discord_notifier.ConfigLoader.load")
     def test_main_event_filtering_early_exit(
-        self, 
-        mock_load_config: MagicMock, 
+        self,
+        mock_load_config: MagicMock,
         mock_stdin: MagicMock,
-        mock_env_get: MagicMock
+        mock_env_get: MagicMock,
     ) -> None:
         """Test that main() exits early when event is filtered out."""
         mock_load_config.return_value = {
@@ -520,13 +527,13 @@ DISCORD_DISABLED_EVENTS=PreToolUse
             "enabled_events": ["Stop", "Notification"],
             "disabled_events": None,
         }
-        
+
         # Mock event type environment variable
         def env_get_side_effect(key: str, default: str = "") -> str:
             if key == "CLAUDE_HOOK_EVENT":
                 return "PreToolUse"  # This should be filtered out
             return default
-        
+
         mock_env_get.side_effect = env_get_side_effect
         mock_stdin.return_value = '{"session_id": "test"}'
 

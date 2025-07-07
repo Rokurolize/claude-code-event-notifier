@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Configure Claude Code hooks for Discord notifications.
+"""Configure Claude Code hooks for Discord notifications.
 
 This script sets up the integration between Claude Code's hook system
 and Discord notifications by modifying Claude Code's settings.json.
@@ -15,28 +14,15 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, TypedDict, cast, Literal, TypeGuard
+from typing import Any, TypeGuard, cast
 
-
-# Type definitions for Claude settings structure
-class HookEntry(TypedDict):
-    """Individual hook command entry."""
-    type: Literal["command"]  # Currently only "command" type is supported
-    command: str
-
-
-class HookConfig(TypedDict, total=False):
-    """Hook configuration with hooks list and optional matcher."""
-    hooks: list[HookEntry]
-    matcher: str  # Optional, only for PreToolUse/PostToolUse
-
-
-# Define supported event types
-EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
-
-
-# ClaudeSettings and related types are now imported from src.settings_types
-from src.settings_types import ClaudeSettings
+# Import all types from settings_types module
+from src.settings_types import (
+    ClaudeSettings,
+    HookConfig,
+    HookEventType,
+    create_hook_config,
+)
 
 
 def atomic_write(filepath: str | Path, content: str) -> None:
@@ -65,11 +51,11 @@ def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
     """Type guard to check if a value is a valid HookConfig."""
     if not isinstance(value, dict):
         return False
-    
+
     hooks_list = value.get("hooks")
     if not isinstance(hooks_list, list) or not hooks_list:
         return False
-    
+
     # Check if all entries in hooks list are valid HookEntry
     for hook in hooks_list:
         if not isinstance(hook, dict):
@@ -78,27 +64,27 @@ def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
             return False
         if not isinstance(hook.get("command"), str):
             return False
-    
+
     # Check optional matcher field for tool events
     if "matcher" in value and not isinstance(value["matcher"], str):
         return False
-    
+
     return True
 
 
 def should_keep_hook(hook: HookConfig) -> bool:
     """Check if a hook should be kept (i.e., it's not a discord notifier hook).
-    
+
     This function safely navigates the hook structure to check if it contains
     a discord_notifier.py command, using type guards at each level.
     """
     if not is_hook_config(hook):
         return True
-    
+
     # Now we know hook is a valid HookConfig, so we can safely access fields
     first_hook = hook["hooks"][0]
     command = first_hook["command"]
-    
+
     # Check if it's a discord notifier command
     return "discord_notifier.py" not in command
 
@@ -138,9 +124,9 @@ def main() -> int:
         if settings_file.exists():
             with open(settings_file) as f:
                 settings_data = json.load(f)
-            
+
             # Type cast to ensure proper typing
-            settings = cast(ClaudeSettings, settings_data)
+            settings = cast("ClaudeSettings", settings_data)
 
             # Remove discord notifier hooks
             if "hooks" in settings:
@@ -179,13 +165,19 @@ def main() -> int:
         settings_data = {}
 
     # Type cast to ensure proper typing
-    settings = cast(ClaudeSettings, settings_data)
+    settings = cast("ClaudeSettings", settings_data)
 
     if "hooks" not in settings:
         settings["hooks"] = {}
 
     # Define hooks for each event type
-    events: list[EventType] = ["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
+    events: list[HookEventType] = [
+        "PreToolUse",
+        "PostToolUse",
+        "Notification",
+        "Stop",
+        "SubagentStop",
+    ]
 
     for event in events:
         if event not in settings["hooks"]:
@@ -195,28 +187,12 @@ def main() -> int:
         hooks_list: list[HookConfig] = settings["hooks"][event]
         settings["hooks"][event] = filter_hooks(hooks_list)
 
-        # Add new hook
-        hook_entry: HookEntry = {
-            "type": "command",
-            "command": f"CLAUDE_HOOK_EVENT={event} python3 {target_script}",
-        }
-        
-        # Create hook configuration with proper structure
-        hook_config: HookConfig
-        if event in ["PreToolUse", "PostToolUse"]:
-            # For tool events, include matcher at the correct level
-            hook_config = {
-                "hooks": [hook_entry],
-                "matcher": ".*"
-            }
-        else:
-            # For other events, just wrap in hooks array
-            hook_config = {
-                "hooks": [hook_entry]
-            }
+        # Add new hook using imported helper functions
+        command = f"CLAUDE_HOOK_EVENT={event} python3 {target_script}"
+        hook_config = create_hook_config(event, command, ".*")
 
         # Append the new config - now properly typed
-        settings["hooks"][event].append(hook_config)
+        settings["hooks"][event].append(hook_config)  # type: ignore[arg-type]
 
     # Save settings
     claude_dir.mkdir(exist_ok=True)
