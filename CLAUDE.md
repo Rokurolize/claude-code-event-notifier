@@ -1,49 +1,78 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this simple Discord notifier.
+This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
 
 ## Overview
 
-This is a single-file Discord notifier for Claude Code hooks. It sends event notifications to Discord when Claude Code performs actions like using tools or ending sessions.
+A single-file Discord notifier for Claude Code hooks that sends event notifications when Claude Code performs actions. Zero dependencies, uses only Python standard library.
 
-## Setup
-
-```bash
-# Configure Claude Code hooks
-python configure_hooks.py
-
-# Set up Discord credentials
-cp ~/.claude/hooks/.env.discord.example ~/.claude/hooks/.env.discord
-# Edit ~/.claude/hooks/.env.discord with your Discord webhook URL or bot token
-```
-
-## Testing
+## Commands
 
 ```bash
-# Run the test script to verify Discord integration
-python test.py
+# Install/configure the notifier in Claude Code
+python3 configure_hooks.py
 
-# View debug logs (when DISCORD_DEBUG=1)
+# Remove the notifier from Claude Code
+python3 configure_hooks.py --remove
+
+# Run integration tests (sends test messages to Discord)
+python3 test.py
+
+# Run unit tests (no network calls)
+python3 -m unittest test_discord_notifier.py
+
+# View debug logs (requires DISCORD_DEBUG=1)
 tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 ```
 
-## Project Structure
+## Architecture
 
-- `src/discord_notifier.py` - The single-file Discord notifier script
-- `configure_hooks.py` - Installs the notifier into Claude Code's hooks system
-- `test.py` - Test script to verify the Discord integration works
-- `README.md` - User documentation
+### Core Implementation
+- **src/discord_notifier.py** - Single-file implementation (~240 lines)
+  - `load_config()`: Loads Discord credentials with env vars overriding file config
+  - `send_discord_message()`: Sends formatted embeds via webhook or bot API
+  - `main()`: Reads event from stdin, formats and sends to Discord
 
-## How It Works
+### Hook Integration
+The notifier integrates with Claude Code's hook system by modifying `~/.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "CLAUDE_HOOK_EVENT=PreToolUse python3 ~/.claude/hooks/discord_notifier.py"
+      }],
+      "matcher": ""
+    }]
+  }
+}
+```
 
-1. Claude Code triggers a hook event (PreToolUse, PostToolUse, Notification, Stop, SubagentStop)
-2. The event data is passed via stdin to `discord_notifier.py`
-3. The script formats the event into a Discord embed message and sends it
-4. Errors are logged when debug mode is enabled (DISCORD_DEBUG=1)
+### Event Flow
+1. Claude Code triggers hook event → passes JSON data via stdin
+2. discord_notifier.py reads event type from `CLAUDE_HOOK_EVENT` env var
+3. Formats event data into Discord embed with color coding and emojis
+4. Sends via webhook URL (simple) or bot API (requires channel ID)
+5. Exits quickly (non-blocking) with graceful error handling
 
-## Key Features
+### Configuration Precedence
+1. Environment variables (highest priority)
+2. ~/.claude/hooks/.env.discord file
+3. Built-in defaults
 
-- **No dependencies** - Uses only Python standard library
-- **Simple setup** - Just copy one file and update settings.json
-- **Flexible auth** - Supports Discord webhooks (recommended) or bot tokens
-- **Graceful failures** - Won't interrupt Claude Code if Discord is unavailable
+### Supported Events
+- **PreToolUse** (blue): Before tool execution, includes tool name and input
+- **PostToolUse** (green): After tool execution, includes execution time
+- **Notification** (orange): System notifications with messages
+- **Stop** (gray): Session end events
+- **SubagentStop** (purple): Subagent completion with results
+
+## Key Implementation Details
+
+- Uses `urllib.request` for HTTP calls (no requests library needed)
+- Atomic file writes in `configure_hooks.py` using tempfile + rename
+- Debug logging to timestamped files when `DISCORD_DEBUG=1`
+- Tool-specific emojis in `TOOL_EMOJIS` dict for visual distinction
+- Webhook auth: Direct POST to webhook URL
+- Bot auth: Requires bot token + channel ID with proper headers

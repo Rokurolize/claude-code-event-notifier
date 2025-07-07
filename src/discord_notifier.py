@@ -229,7 +229,10 @@ def send_to_discord(
             req = urllib.request.Request(
                 config["webhook_url"],
                 data=data,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "ClaudeCodeDiscordNotifier/1.0",
+                },
             )
 
             with urllib.request.urlopen(req, timeout=10) as response:
@@ -252,6 +255,7 @@ def send_to_discord(
                 headers={
                     "Authorization": f"Bot {config['bot_token']}",
                     "Content-Type": "application/json",
+                    "User-Agent": "ClaudeCodeDiscordNotifier/1.0",
                 },
             )
 
