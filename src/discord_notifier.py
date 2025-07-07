@@ -42,17 +42,18 @@ TOOL_EMOJIS = {
 
 
 def load_config() -> Dict[str, str]:
-    """Load Discord configuration from environment or .env.discord file."""
+    """Load Discord configuration with clear precedence: env vars override file config."""
+    # 1. Start with defaults
     config = {
-        "webhook_url": os.environ.get("DISCORD_WEBHOOK_URL"),
-        "bot_token": os.environ.get("DISCORD_TOKEN"),
-        "channel_id": os.environ.get("DISCORD_CHANNEL_ID"),
-        "debug": os.environ.get("DISCORD_DEBUG", "0") == "1",
+        "webhook_url": None,
+        "bot_token": None,
+        "channel_id": None,
+        "debug": False,
     }
 
-    # Load from .env.discord if needed
+    # 2. Load from .env.discord file if it exists
     env_file = Path.home() / ".claude" / "hooks" / ".env.discord"
-    if env_file.exists() and not all([config["webhook_url"], config["bot_token"]]):
+    if env_file.exists():
         try:
             with open(env_file) as f:
                 for line in f:
@@ -61,17 +62,27 @@ def load_config() -> Dict[str, str]:
                         key, value = line.split("=", 1)
                         value = value.strip('"').strip("'")
 
-                        if key == "DISCORD_WEBHOOK_URL" and not config["webhook_url"]:
+                        if key == "DISCORD_WEBHOOK_URL":
                             config["webhook_url"] = value
-                        elif key == "DISCORD_TOKEN" and not config["bot_token"]:
+                        elif key == "DISCORD_TOKEN":
                             config["bot_token"] = value
-                        elif key == "DISCORD_CHANNEL_ID" and not config["channel_id"]:
+                        elif key == "DISCORD_CHANNEL_ID":
                             config["channel_id"] = value
                         elif key == "DISCORD_DEBUG":
                             config["debug"] = value == "1"
-        except Exception as e:
+        except (IOError, ValueError) as e:
             print(f"Error reading {env_file}: {e}", file=sys.stderr)
             sys.exit(1)
+
+    # 3. Environment variables override file config
+    if os.environ.get("DISCORD_WEBHOOK_URL"):
+        config["webhook_url"] = os.environ.get("DISCORD_WEBHOOK_URL")
+    if os.environ.get("DISCORD_TOKEN"):
+        config["bot_token"] = os.environ.get("DISCORD_TOKEN")
+    if os.environ.get("DISCORD_CHANNEL_ID"):
+        config["channel_id"] = os.environ.get("DISCORD_CHANNEL_ID")
+    if os.environ.get("DISCORD_DEBUG"):
+        config["debug"] = os.environ.get("DISCORD_DEBUG") == "1"
 
     return config
 
@@ -106,64 +117,103 @@ def setup_logging(debug: bool) -> logging.Logger:
     return logger
 
 
+def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Format PreToolUse event."""
+    tool_name = event_data.get("tool_name", "Unknown")
+    tool_input = event_data.get("tool_input", {})
+    emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+
+    embed = {"title": f"About to execute: {emoji} {tool_name}"}
+
+    # Add tool-specific details
+    if tool_name == "Bash":
+        command = tool_input.get("command", "")[:100]
+        if len(tool_input.get("command", "")) > 100:
+            command += "..."
+        embed["description"] = f"**Command:** `{command}`"
+    elif tool_name in ["Write", "Edit", "MultiEdit", "Read"]:
+        file_path = tool_input.get("file_path", "")
+        if file_path:
+            # Show relative path if possible
+            try:
+                file_path = Path(file_path).relative_to(Path.cwd())
+            except:
+                file_path = Path(file_path).name
+            embed["description"] = f"**File:** `{file_path}`"
+    elif tool_name in ["Glob", "Grep"]:
+        pattern = tool_input.get("pattern", "")
+        embed["description"] = f"**Pattern:** `{pattern}`"
+
+    return embed
+
+
+def format_post_tool_use(event_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Format PostToolUse event."""
+    tool_name = event_data.get("tool_name", "Unknown")
+    emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+    return {
+        "title": f"Completed: {emoji} {tool_name}",
+        "description": "Tool execution finished",
+    }
+
+
+def format_notification(event_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Format Notification event."""
+    return {
+        "title": "📢 Notification",
+        "description": event_data.get("message", "System notification"),
+    }
+
+
+def format_stop(event_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Format Stop event."""
+    return {
+        "title": "🏁 Session Ended",
+        "description": f"Claude Code session `{session_id}` has finished",
+    }
+
+
+def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> Dict[str, Any]:
+    """Format SubagentStop event."""
+    return {
+        "title": "🤖 Subagent Completed",
+        "description": f"Subagent task completed in session `{session_id}`",
+    }
+
+
+def format_default(
+    event_type: str, event_data: Dict[str, Any], session_id: str
+) -> Dict[str, Any]:
+    """Format unknown event types."""
+    return {"title": f"⚡ {event_type}", "description": "Unknown event type"}
+
+
+# Event formatter dispatch table
+EVENT_FORMATTERS = {
+    "PreToolUse": format_pre_tool_use,
+    "PostToolUse": format_post_tool_use,
+    "Notification": format_notification,
+    "Stop": format_stop,
+    "SubagentStop": format_subagent_stop,
+}
+
+
 def format_event(event_type: str, event_data: Dict[str, Any]) -> Dict[str, Any]:
     """Format Claude Code event into Discord embed."""
     timestamp = datetime.now().isoformat()
     session_id = event_data.get("session_id", "unknown")[:8]
 
-    embed = {
-        "timestamp": timestamp,
-        "color": EVENT_COLORS.get(event_type, 0x808080),
-        "footer": {"text": f"Session: {session_id}"},
-    }
-
-    if event_type == "PreToolUse":
-        tool_name = event_data.get("tool_name", "Unknown")
-        tool_input = event_data.get("tool_input", {})
-        emoji = TOOL_EMOJIS.get(tool_name, "⚡")
-
-        embed["title"] = f"About to execute: {emoji} {tool_name}"
-
-        # Add tool-specific details
-        if tool_name == "Bash":
-            command = tool_input.get("command", "")[:100]
-            if len(tool_input.get("command", "")) > 100:
-                command += "..."
-            embed["description"] = f"**Command:** `{command}`"
-        elif tool_name in ["Write", "Edit", "MultiEdit", "Read"]:
-            file_path = tool_input.get("file_path", "")
-            if file_path:
-                # Show relative path if possible
-                try:
-                    file_path = Path(file_path).relative_to(Path.cwd())
-                except:
-                    file_path = Path(file_path).name
-                embed["description"] = f"**File:** `{file_path}`"
-        elif tool_name in ["Glob", "Grep"]:
-            pattern = tool_input.get("pattern", "")
-            embed["description"] = f"**Pattern:** `{pattern}`"
-
-    elif event_type == "PostToolUse":
-        tool_name = event_data.get("tool_name", "Unknown")
-        emoji = TOOL_EMOJIS.get(tool_name, "⚡")
-        embed["title"] = f"Completed: {emoji} {tool_name}"
-        embed["description"] = "Tool execution finished"
-
-    elif event_type == "Notification":
-        embed["title"] = "📢 Notification"
-        embed["description"] = event_data.get("message", "System notification")
-
-    elif event_type == "Stop":
-        embed["title"] = "🏁 Session Ended"
-        embed["description"] = f"Claude Code session `{session_id}` has finished"
-
-    elif event_type == "SubagentStop":
-        embed["title"] = "🤖 Subagent Completed"
-        embed["description"] = f"Subagent task completed in session `{session_id}`"
-
+    # Get formatter for event type
+    formatter = EVENT_FORMATTERS.get(event_type)
+    if formatter:
+        embed = formatter(event_data, session_id)
     else:
-        embed["title"] = f"⚡ {event_type}"
-        embed["description"] = "Unknown event type"
+        embed = format_default(event_type, event_data, session_id)
+
+    # Add common fields
+    embed["timestamp"] = timestamp
+    embed["color"] = EVENT_COLORS.get(event_type, 0x808080)
+    embed["footer"] = {"text": f"Session: {session_id}"}
 
     return {"embeds": [embed]}
 
@@ -186,7 +236,7 @@ def send_to_discord(
                 logger.debug(f"Webhook response: {response.status}")
                 return response.status == 204
 
-        except Exception as e:
+        except (urllib.error.URLError, urllib.error.HTTPError) as e:
             logger.error(f"Webhook failed: {e}")
 
     # Try bot API as fallback
@@ -209,7 +259,7 @@ def send_to_discord(
                 logger.debug(f"Bot API response: {response.status}")
                 return 200 <= response.status < 300
 
-        except Exception as e:
+        except (urllib.error.URLError, urllib.error.HTTPError) as e:
             logger.error(f"Bot API failed: {e}")
 
     return False
@@ -246,8 +296,11 @@ def main():
         else:
             logger.error(f"Failed to send {event_type} notification")
 
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.error(f"Error processing event data: {e}")
     except Exception as e:
-        logger.error(f"Error: {e}")
+        # Catch any other unexpected errors to ensure we don't block Claude Code
+        logger.error(f"Unexpected error: {e}")
 
     # Always exit 0 to not block Claude Code
     sys.exit(0)

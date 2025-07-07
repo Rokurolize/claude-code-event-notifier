@@ -74,5 +74,9 @@ config/*.env
 .DS_Store
 Thumbs.db
 
-# In project
-claude-code-instructions.md
+# Linting/Formatting cache
+.ruff_cache/
+.mypy_cache/
+
+# Generated files
+repomix-output.xml

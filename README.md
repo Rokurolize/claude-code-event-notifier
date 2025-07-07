@@ -4,20 +4,20 @@ Send Claude Code events to Discord. One file, no dependencies, simple setup.
 
 ## Quick Start
 
-1. **Install:**
+### 1. Configure Claude Code Hooks
 
-   ```bash
-   python3 install.py
-   ```
+```bash
+python3 configure_hooks.py
+```
 
-2. **Configure Discord:**
+### 2. Set Up Discord Credentials
 
-   ```bash
-   cp ~/.claude/hooks/.env.discord.example ~/.claude/hooks/.env.discord
-   # Edit the file with your Discord webhook URL or bot token
-   ```
+```bash
+cp ~/.claude/hooks/.env.discord.example ~/.claude/hooks/.env.discord
+# Edit the file with your Discord webhook URL or bot token
+```
 
-3. **Restart Claude Code**
+### 3. Restart Claude Code
 
 That's it! You'll now receive Discord notifications for Claude Code events.
 
@@ -45,10 +45,12 @@ DISCORD_DEBUG=1
 - **Stop** - Session ends (gray)
 - **SubagentStop** - Subagent completes (purple)
 
-## Uninstall
+## Removal
+
+To remove the Discord notifier from Claude Code:
 
 ```bash
-python3 install.py --uninstall
+python3 configure_hooks.py --remove
 ```
 
 ## Troubleshooting

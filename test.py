@@ -2,7 +2,7 @@
 """
 Test script for the simplified Discord notifier.
 
-Usage: python3 test_simple.py
+Usage: python3 test.py
 """
 
 import json
@@ -46,6 +46,14 @@ def test_notifier():
             },
         },
         {"type": "Stop", "data": {"session_id": "test-session-123"}},
+        {
+            "type": "SubagentStop",
+            "data": {
+                "session_id": "test-session-123",
+                "subagent_id": "subagent-456",
+                "result": "Task completed successfully",
+            },
+        },
     ]
 
     print("Testing Discord Notifier...")

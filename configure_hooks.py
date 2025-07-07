@@ -1,20 +1,51 @@
 #!/usr/bin/env python3
 """
-Simple installer for Claude Code Discord Notifier.
+Configure Claude Code hooks for Discord notifications.
 
-Usage: python3 install_simple.py [--uninstall]
+This script sets up the integration between Claude Code's hook system
+and Discord notifications by modifying Claude Code's settings.json.
+
+Usage: python3 configure_hooks.py [--remove]
 """
 
 import argparse
 import json
+import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 
+def atomic_write(filepath, content):
+    """Write content to file atomically using temp file + rename."""
+    filepath = Path(filepath)
+    # Create temp file in same directory for same filesystem
+    fd, temp_path = tempfile.mkstemp(dir=filepath.parent, text=True)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())  # Force write to disk
+
+        # Atomic rename
+        os.rename(temp_path, filepath)
+    except:
+        # Clean up temp file on error
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+        raise
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Install Claude Code Discord Notifier")
-    parser.add_argument("--uninstall", action="store_true", help="Remove the notifier")
+    parser = argparse.ArgumentParser(
+        description="Configure Claude Code hooks for Discord notifications"
+    )
+    parser.add_argument(
+        "--remove", action="store_true", help="Remove the notifier from Claude Code"
+    )
     args = parser.parse_args()
 
     # Paths
@@ -26,7 +57,7 @@ def main():
     source_script = Path(__file__).parent / "src" / "discord_notifier.py"
     target_script = hooks_dir / "discord_notifier.py"
 
-    if args.uninstall:
+    if args.remove:
         print("Removing Claude Code Discord Notifier...")
 
         # Remove script
@@ -49,12 +80,11 @@ def main():
                         not in hook.get("hooks", [{}])[0].get("command", "")
                     ]
 
-            with open(settings_file, "w") as f:
-                json.dump(settings, f, indent=2)
+            atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
 
             print("✓ Removed hooks from settings.json")
 
-        print("\nUninstall complete!")
+        print("\nRemoval complete!")
         return 0
 
     # Install mode
@@ -116,8 +146,7 @@ def main():
 
     # Save settings
     claude_dir.mkdir(exist_ok=True)
-    with open(settings_file, "w") as f:
-        json.dump(settings, f, indent=2)
+    atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
 
     print("✓ Updated settings.json")
 
