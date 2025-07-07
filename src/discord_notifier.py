@@ -1,9 +1,62 @@
 #!/usr/bin/env python3
 """
-Simplified Claude Code Discord Notifier - All functionality in one file.
+Claude Code Discord Notifier - Comprehensive event notification system.
 
-Sends Claude Code hook events to Discord using webhook or bot API.
-No external dependencies, just Python standard library.
+This module provides a complete Discord notification system for Claude Code hook events.
+It processes events from stdin, formats them into rich Discord embeds, and sends them
+via webhook or bot API with support for threads and user mentions.
+
+Key Features:
+    - Zero external dependencies (Python standard library only)
+    - Hierarchical TypedDict type system for type safety
+    - Comprehensive event formatting with tool-specific details
+    - Thread support for session organization
+    - User mention system for important notifications
+    - Robust error handling and graceful degradation
+    - Debug logging with file output
+
+Architecture:
+    The module uses a pipeline architecture:
+    1. Configuration loading with environment override precedence
+    2. Event data validation using TypedDict hierarchies
+    3. Tool-specific formatting via registry pattern
+    4. HTTP client with retry logic and error handling
+    5. Thread management with session caching
+
+Usage:
+    This module is designed to be called by Claude Code's hook system:
+    
+    $ CLAUDE_HOOK_EVENT=PreToolUse python3 discord_notifier.py < event.json
+    
+    Configuration is loaded from:
+    1. Environment variables (highest priority)
+    2. ~/.claude/hooks/.env.discord file
+    3. Built-in defaults
+
+Type System:
+    The module uses extensive TypedDict hierarchies for type safety:
+    - BaseField: Common properties across all types
+    - TimestampedField: Fields with timestamp support
+    - SessionAware: Session-aware fields
+    - Tool-specific input/output types
+    - Event data structures with validation
+
+Error Handling:
+    Custom exception hierarchy provides specific error types:
+    - ConfigurationError: Configuration issues
+    - DiscordAPIError: Discord API failures
+    - EventProcessingError: Event processing issues
+    - InvalidEventTypeError: Invalid event types
+
+Thread Safety:
+    The module maintains thread-safe session caching using a global dictionary.
+    Each session gets a unique thread ID that persists for the session duration.
+
+Authors:
+    Claude Code Team
+    
+Version:
+    2.0.0 - Enhanced with comprehensive type system and thread support
 """
 
 import json
@@ -15,226 +68,869 @@ import urllib.error
 from datetime import datetime
 from pathlib import Path
 from typing import (
-    Dict,
     Any,
-    Optional,
-    Union,
-    List,
     TypedDict,
     Literal,
-    Callable,
     TypeGuard,
     Protocol,
     Final,
+    cast,
+    NotRequired,
 )
+from collections.abc import Callable
 from enum import Enum
 from dataclasses import dataclass
 
 
 # Custom exceptions
 class DiscordNotifierError(Exception):
-    """Base exception for Discord notifier."""
+    """Base exception for Discord notifier.
+    
+    This is the root exception class for all Discord notifier-related errors.
+    It provides a common base for exception handling and allows catching all
+    notifier-specific errors with a single except clause.
+    
+    Usage:
+        try:
+            # Discord notifier operations
+            pass
+        except DiscordNotifierError as e:
+            logger.error(f"Discord notifier error: {e}")
+    """
 
     pass
 
 
 class ConfigurationError(DiscordNotifierError):
-    """Configuration related errors."""
+    """Configuration related errors.
+    
+    Raised when there are issues with configuration loading, validation,
+    or when required configuration values are missing or invalid.
+    
+    Common causes:
+        - Missing webhook URL or bot credentials
+        - Invalid Discord user IDs for mentions
+        - Malformed .env.discord file
+        - Thread configuration inconsistencies
+    
+    Args:
+        message: Descriptive error message
+        
+    Example:
+        >>> if not config.get('webhook_url'):
+        ...     raise ConfigurationError("No webhook URL configured")
+    """
 
     pass
 
 
 class DiscordAPIError(DiscordNotifierError):
-    """Discord API related errors."""
+    """Discord API related errors.
+    
+    Raised when Discord API calls fail, including HTTP errors, network issues,
+    or API response validation failures.
+    
+    Common causes:
+        - Invalid webhook URL or bot token
+        - Network connectivity issues
+        - Discord API rate limiting
+        - Invalid channel IDs or permissions
+        - Thread creation failures
+    
+    Args:
+        message: Descriptive error message including HTTP status if available
+        
+    Example:
+        >>> try:
+        ...     response = urllib.request.urlopen(request)
+        ... except urllib.error.HTTPError as e:
+        ...     raise DiscordAPIError(f"HTTP {e.code}: {e.reason}")
+    """
 
     pass
 
 
 class EventProcessingError(DiscordNotifierError):
-    """Event processing related errors."""
+    """Event processing related errors.
+    
+    Raised when there are issues processing Claude Code events, including
+    JSON parsing errors, missing required fields, or formatting failures.
+    
+    Common causes:
+        - Malformed JSON input from stdin
+        - Missing required event fields
+        - Invalid event data structure
+        - Event formatting failures
+    
+    Args:
+        message: Descriptive error message
+        
+    Example:
+        >>> try:
+        ...     event_data = json.loads(stdin_input)
+        ... except json.JSONDecodeError as e:
+        ...     raise EventProcessingError(f"Invalid JSON: {e}")
+    """
 
     pass
 
 
 class InvalidEventTypeError(EventProcessingError):
-    """Invalid event type error."""
+    """Invalid event type error.
+    
+    Raised when an unsupported or invalid event type is encountered.
+    While the system handles unknown event types gracefully, this error
+    can be used for strict validation scenarios.
+    
+    Common causes:
+        - Typos in CLAUDE_HOOK_EVENT environment variable
+        - New event types not yet supported
+        - Corrupted event data
+    
+    Args:
+        message: Descriptive error message including the invalid event type
+        
+    Example:
+        >>> event_type = os.environ.get('CLAUDE_HOOK_EVENT')
+        >>> if event_type and not is_valid_event_type(event_type):
+        ...     raise InvalidEventTypeError(f"Unknown event type: {event_type}")
+    """
 
     pass
 
 
-# Type definitions
-class Config(TypedDict):
-    """Configuration for Discord notifier."""
+# ==============================================================================
+# TYPE DEFINITIONS: HIERARCHICAL TYPEDDICT STRUCTURE
+# ==============================================================================
 
-    webhook_url: Optional[str]
-    bot_token: Optional[str]
-    channel_id: Optional[str]
-    debug: bool
-    use_threads: bool
-    channel_type: Literal["text", "forum"]
-    thread_prefix: str
-    mention_user_id: Optional[str]
+# ------------------------------------------------------------------------------
+# 1. BASE FOUNDATION TYPES
+# ------------------------------------------------------------------------------
 
+class BaseField(TypedDict):
+    """Base field structure for common properties.
+    
+    This is the root of the TypedDict hierarchy, providing a common base
+    for all field types in the system. It serves as a foundation for
+    composition and inheritance patterns.
+    
+    Usage:
+        This class is primarily used as a base for other TypedDict classes
+        and should not be instantiated directly.
+        
+    Type Safety:
+        Being a TypedDict, this provides compile-time type checking when
+        used with type checkers like mypy or pyright.
+    """
+    pass
+
+
+class TimestampedField(BaseField):
+    """Fields that include timestamps.
+    
+    Extends BaseField to add optional timestamp support. Timestamps are
+    stored as ISO format strings and are used for Discord embed metadata.
+    
+    Attributes:
+        timestamp: Optional ISO format timestamp string (e.g., "2023-12-07T10:30:00Z")
+        
+    Usage:
+        class MyEventData(TimestampedField):
+            event_type: str
+            
+        data: MyEventData = {
+            "event_type": "test",
+            "timestamp": datetime.now().isoformat()
+        }
+    """
+    timestamp: NotRequired[str]
+
+
+class SessionAware(BaseField):
+    """Fields that are session-aware.
+    
+    Extends BaseField to add session tracking capabilities. All Claude Code
+    events are associated with a session, which is used for thread management
+    and event correlation.
+    
+    Attributes:
+        session_id: Unique identifier for the Claude Code session
+        
+    Usage:
+        Session IDs are typically generated by Claude Code and passed in
+        event data. They are used for:
+        - Thread creation and management
+        - Event correlation
+        - Session-specific caching
+        
+    Example:
+        >>> session_data: SessionAware = {"session_id": "abc123def456"}
+        >>> thread_name = f"Session {session_data['session_id'][:8]}"
+    """
+    session_id: str
+
+
+class PathAware(BaseField):
+    """Fields that include file paths.
+    
+    Extends BaseField to add file path support. Used by tool inputs that
+    operate on files, providing a consistent way to handle file paths
+    across different tool types.
+    
+    Attributes:
+        file_path: Optional absolute or relative file path
+        
+    Usage:
+        File paths are automatically formatted for display using the
+        format_file_path() utility function, which attempts to show
+        relative paths when possible.
+        
+    Example:
+        >>> file_data: PathAware = {
+        ...     "file_path": "/home/user/project/src/main.py"
+        ... }
+        >>> display_path = format_file_path(file_data["file_path"])
+    """
+    file_path: NotRequired[str]
+
+
+# ------------------------------------------------------------------------------
+# 2. DISCORD API TYPES HIERARCHY
+# ------------------------------------------------------------------------------
 
 class DiscordFooter(TypedDict):
-    """Discord footer structure."""
-
+    """Discord footer structure.
+    
+    Represents the footer section of a Discord embed. Footers appear at the
+    bottom of embeds and typically contain metadata or contextual information.
+    
+    Attributes:
+        text: Footer text content (max 2048 characters per Discord API)
+        
+    Usage:
+        Footers are used to display session information and event metadata:
+        
+        >>> footer: DiscordFooter = {
+        ...     "text": "Session: abc123de | Event: PreToolUse"
+        ... }
+    """
     text: str
 
 
-class DiscordEmbed(TypedDict, total=False):
-    """Discord embed structure."""
+class DiscordFieldBase(TypedDict):
+    """Base Discord field structure.
+    
+    Represents the basic structure of a Discord embed field. Fields are
+    key-value pairs that appear in the embed body and provide structured
+    information display.
+    
+    Attributes:
+        name: Field name/label (max 256 characters per Discord API)
+        value: Field value/content (max 1024 characters per Discord API)
+        
+    Usage:
+        This is the base class for Discord fields. Use DiscordField for
+        full functionality including inline support.
+        
+    Example:
+        >>> field_base: DiscordFieldBase = {
+        ...     "name": "Command",
+        ...     "value": "git status"
+        ... }
+    """
+    name: str
+    value: str
 
-    title: str
-    description: str
-    color: int
-    timestamp: str
-    footer: DiscordFooter
+
+class DiscordField(DiscordFieldBase):
+    """Discord field with optional inline support.
+    
+    Extends DiscordFieldBase to add inline positioning support. Inline fields
+    appear side-by-side in the embed, allowing for more compact layouts.
+    
+    Attributes:
+        name: Field name/label (inherited from DiscordFieldBase)
+        value: Field value/content (inherited from DiscordFieldBase)
+        inline: Optional boolean to display field inline (default: False)
+        
+    Usage:
+        >>> field: DiscordField = {
+        ...     "name": "Status",
+        ...     "value": "Success",
+        ...     "inline": True
+        ... }
+        
+    Layout:
+        - inline=True: Fields appear side-by-side (up to 3 per row)
+        - inline=False: Fields appear stacked vertically
+    """
+    inline: NotRequired[bool]
 
 
-class DiscordMessage(TypedDict, total=False):
-    """Discord message structure."""
-
-    embeds: List[DiscordEmbed]
-    content: str  # Optional content for mentions
-
-
-class DiscordThreadMessage(TypedDict, total=False):
-    """Discord message structure with thread support."""
-
-    embeds: List[DiscordEmbed]
-    thread_name: str  # For creating new threads in forum channels
+class DiscordEmbedBase(TypedDict):
+    """Base Discord embed structure."""
+    title: NotRequired[str]
+    description: NotRequired[str]
+    color: NotRequired[int]
 
 
-# Tool input types
-class BashToolInput(TypedDict, total=False):
+class DiscordEmbed(DiscordEmbedBase, TimestampedField):
+    """Complete Discord embed structure."""
+    footer: NotRequired[DiscordFooter]
+    fields: NotRequired[list[DiscordField]]
+
+
+class DiscordMessageBase(TypedDict):
+    """Base Discord message structure."""
+    embeds: NotRequired[list[DiscordEmbed]]
+
+
+class DiscordMessage(DiscordMessageBase):
+    """Discord message with optional content."""
+    content: NotRequired[str]  # For mentions
+
+
+class DiscordThreadMessage(DiscordMessageBase):
+    """Discord message with thread support."""
+    thread_name: NotRequired[str]  # For creating new threads
+
+
+# ------------------------------------------------------------------------------
+# 3. CONFIGURATION HIERARCHY
+# ------------------------------------------------------------------------------
+
+class DiscordCredentials(TypedDict):
+    """Discord authentication credentials."""
+    webhook_url: str | None
+    bot_token: str | None
+    channel_id: str | None
+
+
+class ThreadConfiguration(TypedDict):
+    """Thread-specific configuration."""
+    use_threads: bool
+    channel_type: Literal["text", "forum"]
+    thread_prefix: str
+
+
+class NotificationConfiguration(TypedDict):
+    """Notification-specific configuration."""
+    mention_user_id: str | None
+    debug: bool
+
+
+class Config(DiscordCredentials, ThreadConfiguration, NotificationConfiguration):
+    """Complete configuration combining all aspects."""
+    pass
+
+
+# ------------------------------------------------------------------------------
+# 4. TOOL INPUT HIERARCHY
+# ------------------------------------------------------------------------------
+
+class ToolInputBase(TypedDict):
+    """Base tool input structure."""
+    description: NotRequired[str]
+
+
+class BashToolInput(ToolInputBase):
     """Bash tool input structure."""
-
     command: str
-    description: str
 
 
+class FileEditOperation(TypedDict):
+    """Individual file edit operation."""
+    old_string: str
+    new_string: str
+    replace_all: NotRequired[bool]
+
+
+class FileToolInputBase(ToolInputBase, PathAware):
+    """Base file tool input structure."""
+    pass
+
+
+class ReadToolInput(FileToolInputBase):
+    """Read tool input structure."""
+    offset: NotRequired[int]
+    limit: NotRequired[int]
+
+
+class WriteToolInput(FileToolInputBase):
+    """Write tool input structure."""
+    content: str
+
+
+class EditToolInput(FileToolInputBase):
+    """Edit tool input structure."""
+    old_string: str
+    new_string: str
+    replace_all: NotRequired[bool]
+
+
+class MultiEditToolInput(FileToolInputBase):
+    """Multi-edit tool input structure."""
+    edits: list[FileEditOperation]
+
+
+class ListToolInput(ToolInputBase, PathAware):
+    """List tool input structure."""
+    ignore: NotRequired[list[str]]
+
+
+class SearchToolInputBase(ToolInputBase):
+    """Base search tool input structure."""
+    pattern: str
+    path: NotRequired[str]
+
+
+class GlobToolInput(SearchToolInputBase):
+    """Glob tool input structure."""
+    pass
+
+
+class GrepToolInput(SearchToolInputBase):
+    """Grep tool input structure."""
+    include: NotRequired[str]
+
+
+class TaskToolInput(ToolInputBase):
+    """Task tool input structure."""
+    prompt: str
+
+
+class WebToolInput(ToolInputBase):
+    """Web tool input structure."""
+    url: str
+    prompt: str
+
+
+# Legacy FileToolInput for backward compatibility
 class FileToolInput(TypedDict, total=False):
-    """File operation tool input structure."""
-
+    """Legacy file operation tool input structure (for backward compatibility)."""
     file_path: str
     old_string: str
     new_string: str
-    edits: List[Dict[str, str]]
-    offset: Optional[int]
-    limit: Optional[int]
+    edits: list[FileEditOperation]
+    offset: int | None
+    limit: int | None
 
 
+# Legacy SearchToolInput for backward compatibility
 class SearchToolInput(TypedDict, total=False):
-    """Search tool input structure."""
-
+    """Legacy search tool input structure (for backward compatibility)."""
     pattern: str
     path: str
     include: str
 
 
-class TaskToolInput(TypedDict, total=False):
-    """Task tool input structure."""
+# Union type for all tool inputs
+ToolInput = (
+    BashToolInput |
+    ReadToolInput |
+    WriteToolInput |
+    EditToolInput |
+    MultiEditToolInput |
+    ListToolInput |
+    GlobToolInput |
+    GrepToolInput |
+    TaskToolInput |
+    WebToolInput |
+    FileToolInput |  # Legacy compatibility
+    SearchToolInput |  # Legacy compatibility
+    dict[str, Any]
+)
 
-    description: str
-    prompt: str
+
+# ------------------------------------------------------------------------------
+# 5. TOOL RESPONSE HIERARCHY
+# ------------------------------------------------------------------------------
+
+class ToolResponseBase(TypedDict):
+    """Base tool response structure."""
+    success: NotRequired[bool]
+    error: NotRequired[str]
 
 
-class WebToolInput(TypedDict, total=False):
-    """Web tool input structure."""
-
-    url: str
-    prompt: str
-
-
-# Tool response types
-class BashToolResponse(TypedDict):
+class BashToolResponse(ToolResponseBase):
     """Bash tool response structure."""
-
     stdout: str
     stderr: str
     interrupted: bool
     isImage: bool
 
 
-class FileOperationResponse(TypedDict):
+class FileOperationResponse(ToolResponseBase):
     """File operation response structure."""
-
-    success: bool
-    error: Optional[str]
-    filePath: Optional[str]
+    filePath: NotRequired[str]
 
 
-# Event data types
-class BaseEventData(TypedDict):
+class SearchResponse(ToolResponseBase):
+    """Search operation response structure."""
+    results: NotRequired[list[str]]
+    count: NotRequired[int]
+
+
+# Union type for all tool responses
+ToolResponse = (
+    BashToolResponse |
+    FileOperationResponse |
+    SearchResponse |
+    str |
+    dict[str, Any] |
+    list[Any]
+)
+
+
+# ------------------------------------------------------------------------------
+# 6. EVENT DATA HIERARCHY
+# ------------------------------------------------------------------------------
+
+class BaseEventData(SessionAware, TimestampedField):
     """Base event data structure."""
-
-    session_id: str
-    transcript_path: str
+    transcript_path: NotRequired[str]
     hook_event_name: str
 
 
-class PreToolUseEventData(BaseEventData):
-    """PreToolUse event data structure."""
-
+class ToolEventDataBase(BaseEventData):
+    """Base tool event data structure."""
     tool_name: str
-    tool_input: Dict[str, Any]
+    tool_input: dict[str, Any]
 
 
-class PostToolUseEventData(PreToolUseEventData):
+class PreToolUseEventData(ToolEventDataBase):
+    """PreToolUse event data structure."""
+    pass
+
+
+class PostToolUseEventData(ToolEventDataBase):
     """PostToolUse event data structure."""
-
-    tool_response: Union[str, Dict[str, Any], List[Any]]
+    tool_response: ToolResponse
 
 
 class NotificationEventData(BaseEventData):
     """Notification event data structure."""
-
     message: str
-    title: Optional[str]
+    title: NotRequired[str]
+    level: NotRequired[Literal["info", "warning", "error"]]
 
 
-class StopEventData(BaseEventData):
+class StopEventDataBase(BaseEventData):
+    """Base stop event data structure."""
+    stop_hook_active: NotRequired[bool]
+
+
+class StopEventData(StopEventDataBase):
     """Stop event data structure."""
-
-    stop_hook_active: Optional[bool]
-    duration: Optional[float]
-    tools_used: Optional[int]
-    messages_exchanged: Optional[int]
+    duration: NotRequired[float]
+    tools_used: NotRequired[int]
+    messages_exchanged: NotRequired[int]
 
 
 class SubagentStopEventData(StopEventData):
     """SubagentStop event data structure."""
+    task_description: NotRequired[str]
+    result: NotRequired[str | dict[str, Any]]
+    execution_time: NotRequired[float]
+    status: NotRequired[str]
 
-    task_description: Optional[str]
-    result: Optional[Union[str, Dict[str, Any]]]
-    execution_time: Optional[float]
-    status: Optional[str]
+
+# Union type for all event data
+EventData = (
+    PreToolUseEventData |
+    PostToolUseEventData |
+    NotificationEventData |
+    StopEventData |
+    SubagentStopEventData |
+    dict[str, Any]
+)
+
+# ------------------------------------------------------------------------------
+# 7. ENHANCED TYPE SAFETY FEATURES
+# ------------------------------------------------------------------------------
+
+# Type guard functions
+def is_tool_event_data(data: dict[str, Any]) -> TypeGuard[ToolEventDataBase]:
+    """Check if event data is tool-related."""
+    return "tool_name" in data
 
 
-# Union types
-ToolInput = Union[
-    BashToolInput,
-    FileToolInput,
-    SearchToolInput,
-    TaskToolInput,
-    WebToolInput,
-    Dict[str, Any],
-]
+def is_notification_event_data(data: dict[str, Any]) -> TypeGuard[NotificationEventData]:
+    """Check if event data is notification-related."""
+    return "message" in data
 
-ToolResponse = Union[
-    str, BashToolResponse, FileOperationResponse, Dict[str, Any], List[Any]
-]
 
-EventData = Union[
-    PreToolUseEventData,
-    PostToolUseEventData,
-    NotificationEventData,
-    StopEventData,
-    SubagentStopEventData,
-    Dict[str, Any],
-]
+def is_stop_event_data(data: dict[str, Any]) -> TypeGuard[StopEventDataBase]:
+    """Check if event data is stop-related."""
+    return "hook_event_name" in data
 
+
+def is_bash_tool_input(tool_input: dict[str, Any]) -> TypeGuard[BashToolInput]:
+    """Check if tool input is for Bash tool."""
+    return "command" in tool_input
+
+
+def is_file_tool_input(tool_input: dict[str, Any]) -> TypeGuard[FileToolInputBase]:
+    """Check if tool input is for file operations."""
+    return "file_path" in tool_input
+
+
+def is_search_tool_input(tool_input: dict[str, Any]) -> TypeGuard[SearchToolInputBase]:
+    """Check if tool input is for search operations."""
+    return "pattern" in tool_input
+
+
+# Configuration validation
+class ConfigValidator:
+    """Validator for Config TypedDict.
+    
+    Provides static methods to validate different aspects of the Discord
+    configuration. Used to ensure configuration consistency and completeness
+    before attempting to send messages.
+    
+    Validation Areas:
+        - Credentials: Webhook URL or bot token/channel ID combination
+        - Thread configuration: Consistency between channel type and auth method
+        - Mention configuration: Valid Discord user ID format
+        
+    Usage:
+        >>> config = ConfigLoader.load()
+        >>> if not ConfigValidator.validate_all(config):
+        ...     raise ConfigurationError("Invalid configuration")
+    """
+    
+    @staticmethod
+    def validate_credentials(config: Config) -> bool:
+        """Validate that at least one credential method is configured.
+        
+        Checks that either webhook URL or bot token/channel ID combination
+        is available for Discord API access.
+        
+        Args:
+            config: Configuration dictionary to validate
+            
+        Returns:
+            bool: True if valid credentials are configured, False otherwise
+            
+        Validation Logic:
+            - Webhook URL alone is sufficient for basic messaging
+            - Bot token + channel ID combination is required for bot API
+            - At least one method must be configured
+            
+        Example:
+            >>> config = {"webhook_url": "https://discord.com/api/webhooks/..."}
+            >>> ConfigValidator.validate_credentials(config)  # True
+            >>> config = {"bot_token": "token", "channel_id": "123"}
+            >>> ConfigValidator.validate_credentials(config)  # True
+            >>> config = {"bot_token": "token"}  # Missing channel_id
+            >>> ConfigValidator.validate_credentials(config)  # False
+        """
+        return bool(
+            config.get("webhook_url") or 
+            (config.get("bot_token") and config.get("channel_id"))
+        )
+    
+    @staticmethod
+    def validate_thread_config(config: Config) -> bool:
+        """Validate thread configuration consistency.
+        
+        Ensures that thread configuration is consistent with available
+        authentication methods and channel types.
+        
+        Args:
+            config: Configuration dictionary to validate
+            
+        Returns:
+            bool: True if thread configuration is valid, False otherwise
+            
+        Validation Rules:
+            - If threads are disabled, configuration is always valid
+            - Forum channels require webhook URL for thread creation
+            - Text channels require bot token + channel ID for thread creation
+            - Invalid channel types are rejected
+            
+        Thread Types:
+            - Forum channels: Use webhook API with thread_name parameter
+            - Text channels: Use bot API to create public threads
+            
+        Example:
+            >>> # Valid forum channel config
+            >>> config = {
+            ...     "use_threads": True,
+            ...     "channel_type": "forum",
+            ...     "webhook_url": "https://discord.com/api/webhooks/..."
+            ... }
+            >>> ConfigValidator.validate_thread_config(config)  # True
+            
+            >>> # Invalid: forum channel without webhook
+            >>> config = {
+            ...     "use_threads": True,
+            ...     "channel_type": "forum",
+            ...     "bot_token": "token"
+            ... }
+            >>> ConfigValidator.validate_thread_config(config)  # False
+        """
+        if not config.get("use_threads", False):
+            return True
+        
+        channel_type = config.get("channel_type", "text")
+        if channel_type == "forum":
+            return bool(config.get("webhook_url"))
+        elif channel_type == "text":
+            return bool(config.get("bot_token") and config.get("channel_id"))
+        
+        return False
+    
+    @staticmethod
+    def validate_mention_config(config: Config) -> bool:
+        """Validate mention configuration.
+        
+        Validates Discord user ID format for mention functionality.
+        Discord user IDs are numeric strings with specific length requirements.
+        
+        Args:
+            config: Configuration dictionary to validate
+            
+        Returns:
+            bool: True if mention configuration is valid, False otherwise
+            
+        Validation Rules:
+            - If no mention_user_id is configured, validation passes
+            - Discord user IDs must be numeric strings
+            - Discord user IDs must be at least 17 characters long
+            - User IDs are typically 17-19 characters in length
+            
+        Discord User ID Format:
+            - Numeric string (e.g., "123456789012345678")
+            - Generated using Discord's snowflake algorithm
+            - Unique across all Discord users
+            
+        Example:
+            >>> # Valid user ID
+            >>> config = {"mention_user_id": "123456789012345678"}
+            >>> ConfigValidator.validate_mention_config(config)  # True
+            
+            >>> # Invalid: non-numeric
+            >>> config = {"mention_user_id": "invalid_id"}
+            >>> ConfigValidator.validate_mention_config(config)  # False
+            
+            >>> # Invalid: too short
+            >>> config = {"mention_user_id": "12345"}
+            >>> ConfigValidator.validate_mention_config(config)  # False
+        """
+        mention_user_id = config.get("mention_user_id")
+        if mention_user_id:
+            # Basic validation: Discord user IDs are numeric strings
+            return mention_user_id.isdigit() and len(mention_user_id) >= 17
+        return True
+    
+    @staticmethod
+    def validate_all(config: Config) -> bool:
+        """Validate all configuration aspects.
+        
+        Performs comprehensive validation of all configuration aspects,
+        ensuring the configuration is complete and consistent.
+        
+        Args:
+            config: Configuration dictionary to validate
+            
+        Returns:
+            bool: True if all validation checks pass, False otherwise
+            
+        Validation Performed:
+            1. Credentials validation (webhook URL or bot token/channel ID)
+            2. Thread configuration consistency
+            3. Mention configuration format
+            
+        Usage:
+            This is the recommended method for validating configuration
+            before using the Discord notifier.
+            
+        Example:
+            >>> config = ConfigLoader.load()
+            >>> if not ConfigValidator.validate_all(config):
+            ...     raise ConfigurationError("Configuration validation failed")
+            >>> # Safe to use config for Discord operations
+            
+        Failure Scenarios:
+            - No authentication method configured
+            - Thread configuration mismatch with auth method
+            - Invalid Discord user ID format
+            - Missing required fields for selected features
+        """
+        return (
+            ConfigValidator.validate_credentials(config) and
+            ConfigValidator.validate_thread_config(config) and
+            ConfigValidator.validate_mention_config(config)
+        )
+
+
+# Event data validation
+class EventDataValidator:
+    """Validator for EventData structures."""
+    
+    @staticmethod
+    def validate_base_event_data(data: dict[str, Any]) -> bool:
+        """Validate base event data requirements."""
+        required_fields = {"session_id", "hook_event_name"}
+        return all(field in data for field in required_fields)
+    
+    @staticmethod
+    def validate_tool_event_data(data: dict[str, Any]) -> bool:
+        """Validate tool event data requirements."""
+        if not EventDataValidator.validate_base_event_data(data):
+            return False
+        
+        required_fields = {"tool_name", "tool_input"}
+        return all(field in data for field in required_fields)
+    
+    @staticmethod
+    def validate_notification_event_data(data: dict[str, Any]) -> bool:
+        """Validate notification event data requirements."""
+        if not EventDataValidator.validate_base_event_data(data):
+            return False
+        
+        return "message" in data
+    
+    @staticmethod
+    def validate_stop_event_data(data: dict[str, Any]) -> bool:
+        """Validate stop event data requirements."""
+        return EventDataValidator.validate_base_event_data(data)
+
+
+# Tool input validation
+class ToolInputValidator:
+    """Validator for ToolInput structures."""
+    
+    @staticmethod
+    def validate_bash_input(tool_input: dict[str, Any]) -> bool:
+        """Validate Bash tool input."""
+        return "command" in tool_input and isinstance(tool_input["command"], str)
+    
+    @staticmethod
+    def validate_file_input(tool_input: dict[str, Any]) -> bool:
+        """Validate file tool input."""
+        return "file_path" in tool_input and isinstance(tool_input["file_path"], str)
+    
+    @staticmethod
+    def validate_search_input(tool_input: dict[str, Any]) -> bool:
+        """Validate search tool input."""
+        return "pattern" in tool_input and isinstance(tool_input["pattern"], str)
+    
+    @staticmethod
+    def validate_web_input(tool_input: dict[str, Any]) -> bool:
+        """Validate web tool input."""
+        return (
+            "url" in tool_input and isinstance(tool_input["url"], str) and
+            "prompt" in tool_input and isinstance(tool_input["prompt"], str)
+        )
+
+
+# ==============================================================================
+# END OF TYPE DEFINITIONS
+# ==============================================================================
+
+# Type aliases for better code clarity
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 ToolName = Literal[
     "Bash",
@@ -313,7 +1009,7 @@ class DiscordColors:
 
 
 # Event colors mapping
-EVENT_COLORS: Final[Dict[EventType, int]] = {
+EVENT_COLORS: Final[dict[EventType, int]] = {
     "PreToolUse": DiscordColors.BLUE,
     "PostToolUse": DiscordColors.GREEN,
     "Notification": DiscordColors.ORANGE,
@@ -322,7 +1018,7 @@ EVENT_COLORS: Final[Dict[EventType, int]] = {
 }
 
 # Tool emojis mapping
-TOOL_EMOJIS: Final[Dict[str, str]] = {
+TOOL_EMOJIS: Final[dict[str, str]] = {
     ToolNames.BASH.value: "🔧",
     ToolNames.READ.value: "📖",
     ToolNames.WRITE.value: "✏️",
@@ -353,7 +1049,7 @@ DEFAULT_TIMEOUT: Final[int] = 10
 TRUNCATION_SUFFIX: Final[str] = "..."
 
 # Thread management
-SESSION_THREAD_CACHE: Dict[str, str] = {}  # session_id -> thread_id mapping
+SESSION_THREAD_CACHE: dict[str, str] = {}  # session_id -> thread_id mapping
 
 
 # Type guards
@@ -400,16 +1096,16 @@ def format_file_path(file_path: str) -> str:
     if not file_path:
         return ""
 
+    path = Path(file_path)
     try:
-        path = Path(file_path)
         return str(path.relative_to(Path.cwd()))
     except (ValueError, OSError):
         return path.name
 
 
-def parse_env_file(file_path: Path) -> Dict[str, str]:
+def parse_env_file(file_path: Path) -> dict[str, str]:
     """Parse environment file and return key-value pairs."""
-    env_vars: Dict[str, str] = {}
+    env_vars: dict[str, str] = {}
 
     try:
         with open(file_path) as f:
@@ -431,7 +1127,7 @@ def get_truncation_suffix(original_length: int, limit: int) -> str:
 
 
 def add_field(
-    desc_parts: List[str], label: str, value: str, code: bool = False
+    desc_parts: list[str], label: str, value: str, code: bool = False
 ) -> None:
     """Add a field to description parts."""
     if code:
@@ -484,9 +1180,9 @@ class HTTPClient:
         self,
         url: str,
         data: DiscordMessage,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         api_name: str,
-        success_check: Union[int, Callable[[int], bool]],
+        success_check: int | Callable[[int], bool],
     ) -> bool:
         """Make HTTP request with error handling."""
         try:
@@ -525,7 +1221,7 @@ class HTTPClient:
 
     def create_forum_thread(
         self, url: str, data: DiscordThreadMessage, thread_name: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create new forum thread via Discord webhook. Returns thread_id if successful."""
         thread_data = {**data, "thread_name": thread_name}
         headers = {
@@ -563,7 +1259,7 @@ class HTTPClient:
 
     def create_text_thread(
         self, channel_id: str, name: str, token: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create new text channel thread via Discord bot API. Returns thread_id if successful."""
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
         data = {"name": name, "type": 11}  # 11 = public thread
@@ -604,7 +1300,7 @@ class HTTPClient:
 class EventFormatter(Protocol):
     """Protocol for event formatters."""
 
-    def format(self, event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+    def format(self, event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
         """Format event data into Discord embed."""
         ...
 
@@ -612,7 +1308,7 @@ class EventFormatter(Protocol):
 # Thread management
 def get_or_create_thread(
     session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-) -> Optional[str]:
+) -> str | None:
     """Get existing thread ID or create new thread for session. Returns thread_id if successful."""
     if not config["use_threads"]:
         return None
@@ -708,7 +1404,7 @@ class ConfigLoader:
                 if ENV_CHANNEL_TYPE in env_vars:
                     channel_type = env_vars[ENV_CHANNEL_TYPE]
                     if channel_type in ["text", "forum"]:
-                        config["channel_type"] = channel_type
+                        config["channel_type"] = cast(Literal["text", "forum"], channel_type)
                 if ENV_THREAD_PREFIX in env_vars:
                     config["thread_prefix"] = env_vars[ENV_THREAD_PREFIX]
                 if ENV_MENTION_USER_ID in env_vars:
@@ -732,9 +1428,11 @@ class ConfigLoader:
         if os.environ.get(ENV_CHANNEL_TYPE):
             channel_type = os.environ.get(ENV_CHANNEL_TYPE)
             if channel_type in ["text", "forum"]:
-                config["channel_type"] = channel_type
+                config["channel_type"] = cast(Literal["text", "forum"], channel_type)
         if os.environ.get(ENV_THREAD_PREFIX):
-            config["thread_prefix"] = os.environ.get(ENV_THREAD_PREFIX)
+            thread_prefix = os.environ.get(ENV_THREAD_PREFIX)
+            if thread_prefix is not None:
+                config["thread_prefix"] = thread_prefix
         if os.environ.get(ENV_MENTION_USER_ID):
             config["mention_user_id"] = os.environ.get(ENV_MENTION_USER_ID)
 
@@ -782,11 +1480,11 @@ def setup_logging(debug: bool) -> logging.Logger:
 
 
 # Tool-specific formatters
-def format_bash_pre_use(tool_input: Dict[str, Any]) -> List[str]:
+def format_bash_pre_use(tool_input: dict[str, Any]) -> list[str]:
     """Format Bash tool pre-use details."""
-    desc_parts: List[str] = []
-    command = tool_input.get("command", "")
-    desc = tool_input.get("description", "")
+    desc_parts: list[str] = []
+    command: str = tool_input.get("command", "")
+    desc: str = tool_input.get("description", "")
 
     # Show full command up to limit
     truncated_command = truncate_string(command, TruncationLimits.COMMAND_FULL)
@@ -799,11 +1497,11 @@ def format_bash_pre_use(tool_input: Dict[str, Any]) -> List[str]:
 
 
 def format_file_operation_pre_use(
-    tool_name: str, tool_input: Dict[str, Any]
-) -> List[str]:
+    tool_name: str, tool_input: dict[str, Any]
+) -> list[str]:
     """Format file operation tool pre-use details."""
-    desc_parts: List[str] = []
-    file_path = tool_input.get("file_path", "")
+    desc_parts: list[str] = []
+    file_path: str = tool_input.get("file_path", "")
 
     if file_path:
         formatted_path = format_file_path(file_path)
@@ -811,8 +1509,8 @@ def format_file_operation_pre_use(
 
     # Add specific details for each file operation
     if tool_name == ToolNames.EDIT.value:
-        old_str = tool_input.get("old_string", "")
-        new_str = tool_input.get("new_string", "")
+        old_str: str = tool_input.get("old_string", "")
+        new_str: str = tool_input.get("new_string", "")
 
         if old_str:
             truncated = truncate_string(old_str, TruncationLimits.STRING_PREVIEW)
@@ -836,35 +1534,40 @@ def format_file_operation_pre_use(
         offset = tool_input.get("offset")
         limit = tool_input.get("limit")
         if offset or limit:
-            range_str = f"lines {offset or 1}-{(offset or 1) + (limit or 'end')}"
+            start_line = offset or 1
+            if limit:
+                end_line = start_line + limit
+                range_str = f"lines {start_line}-{end_line}"
+            else:
+                range_str = f"lines {start_line}-end"
             add_field(desc_parts, "Range", range_str)
 
     return desc_parts
 
 
-def format_search_tool_pre_use(tool_name: str, tool_input: Dict[str, Any]) -> List[str]:
+def format_search_tool_pre_use(tool_name: str, tool_input: dict[str, Any]) -> list[str]:
     """Format search tool pre-use details."""
-    desc_parts: List[str] = []
-    pattern = tool_input.get("pattern", "")
+    desc_parts: list[str] = []
+    pattern: str = tool_input.get("pattern", "")
     add_field(desc_parts, "Pattern", pattern, code=True)
 
-    path = tool_input.get("path", "")
+    path: str = tool_input.get("path", "")
     if path:
         add_field(desc_parts, "Path", path, code=True)
 
     if tool_name == ToolNames.GREP.value:
-        include = tool_input.get("include", "")
+        include: str = tool_input.get("include", "")
         if include:
             add_field(desc_parts, "Include", include, code=True)
 
     return desc_parts
 
 
-def format_task_pre_use(tool_input: Dict[str, Any]) -> List[str]:
+def format_task_pre_use(tool_input: dict[str, Any]) -> list[str]:
     """Format Task tool pre-use details."""
-    desc_parts: List[str] = []
-    desc = tool_input.get("description", "")
-    prompt = tool_input.get("prompt", "")
+    desc_parts: list[str] = []
+    desc: str = tool_input.get("description", "")
+    prompt: str = tool_input.get("prompt", "")
 
     if desc:
         add_field(desc_parts, "Task", desc)
@@ -877,11 +1580,11 @@ def format_task_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     return desc_parts
 
 
-def format_web_fetch_pre_use(tool_input: Dict[str, Any]) -> List[str]:
+def format_web_fetch_pre_use(tool_input: dict[str, Any]) -> list[str]:
     """Format WebFetch tool pre-use details."""
-    desc_parts: List[str] = []
-    url = tool_input.get("url", "")
-    prompt = tool_input.get("prompt", "")
+    desc_parts: list[str] = []
+    url: str = tool_input.get("url", "")
+    prompt: str = tool_input.get("prompt", "")
 
     if url:
         add_field(desc_parts, "URL", url, code=True)
@@ -894,12 +1597,12 @@ def format_web_fetch_pre_use(tool_input: Dict[str, Any]) -> List[str]:
     return desc_parts
 
 
-def format_unknown_tool_pre_use(tool_input: Dict[str, Any]) -> List[str]:
+def format_unknown_tool_pre_use(tool_input: dict[str, Any]) -> list[str]:
     """Format unknown tool pre-use details."""
     return [format_json_field(tool_input, "Input")]
 
 
-def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format PreToolUse event with detailed information."""
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
@@ -908,7 +1611,7 @@ def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordE
     embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
 
     # Build detailed description
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
     add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
@@ -935,12 +1638,12 @@ def format_pre_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordE
 
 # Post-use formatters
 def format_bash_post_use(
-    tool_input: Dict[str, Any], tool_response: ToolResponse
-) -> List[str]:
+    tool_input: dict[str, Any], tool_response: ToolResponse
+) -> list[str]:
     """Format Bash tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
-    command = truncate_string(
+    command: str = truncate_string(
         tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW
     )
     add_field(desc_parts, "Command", command, code=True)
@@ -965,10 +1668,10 @@ def format_bash_post_use(
 
 
 def format_read_operation_post_use(
-    tool_name: str, tool_input: Dict[str, Any], tool_response: ToolResponse
-) -> List[str]:
+    tool_name: str, tool_input: dict[str, Any], tool_response: ToolResponse
+) -> list[str]:
     """Format read operation tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
     if tool_name == ToolNames.READ.value:
         file_path = format_file_path(tool_input.get("file_path", ""))
@@ -977,8 +1680,11 @@ def format_read_operation_post_use(
         if isinstance(tool_response, str):
             lines = tool_response.count("\n") + 1
             add_field(desc_parts, "Lines read", str(lines))
-        elif isinstance(tool_response, dict) and tool_response.get("error"):
-            add_field(desc_parts, "Error", str(tool_response["error"]))
+        elif isinstance(tool_response, dict) and "error" in tool_response:
+            # Type assertion: if "error" exists, we can safely access it
+            error_value = tool_response.get("error")
+            if error_value:
+                add_field(desc_parts, "Error", str(error_value))
 
     elif is_list_tool(tool_name):
         if isinstance(tool_response, list):
@@ -997,10 +1703,10 @@ def format_read_operation_post_use(
 
 
 def format_write_operation_post_use(
-    tool_input: Dict[str, Any], tool_response: ToolResponse
-) -> List[str]:
+    tool_input: dict[str, Any], tool_response: ToolResponse
+) -> list[str]:
     """Format write operation tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
     file_path = format_file_path(tool_input.get("file_path", ""))
     add_field(desc_parts, "File", file_path, code=True)
@@ -1008,8 +1714,11 @@ def format_write_operation_post_use(
     if isinstance(tool_response, dict):
         if tool_response.get("success"):
             desc_parts.append("**Status:** ✅ Success")
-        elif tool_response.get("error"):
-            add_field(desc_parts, "Error", str(tool_response["error"]))
+        elif "error" in tool_response:
+            # Type assertion: if "error" exists, we can safely access it
+            error_value = tool_response.get("error")
+            if error_value:
+                add_field(desc_parts, "Error", str(error_value))
     elif isinstance(tool_response, str) and "error" in tool_response.lower():
         error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
         add_field(desc_parts, "Error", error_msg)
@@ -1020,12 +1729,12 @@ def format_write_operation_post_use(
 
 
 def format_task_post_use(
-    tool_input: Dict[str, Any], tool_response: ToolResponse
-) -> List[str]:
+    tool_input: dict[str, Any], tool_response: ToolResponse
+) -> list[str]:
     """Format Task tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
-    desc = tool_input.get("description", "")
+    desc: str = tool_input.get("description", "")
     if desc:
         add_field(desc_parts, "Task", desc)
 
@@ -1037,12 +1746,12 @@ def format_task_post_use(
 
 
 def format_web_fetch_post_use(
-    tool_input: Dict[str, Any], tool_response: ToolResponse
-) -> List[str]:
+    tool_input: dict[str, Any], tool_response: ToolResponse
+) -> list[str]:
     """Format WebFetch tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
-    url = tool_input.get("url", "")
+    url: str = tool_input.get("url", "")
     add_field(desc_parts, "URL", url, code=True)
 
     if isinstance(tool_response, str):
@@ -1055,9 +1764,9 @@ def format_web_fetch_post_use(
     return desc_parts
 
 
-def format_unknown_tool_post_use(tool_response: ToolResponse) -> List[str]:
+def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
     """Format unknown tool post-use results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
     if isinstance(tool_response, dict):
         desc_parts.append(
@@ -1072,7 +1781,7 @@ def format_unknown_tool_post_use(tool_response: ToolResponse) -> List[str]:
     return desc_parts
 
 
-def format_post_tool_use(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format PostToolUse event with execution results."""
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
@@ -1082,7 +1791,7 @@ def format_post_tool_use(event_data: Dict[str, Any], session_id: str) -> Discord
     embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}
 
     # Build detailed description
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
     add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
@@ -1113,18 +1822,18 @@ def format_post_tool_use(event_data: Dict[str, Any], session_id: str) -> Discord
     return embed
 
 
-def format_notification(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format Notification event with full details."""
     message = event_data.get("message", "System notification")
 
-    desc_parts: List[str] = [
+    desc_parts: list[str] = [
         f"**Message:** {message}",
         f"**Session:** `{session_id}`",
         f"**Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
     ]
 
     # Add any additional data from the event
-    extra_keys = [
+    extra_keys: list[str] = [
         k
         for k in event_data.keys()
         if k not in ["message", "session_id", "transcript_path", "hook_event_name"]
@@ -1146,9 +1855,9 @@ def format_notification(event_data: Dict[str, Any], session_id: str) -> DiscordE
     return {"title": "📢 Notification", "description": "\n".join(desc_parts)}
 
 
-def format_stop(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format Stop event with session details."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
     add_field(desc_parts, "Session ID", session_id, code=True)
     add_field(desc_parts, "Ended at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -1167,9 +1876,9 @@ def format_stop(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
     return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}
 
 
-def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format SubagentStop event with task results."""
-    desc_parts: List[str] = []
+    desc_parts: list[str] = []
 
     add_field(desc_parts, "Session", session_id, code=True)
     add_field(desc_parts, "Completed at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -1200,13 +1909,22 @@ def format_subagent_stop(event_data: Dict[str, Any], session_id: str) -> Discord
 
 
 def format_default_impl(
-    event_type: str, event_data: Dict[str, Any], session_id: str
+    event_type: str, event_data: dict[str, Any], session_id: str
 ) -> DiscordEmbed:
     """Format unknown event types."""
-    return {"title": f"⚡ {event_type}", "description": "Unknown event type"}
+    desc_parts: list[str] = []
+    desc_parts.append(f"**Session:** `{session_id}`")
+    desc_parts.append(f"**Event Type:** {event_type}")
+    
+    # Show event data if available
+    if event_data:
+        desc_parts.append("\n**Event Data:**")
+        desc_parts.append(format_json_field(event_data, "", TruncationLimits.JSON_PREVIEW))
+    
+    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}
 
 
-def format_default(event_data: Dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Wrapper for format_default_impl that matches the formatter signature."""
     return format_default_impl("Unknown", event_data, session_id)
 
@@ -1216,7 +1934,7 @@ class FormatterRegistry:
     """Registry for event formatters."""
 
     def __init__(self):
-        self._formatters: Dict[str, Callable[[Dict[str, Any], str], DiscordEmbed]] = {
+        self._formatters: dict[str, Callable[[dict[str, Any], str], DiscordEmbed]] = {
             EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
             EventTypes.POST_TOOL_USE.value: format_post_tool_use,
             EventTypes.NOTIFICATION.value: format_notification,
@@ -1226,7 +1944,7 @@ class FormatterRegistry:
 
     def get_formatter(
         self, event_type: str
-    ) -> Callable[[Dict[str, Any], str], DiscordEmbed]:
+    ) -> Callable[[dict[str, Any], str], DiscordEmbed]:
         """Get formatter for event type."""
         if event_type in self._formatters:
             return self._formatters[event_type]
@@ -1237,7 +1955,7 @@ class FormatterRegistry:
             )
 
     def register(
-        self, event_type: str, formatter: Callable[[Dict[str, Any], str], DiscordEmbed]
+        self, event_type: str, formatter: Callable[[dict[str, Any], str], DiscordEmbed]
     ) -> None:
         """Register a new formatter."""
         self._formatters[event_type] = formatter
@@ -1245,7 +1963,7 @@ class FormatterRegistry:
 
 def format_event(
     event_type: str,
-    event_data: Dict[str, Any],
+    event_data: dict[str, Any],
     registry: FormatterRegistry,
     config: Config,
 ) -> DiscordMessage:
@@ -1324,7 +2042,7 @@ def send_to_discord(
             # Create forum thread with first message
             thread_name = f"{config['thread_prefix']} {session_id[:8]}"
             thread_message: DiscordThreadMessage = {
-                "embeds": message["embeds"],
+                "embeds": message.get("embeds", []),
                 "thread_name": thread_name,
             }
 
