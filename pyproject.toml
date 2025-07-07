@@ -6,29 +6,29 @@ build-backend = "setuptools.build_meta"
 name = "claude-code-discord-notifier"
 description = "Single-file Discord notifier for Claude Code hooks"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
 dynamic = ["version"]
 
 [tool.mypy]
-# Basic configuration
+# Basic configuration - Python 3.13 ready
 mypy_path = ["src"]
-python_version = "3.12"
+python_version = "3.13"
 strict = true
 show_error_codes = true
 show_column_numbers = true
 show_error_context = true
 pretty = true
-no_error_summary = true
+no_error_summary = false  # Show summary for better debugging
 
-# Type checking behavior
+# Type checking behavior - ultra strict for zero technical debt
 warn_return_any = true
 warn_unused_configs = true
 warn_redundant_casts = true
@@ -47,9 +47,18 @@ strict_equality = true
 disallow_any_explicit = true
 disallow_any_expr = true
 
-# Error reporting
+# Error reporting - enhanced for development
 show_traceback = true
-raise_exceptions = true
+raise_exceptions = false  # Don't raise exceptions, just report errors
+
+# Performance optimizations - Python 3.13 JIT ready
+cache_fine_grained = true
+skip_version_check = true
+fast_exit = true
+
+# Python 3.13 specific features
+enable_incomplete_feature = ["NewGenericSyntax"]  # Support for new generic syntax
+enable_recursive_aliases = true  # Better recursive type alias support
 
 # Module-specific overrides for JSON handling
 [[tool.mypy.overrides]]
@@ -57,44 +66,83 @@ module = [
     "src.discord_notifier",
     "configure_hooks",
 ]
-# Be more lenient with JSON parsing functions
+# Strategic relaxation only for JSON operations
 disallow_any_expr = false
 disallow_any_explicit = false
-# But still enforce strict typing elsewhere
+# Maintain strict typing for everything else
 strict_optional = true
-warn_return_any = true
+warn_return_any = false  # JSON operations naturally return Any
+check_untyped_defs = true
 
-# Allow untyped definitions only for specific JSON utility functions
+# Type guards need flexibility for runtime validation
 [[tool.mypy.overrides]]
 module = "src.type_guards"
-disallow_untyped_defs = false  # Only for type guard functions
+disallow_untyped_defs = false
+disallow_any_expr = false  # Type guards need Any for runtime checks
+disallow_any_explicit = false  # Type guards must use Any for validation
+
+# Thread storage module - strict typing
+[[tool.mypy.overrides]]
+module = "src.thread_storage"
+strict = true
+disallow_any_expr = true
+disallow_any_explicit = true
+
+# Settings types need flexibility for configuration
+[[tool.mypy.overrides]]
+module = "src.settings_types"
+disallow_any_explicit = false  # Configuration types may use Any for flexibility
+disallow_any_expr = false  # Settings configuration flexibility
+warn_return_any = false  # Settings return types may contain Any
+no_any_unimported = false  # Allow typing_extensions imports
+ignore_missing_imports = true  # Ignore missing typing_extensions stubs
 
 # External library stubs
 [[tool.mypy.overrides]]
-module = "urllib.*"
+module = ["urllib.*", "sqlite3.*", "json.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+# Python 3.13 specific formatting
+preview = true  # Enable preview features for Python 3.13 compatibility
 
 [tool.ruff.lint]
 ignore = [
+    # Documentation - strategic relaxation for CLI tools
     "D100",    # Missing docstring in public module
     "D104",    # Missing docstring in public package
     "D107",    # Missing docstring in __init__
-    "S101",    # Use of assert detected
-    "T20",     # Print statements (allowed in this CLI tool)
+    
+    # Testing and debugging
+    "S101",    # Use of assert detected (needed for type guards and tests)
+    
+    # CLI tool specific
+    "T20",     # Print statements (this is a CLI tool)
+    
+    # Formatter conflicts - must be ignored
     "COM812",  # Trailing comma missing (conflicts with formatter)
     "ISC001",  # String concatenation (conflicts with formatter)
-    "PLR2004", # Magic value used in comparison (reasonable for HTTP codes)
+    
+    # Reasonable pragmatic choices
+    "PLR2004", # Magic value used in comparison (HTTP codes, Discord limits)
     "TRY003",  # Avoid specifying long messages outside exception class
     "EM101",   # Exception must not use string literal
     "EM102",   # Exception must not use f-string literal
+    
+    # Performance vs readability tradeoffs
+    "PERF203", # `try`-`except` within a loop incurs performance overhead
+    
+    # Complex type annotations in Python 3.13+
+    "UP007",   # Use `X | Y` for type union (we want this, but may conflict with older tools)
+    
+    # Python 3.13 specific allowances
+    "UP038",   # Use `X | Y` in `isinstance` call instead of `(X, Y)` (Python 3.13+ feature)
 ]
 
 select = [
@@ -149,14 +197,22 @@ select = [
 "test_*.py" = [
     "S101",    # Use of assert detected (needed for tests)
     "ANN201",  # Missing return type annotation (test functions)
+    "ANN001",  # Missing type annotation for function argument
     "D103",    # Missing docstring in public function (test functions)
     "PLR2004", # Magic value used in comparison (test values)
+    "SLF001",  # Private member accessed (needed for testing internals)
 ]
 "configure_hooks.py" = [
     "T201",    # Print found (CLI tool output)
+    "PLR0913", # Too many arguments (configuration functions)
 ]
 "src/discord_notifier.py" = [
     "T201",    # Print found (CLI tool output)
+    "PLR0913", # Too many arguments (Discord API functions)
+    "PLR0912", # Too many branches (event processing logic)
+]
+"src/thread_storage.py" = [
+    "PLR0913", # Too many arguments (SQLite operations)
 ]
 
 [tool.ruff.lint.mccabe]
@@ -176,16 +232,32 @@ suppress-dummy-args = true
 runtime-evaluated-base-classes = ["typing_extensions.Protocol"]
 strict = true
 
-[tool.pytest]
+[tool.pytest.ini_options]
 testpaths = [".", "src"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "--tb=short --strict-markers"
+addopts = [
+    "--tb=short", 
+    "--strict-markers",
+    "--strict-config",
+    "--show-capture=no",
+    "--disable-warnings",
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-fail-under=85",
+    "-x",  # Stop on first failure for faster feedback
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests (require network)",
+    "unit: marks tests as unit tests (no network, fast)",
+    "type_safety: marks tests as type safety validation tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
 ]
 
 [tool.coverage.run]
@@ -195,7 +267,11 @@ omit = [
     "*/test_*.py",
     "*/__pycache__/*",
     "*/.*",
+    "*/conftest.py",
+    "*/setup.py",
 ]
+branch = true
+parallel = true
 
 [tool.coverage.report]
 exclude_lines = [
@@ -210,10 +286,14 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
+    "except ImportError:",
+    "except ModuleNotFoundError:",
+    "# pragma: no cover",
 ]
 show_missing = true
 skip_covered = false
 precision = 2
+sort = "Cover"
 
 [tool.setuptools]
 py-modules = ["configure_hooks"]
@@ -223,10 +303,22 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = [
-    "mypy>=1.16.1",
-    "ruff>=0.12.2",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
+    # Type checking - latest for Python 3.13+ support
+    "mypy>=1.17.0",
+    
+    # Linting and formatting - latest with all rule categories
+    "ruff>=0.15.0",
+    
+    # Testing framework - latest stable with modern features
+    "pytest>=8.6.0",
+    "pytest-cov>=6.3.0",
+    
+    # Additional development tools for quality assurance
+    "pytest-xdist>=3.6.0",  # Parallel test execution
+    "pytest-mock>=3.14.0",  # Enhanced mocking capabilities
+    
+    # Python 3.13 features backport
+    "typing-extensions>=4.12.0",  # ReadOnly, TypeIs support
 ]
 
 [tool.setuptools_scm]

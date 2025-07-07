@@ -6,7 +6,12 @@ dictionary that's loaded from JSON, ensuring type safety when working with
 Claude Code's hook system configuration.
 """
 
-from typing import Any, Literal, TypedDict
+from typing import (
+    Any,
+    Literal,
+    ReadOnly,  # Python 3.13 features via backport
+    TypedDict,
+)
 
 
 # Hook-related types
@@ -87,6 +92,54 @@ class NonToolHookConfig(TypedDict):
 
 # Union type for all hook configurations
 AnyHookConfig = ToolHookConfig | NonToolHookConfig
+
+
+# Python 3.13 ReadOnly TypedDict examples
+class SecureClaudeSettings(TypedDict, total=False):
+    """Enhanced Claude settings with ReadOnly protection for critical values.
+
+    This demonstrates Python 3.13's ReadOnly feature for protecting
+    configuration values that should not be modified after initialization.
+    """
+
+    # Critical settings that should never be modified
+    version: ReadOnly[str]  # Application version - immutable
+    installation_id: ReadOnly[str]  # Unique installation identifier
+
+    # Mutable configuration
+    hooks: HooksDict
+    theme: Literal["light", "dark", "auto"]
+    editorFontSize: int
+
+    # Plugin settings with ReadOnly metadata
+    plugins: ReadOnly[dict[str, Any]]  # Plugin registry - read-only
+
+    # User preferences - mutable
+    preferences: dict[str, Any]
+
+
+class DiscordNotifierConfig(TypedDict, total=False):
+    """Discord notifier configuration with ReadOnly safety.
+
+    Example of using ReadOnly to protect sensitive configuration values
+    while allowing mutable runtime settings.
+    """
+
+    # Immutable configuration (set once during setup)
+    webhook_url: ReadOnly[str]  # Discord webhook URL - never change
+    bot_token: ReadOnly[str | None]  # Bot token - security critical
+    channel_id: ReadOnly[str | None]  # Channel ID - infrastructure setting
+
+    # Mutable runtime settings
+    enabled_events: list[str] | None
+    disabled_events: list[str] | None
+    mention_user_id: str | None
+    debug: bool
+
+    # Thread configuration - some readonly, some mutable
+    use_threads: bool  # Can be toggled
+    thread_prefix: str  # Can be customized
+    channel_type: ReadOnly[Literal["text", "forum"]]  # Infrastructure setting
 
 
 # Example usage type guards

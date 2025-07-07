@@ -16,6 +16,12 @@ and static type narrowing for improved type safety.
 import json
 from typing import Any, TypeGuard, cast
 
+# Python 3.13 enhanced type narrowing
+try:
+    from typing import TypeIs  # Python 3.13+
+except ImportError:
+    pass  # Fallback for older versions
+
 # Import Discord notifier types
 from .discord_notifier import (
     BaseEventData,
