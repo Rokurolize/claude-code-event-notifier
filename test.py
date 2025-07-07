@@ -120,7 +120,7 @@ def test_notifier():
 
         # Set event type in environment
         env = os.environ.copy()
-        env["CLAUDE_HOOK_EVENT"] = event["type"]
+        env["CLAUDE_HOOK_EVENT"] = str(event["type"])
         env["DISCORD_DEBUG"] = "1"  # Enable debug for testing
 
         # Run the notifier
