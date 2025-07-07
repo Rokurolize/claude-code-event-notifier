@@ -129,18 +129,23 @@ def main():
         ]
 
         # Add new hook
-        hook_config = {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": f"CLAUDE_HOOK_EVENT={event} python3 {target_script}",
-                }
-            ]
+        hook_entry = {
+            "type": "command",
+            "command": f"CLAUDE_HOOK_EVENT={event} python3 {target_script}",
         }
-
-        # Add matcher for tool events
+        
+        # Create hook configuration with proper structure
         if event in ["PreToolUse", "PostToolUse"]:
-            hook_config["matcher"] = ".*"
+            # For tool events, include matcher at the correct level
+            hook_config = {
+                "hooks": [hook_entry],
+                "matcher": ".*"
+            }
+        else:
+            # For other events, just wrap in hooks array
+            hook_config = {
+                "hooks": [hook_entry]
+            }
 
         settings["hooks"][event].append(hook_config)
 
