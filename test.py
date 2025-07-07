@@ -55,6 +55,35 @@ def test_notifier():
                 "message": "This is a test notification from the simplified notifier",
             },
         },
+        # Additional notification tests for mention feature
+        {
+            "type": "Notification",
+            "data": {
+                "session_id": "test-mention-short",
+                "message": "Quick test",
+            },
+        },
+        {
+            "type": "Notification",
+            "data": {
+                "session_id": "test-mention-long",
+                "message": "🚀 Build completed successfully! All tests passed (42/42). Ready for deployment. This is a longer notification message to test how it appears in Windows Discord notifications.",
+            },
+        },
+        {
+            "type": "Notification",
+            "data": {
+                "session_id": "test-mention-special",
+                "message": "Test @here with #channel mentions and special chars: <>&\"'",
+            },
+        },
+        {
+            "type": "Notification",
+            "data": {
+                "session_id": "test-mention-empty",
+                # Missing message - should use default "System notification"
+            },
+        },
         {"type": "Stop", "data": {"session_id": "test-session-123"}},
         {
             "type": "SubagentStop",

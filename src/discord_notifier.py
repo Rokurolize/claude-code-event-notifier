@@ -1283,12 +1283,15 @@ def format_event(
     # Create message with embeds
     message: DiscordMessage = {"embeds": [embed]}
 
-    # Add user mention for Notification events if configured
-    if event_type == EventTypes.NOTIFICATION.value and config.get("mention_user_id"):
-        # Extract notification message from event data
-        notification_message = event_data.get("message", "System notification")
+    # Add user mention for Notification and Stop events if configured
+    if event_type in [EventTypes.NOTIFICATION.value, EventTypes.STOP.value] and config.get("mention_user_id"):
+        # Extract appropriate message based on event type
+        if event_type == EventTypes.NOTIFICATION.value:
+            display_message = event_data.get("message", "System notification")
+        else:  # Stop event
+            display_message = "Session ended"
         # Include both mention and message for better Windows notification visibility
-        message["content"] = f"<@{config['mention_user_id']}> {notification_message}"
+        message["content"] = f"<@{config['mention_user_id']}> {display_message}"
 
     return message
 
