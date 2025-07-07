@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Claude Code Discord Notifier - Comprehensive event notification system.
+"""Claude Code Discord Notifier - Comprehensive event notification system.
 
 This module provides a complete Discord notification system for Claude Code hook events.
 It processes events from stdin, formats them into rich Discord embeds, and sends them
@@ -25,9 +24,9 @@ Architecture:
 
 Usage:
     This module is designed to be called by Claude Code's hook system:
-    
+
     $ CLAUDE_HOOK_EVENT=PreToolUse python3 discord_notifier.py < event.json
-    
+
     Configuration is loaded from:
     1. Environment variables (highest priority)
     2. ~/.claude/hooks/.env.discord file
@@ -54,7 +53,7 @@ Thread Safety:
 
 Authors:
     Claude Code Team
-    
+
 Version:
     2.0.0 - Enhanced with comprehensive type system and thread support
 """
@@ -63,38 +62,35 @@ import json
 import logging
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
+
+# TypeGuard and NotRequired are now available in Python 3.12+ typing module
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
-    TypedDict,
-    Literal,
-    Protocol,
     Final,
+    Literal,
+    NotRequired,
+    Protocol,
+    TypedDict,
+    TypeGuard,
     cast,
-    Optional,
-    Union,
 )
-from collections.abc import Callable
-
-try:
-    from typing import TypeGuard, NotRequired  # type: ignore[attr-defined]
-except (ImportError, AttributeError):
-    from typing_extensions import TypeGuard, NotRequired
-from enum import Enum
-from dataclasses import dataclass
 
 
 # Custom exceptions
 class DiscordNotifierError(Exception):
     """Base exception for Discord notifier.
-    
+
     This is the root exception class for all Discord notifier-related errors.
     It provides a common base for exception handling and allows catching all
     notifier-specific errors with a single except clause.
-    
+
     Usage:
         try:
             # Discord notifier operations
@@ -103,48 +99,44 @@ class DiscordNotifierError(Exception):
             logger.error(f"Discord notifier error: {e}")
     """
 
-    pass
-
 
 class ConfigurationError(DiscordNotifierError):
     """Configuration related errors.
-    
+
     Raised when there are issues with configuration loading, validation,
     or when required configuration values are missing or invalid.
-    
+
     Common causes:
         - Missing webhook URL or bot credentials
         - Invalid Discord user IDs for mentions
         - Malformed .env.discord file
         - Thread configuration inconsistencies
-    
+
     Args:
         message: Descriptive error message
-        
+
     Example:
         >>> if not config.get('webhook_url'):
         ...     raise ConfigurationError("No webhook URL configured")
     """
 
-    pass
-
 
 class DiscordAPIError(DiscordNotifierError):
     """Discord API related errors.
-    
+
     Raised when Discord API calls fail, including HTTP errors, network issues,
     or API response validation failures.
-    
+
     Common causes:
         - Invalid webhook URL or bot token
         - Network connectivity issues
         - Discord API rate limiting
         - Invalid channel IDs or permissions
         - Thread creation failures
-    
+
     Args:
         message: Descriptive error message including HTTP status if available
-        
+
     Example:
         >>> try:
         ...     response = urllib.request.urlopen(request)
@@ -152,24 +144,22 @@ class DiscordAPIError(DiscordNotifierError):
         ...     raise DiscordAPIError(f"HTTP {e.code}: {e.reason}")
     """
 
-    pass
-
 
 class EventProcessingError(DiscordNotifierError):
     """Event processing related errors.
-    
+
     Raised when there are issues processing Claude Code events, including
     JSON parsing errors, missing required fields, or formatting failures.
-    
+
     Common causes:
         - Malformed JSON input from stdin
         - Missing required event fields
         - Invalid event data structure
         - Event formatting failures
-    
+
     Args:
         message: Descriptive error message
-        
+
     Example:
         >>> try:
         ...     event_data = json.loads(stdin_input)
@@ -177,31 +167,83 @@ class EventProcessingError(DiscordNotifierError):
         ...     raise EventProcessingError(f"Invalid JSON: {e}")
     """
 
-    pass
-
 
 class InvalidEventTypeError(EventProcessingError):
     """Invalid event type error.
-    
+
     Raised when an unsupported or invalid event type is encountered.
     While the system handles unknown event types gracefully, this error
     can be used for strict validation scenarios.
-    
+
     Common causes:
         - Typos in CLAUDE_HOOK_EVENT environment variable
         - New event types not yet supported
         - Corrupted event data
-    
+
     Args:
         message: Descriptive error message including the invalid event type
-        
+
     Example:
         >>> event_type = os.environ.get('CLAUDE_HOOK_EVENT')
         >>> if event_type and not is_valid_event_type(event_type):
         ...     raise InvalidEventTypeError(f"Unknown event type: {event_type}")
     """
 
-    pass
+
+class ThreadManagementError(DiscordNotifierError):
+    """Thread management related errors.
+
+    Raised when there are issues with Discord thread operations,
+    including creation, validation, or state management failures.
+
+    Common causes:
+        - Thread creation failures due to permissions
+        - Invalid thread IDs or archived threads
+        - Thread storage database errors
+        - Discord API thread lookup failures
+
+    Args:
+        message: Descriptive error message
+        session_id: Optional session ID associated with the thread
+        thread_id: Optional thread ID that caused the error
+
+    Example:
+        >>> if not thread_details:
+        ...     raise ThreadManagementError(f"Thread {thread_id} not found", thread_id=thread_id)
+    """
+
+    def __init__(self, message: str, session_id: str | None = None, thread_id: str | None = None):
+        super().__init__(message)
+        self.session_id = session_id
+        self.thread_id = thread_id
+
+
+class ThreadStorageError(DiscordNotifierError):
+    """Thread storage persistence errors.
+
+    Raised when there are issues with persistent thread storage operations,
+    including database connection failures or data corruption.
+
+    Common causes:
+        - SQLite database file permissions
+        - Database schema corruption
+        - Disk space or file system issues
+        - Invalid thread record data
+
+    Args:
+        message: Descriptive error message
+        operation: Storage operation that failed (store, retrieve, remove, etc.)
+
+    Example:
+        >>> try:
+        ...     storage.store_thread(session_id, thread_id, ...)
+        ... except sqlite3.Error as e:
+        ...     raise ThreadStorageError(f"Failed to store thread: {e}", operation="store")
+    """
+
+    def __init__(self, message: str, operation: str | None = None):
+        super().__init__(message)
+        self.operation = operation
 
 
 # ==============================================================================
@@ -212,90 +254,93 @@ class InvalidEventTypeError(EventProcessingError):
 # 1. BASE FOUNDATION TYPES
 # ------------------------------------------------------------------------------
 
+
 class BaseField(TypedDict):
     """Base field structure for common properties.
-    
+
     This is the root of the TypedDict hierarchy, providing a common base
     for all field types in the system. It serves as a foundation for
     composition and inheritance patterns.
-    
+
     Usage:
         This class is primarily used as a base for other TypedDict classes
         and should not be instantiated directly.
-        
+
     Type Safety:
         Being a TypedDict, this provides compile-time type checking when
         used with type checkers like mypy or pyright.
     """
-    pass
 
 
 class TimestampedField(BaseField):
     """Fields that include timestamps.
-    
+
     Extends BaseField to add optional timestamp support. Timestamps are
     stored as ISO format strings and are used for Discord embed metadata.
-    
+
     Attributes:
         timestamp: Optional ISO format timestamp string (e.g., "2023-12-07T10:30:00Z")
-        
+
     Usage:
         class MyEventData(TimestampedField):
             event_type: str
-            
+
         data: MyEventData = {
             "event_type": "test",
             "timestamp": datetime.now().isoformat()
         }
     """
+
     timestamp: NotRequired[str]
 
 
 class SessionAware(BaseField):
     """Fields that are session-aware.
-    
+
     Extends BaseField to add session tracking capabilities. All Claude Code
     events are associated with a session, which is used for thread management
     and event correlation.
-    
+
     Attributes:
         session_id: Unique identifier for the Claude Code session
-        
+
     Usage:
         Session IDs are typically generated by Claude Code and passed in
         event data. They are used for:
         - Thread creation and management
         - Event correlation
         - Session-specific caching
-        
+
     Example:
         >>> session_data: SessionAware = {"session_id": "abc123def456"}
         >>> thread_name = f"Session {session_data['session_id'][:8]}"
     """
+
     session_id: str
 
 
 class PathAware(BaseField):
     """Fields that include file paths.
-    
+
     Extends BaseField to add file path support. Used by tool inputs that
     operate on files, providing a consistent way to handle file paths
     across different tool types.
-    
+
     Attributes:
         file_path: Optional absolute or relative file path
-        
+
     Usage:
         File paths are automatically formatted for display using the
         format_file_path() utility function, which attempts to show
         relative paths when possible.
-        
+
     Example:
         >>> file_data: PathAware = {
         ...     "file_path": "/home/user/project/src/main.py"
         ... }
         >>> display_path = format_file_path(file_data["file_path"])
     """
+
     file_path: NotRequired[str]
 
 
@@ -303,77 +348,82 @@ class PathAware(BaseField):
 # 2. DISCORD API TYPES HIERARCHY
 # ------------------------------------------------------------------------------
 
+
 class DiscordFooter(TypedDict):
     """Discord footer structure.
-    
+
     Represents the footer section of a Discord embed. Footers appear at the
     bottom of embeds and typically contain metadata or contextual information.
-    
+
     Attributes:
         text: Footer text content (max 2048 characters per Discord API)
-        
+
     Usage:
         Footers are used to display session information and event metadata:
-        
+
         >>> footer: DiscordFooter = {
         ...     "text": "Session: abc123de | Event: PreToolUse"
         ... }
     """
+
     text: str
 
 
 class DiscordFieldBase(TypedDict):
     """Base Discord field structure.
-    
+
     Represents the basic structure of a Discord embed field. Fields are
     key-value pairs that appear in the embed body and provide structured
     information display.
-    
+
     Attributes:
         name: Field name/label (max 256 characters per Discord API)
         value: Field value/content (max 1024 characters per Discord API)
-        
+
     Usage:
         This is the base class for Discord fields. Use DiscordField for
         full functionality including inline support.
-        
+
     Example:
         >>> field_base: DiscordFieldBase = {
         ...     "name": "Command",
         ...     "value": "git status"
         ... }
     """
+
     name: str
     value: str
 
 
 class DiscordField(DiscordFieldBase):
     """Discord field with optional inline support.
-    
+
     Extends DiscordFieldBase to add inline positioning support. Inline fields
     appear side-by-side in the embed, allowing for more compact layouts.
-    
+
     Attributes:
         name: Field name/label (inherited from DiscordFieldBase)
         value: Field value/content (inherited from DiscordFieldBase)
         inline: Optional boolean to display field inline (default: False)
-        
+
     Usage:
         >>> field: DiscordField = {
         ...     "name": "Status",
         ...     "value": "Success",
         ...     "inline": True
         ... }
-        
+
     Layout:
         - inline=True: Fields appear side-by-side (up to 3 per row)
         - inline=False: Fields appear stacked vertically
     """
+
     inline: NotRequired[bool]
 
 
 class DiscordEmbedBase(TypedDict):
     """Base Discord embed structure."""
+
     title: NotRequired[str]
     description: NotRequired[str]
     color: NotRequired[int]
@@ -381,22 +431,26 @@ class DiscordEmbedBase(TypedDict):
 
 class DiscordEmbed(DiscordEmbedBase, TimestampedField):
     """Complete Discord embed structure."""
+
     footer: NotRequired[DiscordFooter]
     fields: NotRequired[list[DiscordField]]
 
 
 class DiscordMessageBase(TypedDict):
     """Base Discord message structure."""
+
     embeds: NotRequired[list[DiscordEmbed]]
 
 
 class DiscordMessage(DiscordMessageBase):
     """Discord message with optional content."""
+
     content: NotRequired[str]  # For mentions
 
 
 class DiscordThreadMessage(DiscordMessageBase):
     """Discord message with thread support."""
+
     thread_name: NotRequired[str]  # For creating new threads
 
 
@@ -404,53 +458,68 @@ class DiscordThreadMessage(DiscordMessageBase):
 # 3. CONFIGURATION HIERARCHY
 # ------------------------------------------------------------------------------
 
+
 class DiscordCredentials(TypedDict):
     """Discord authentication credentials."""
-    webhook_url: Optional[str]
-    bot_token: Optional[str]
-    channel_id: Optional[str]
+
+    webhook_url: str | None
+    bot_token: str | None
+    channel_id: str | None
 
 
 class ThreadConfiguration(TypedDict):
     """Thread-specific configuration."""
+
     use_threads: bool
     channel_type: Literal["text", "forum"]
     thread_prefix: str
+    thread_storage_path: str | None
+    thread_cleanup_days: int
 
 
 class NotificationConfiguration(TypedDict):
     """Notification-specific configuration."""
-    mention_user_id: Optional[str]
+
+    mention_user_id: str | None
     debug: bool
 
 
 class EventFilterConfiguration(TypedDict):
     """Event filtering configuration."""
-    enabled_events: Optional[list[str]]
-    disabled_events: Optional[list[str]]
+
+    enabled_events: list[str] | None
+    disabled_events: list[str] | None
 
 
-class Config(DiscordCredentials, ThreadConfiguration, NotificationConfiguration, EventFilterConfiguration):
+class Config(
+    DiscordCredentials,
+    ThreadConfiguration,
+    NotificationConfiguration,
+    EventFilterConfiguration,
+):
     """Complete configuration combining all aspects."""
-    pass
 
 
 # ------------------------------------------------------------------------------
 # 4. TOOL INPUT HIERARCHY
 # ------------------------------------------------------------------------------
 
+
 class ToolInputBase(TypedDict):
     """Base tool input structure."""
+
     description: NotRequired[str]
 
 
 class BashToolInput(ToolInputBase):
     """Bash tool input structure."""
+
     command: str
 
 
 class FileEditOperation(TypedDict):
     """Individual file edit operation."""
+
     old_string: str
     new_string: str
     replace_all: NotRequired[bool]
@@ -458,22 +527,24 @@ class FileEditOperation(TypedDict):
 
 class FileToolInputBase(ToolInputBase, PathAware):
     """Base file tool input structure."""
-    pass
 
 
 class ReadToolInput(FileToolInputBase):
     """Read tool input structure."""
+
     offset: NotRequired[int]
     limit: NotRequired[int]
 
 
 class WriteToolInput(FileToolInputBase):
     """Write tool input structure."""
+
     content: str
 
 
 class EditToolInput(FileToolInputBase):
     """Edit tool input structure."""
+
     old_string: str
     new_string: str
     replace_all: NotRequired[bool]
@@ -481,37 +552,42 @@ class EditToolInput(FileToolInputBase):
 
 class MultiEditToolInput(FileToolInputBase):
     """Multi-edit tool input structure."""
+
     edits: list[FileEditOperation]
 
 
 class ListToolInput(ToolInputBase, PathAware):
     """List tool input structure."""
+
     ignore: NotRequired[list[str]]
 
 
 class SearchToolInputBase(ToolInputBase):
     """Base search tool input structure."""
+
     pattern: str
     path: NotRequired[str]
 
 
 class GlobToolInput(SearchToolInputBase):
     """Glob tool input structure."""
-    pass
 
 
 class GrepToolInput(SearchToolInputBase):
     """Grep tool input structure."""
+
     include: NotRequired[str]
 
 
 class TaskToolInput(ToolInputBase):
     """Task tool input structure."""
+
     prompt: str
 
 
 class WebToolInput(ToolInputBase):
     """Web tool input structure."""
+
     url: str
     prompt: str
 
@@ -519,52 +595,57 @@ class WebToolInput(ToolInputBase):
 # Legacy FileToolInput for backward compatibility
 class FileToolInput(TypedDict, total=False):
     """Legacy file operation tool input structure (for backward compatibility)."""
+
     file_path: str
     old_string: str
     new_string: str
     edits: list[FileEditOperation]
-    offset: Optional[int]
-    limit: Optional[int]
+    offset: int | None
+    limit: int | None
 
 
 # Legacy SearchToolInput for backward compatibility
 class SearchToolInput(TypedDict, total=False):
     """Legacy search tool input structure (for backward compatibility)."""
+
     pattern: str
     path: str
     include: str
 
 
 # Union type for all tool inputs
-ToolInput = Union[
-    BashToolInput,
-    ReadToolInput,
-    WriteToolInput,
-    EditToolInput,
-    MultiEditToolInput,
-    ListToolInput,
-    GlobToolInput,
-    GrepToolInput,
-    TaskToolInput,
-    WebToolInput,
-    FileToolInput,  # Legacy compatibility
-    SearchToolInput,  # Legacy compatibility
-    dict[str, Any]
-]
+ToolInput = (
+    BashToolInput
+    | ReadToolInput
+    | WriteToolInput
+    | EditToolInput
+    | MultiEditToolInput
+    | ListToolInput
+    | GlobToolInput
+    | GrepToolInput
+    | TaskToolInput
+    | WebToolInput
+    | FileToolInput  # Legacy compatibility
+    | SearchToolInput  # Legacy compatibility
+    | dict[str, Any]
+)
 
 
 # ------------------------------------------------------------------------------
 # 5. TOOL RESPONSE HIERARCHY
 # ------------------------------------------------------------------------------
 
+
 class ToolResponseBase(TypedDict):
     """Base tool response structure."""
+
     success: NotRequired[bool]
     error: NotRequired[str]
 
 
 class BashToolResponse(ToolResponseBase):
     """Bash tool response structure."""
+
     stdout: str
     stderr: str
     interrupted: bool
@@ -573,54 +654,53 @@ class BashToolResponse(ToolResponseBase):
 
 class FileOperationResponse(ToolResponseBase):
     """File operation response structure."""
+
     filePath: NotRequired[str]
 
 
 class SearchResponse(ToolResponseBase):
     """Search operation response structure."""
+
     results: NotRequired[list[str]]
     count: NotRequired[int]
 
 
 # Union type for all tool responses
-ToolResponse = Union[
-    BashToolResponse,
-    FileOperationResponse,
-    SearchResponse,
-    str,
-    dict[str, Any],
-    list[Any]
-]
+ToolResponse = BashToolResponse | FileOperationResponse | SearchResponse | str | dict[str, Any] | list[Any]
 
 
 # ------------------------------------------------------------------------------
 # 6. EVENT DATA HIERARCHY
 # ------------------------------------------------------------------------------
 
+
 class BaseEventData(SessionAware, TimestampedField):
     """Base event data structure."""
+
     transcript_path: NotRequired[str]
     hook_event_name: str
 
 
 class ToolEventDataBase(BaseEventData):
     """Base tool event data structure."""
+
     tool_name: str
     tool_input: dict[str, Any]
 
 
 class PreToolUseEventData(ToolEventDataBase):
     """PreToolUse event data structure."""
-    pass
 
 
 class PostToolUseEventData(ToolEventDataBase):
     """PostToolUse event data structure."""
+
     tool_response: ToolResponse
 
 
 class NotificationEventData(BaseEventData):
     """Notification event data structure."""
+
     message: str
     title: NotRequired[str]
     level: NotRequired[Literal["info", "warning", "error"]]
@@ -628,11 +708,13 @@ class NotificationEventData(BaseEventData):
 
 class StopEventDataBase(BaseEventData):
     """Base stop event data structure."""
+
     stop_hook_active: NotRequired[bool]
 
 
 class StopEventData(StopEventDataBase):
     """Stop event data structure."""
+
     duration: NotRequired[float]
     tools_used: NotRequired[int]
     messages_exchanged: NotRequired[int]
@@ -640,25 +722,27 @@ class StopEventData(StopEventDataBase):
 
 class SubagentStopEventData(StopEventData):
     """SubagentStop event data structure."""
+
     task_description: NotRequired[str]
-    result: NotRequired[Union[str, dict[str, Any]]]
+    result: NotRequired[str | dict[str, Any]]
     execution_time: NotRequired[float]
     status: NotRequired[str]
 
 
 # Union type for all event data
-EventData = Union[
-    PreToolUseEventData,
-    PostToolUseEventData,
-    NotificationEventData,
-    StopEventData,
-    SubagentStopEventData,
-    dict[str, Any]
-]
+EventData = (
+    PreToolUseEventData
+    | PostToolUseEventData
+    | NotificationEventData
+    | StopEventData
+    | SubagentStopEventData
+    | dict[str, Any]
+)
 
 # ------------------------------------------------------------------------------
 # 7. ENHANCED TYPE SAFETY FEATURES
 # ------------------------------------------------------------------------------
+
 
 # Type guard functions
 def is_tool_event_data(data: dict[str, Any]) -> TypeGuard[ToolEventDataBase]:
@@ -666,7 +750,9 @@ def is_tool_event_data(data: dict[str, Any]) -> TypeGuard[ToolEventDataBase]:
     return "tool_name" in data
 
 
-def is_notification_event_data(data: dict[str, Any]) -> TypeGuard[NotificationEventData]:
+def is_notification_event_data(
+    data: dict[str, Any],
+) -> TypeGuard[NotificationEventData]:
     """Check if event data is notification-related."""
     return "message" in data
 
@@ -694,40 +780,40 @@ def is_search_tool_input(tool_input: dict[str, Any]) -> TypeGuard[SearchToolInpu
 # Configuration validation
 class ConfigValidator:
     """Validator for Config TypedDict.
-    
+
     Provides static methods to validate different aspects of the Discord
     configuration. Used to ensure configuration consistency and completeness
     before attempting to send messages.
-    
+
     Validation Areas:
         - Credentials: Webhook URL or bot token/channel ID combination
         - Thread configuration: Consistency between channel type and auth method
         - Mention configuration: Valid Discord user ID format
-        
+
     Usage:
         >>> config = ConfigLoader.load()
         >>> if not ConfigValidator.validate_all(config):
         ...     raise ConfigurationError("Invalid configuration")
     """
-    
+
     @staticmethod
     def validate_credentials(config: Config) -> bool:
         """Validate that at least one credential method is configured.
-        
+
         Checks that either webhook URL or bot token/channel ID combination
         is available for Discord API access.
-        
+
         Args:
             config: Configuration dictionary to validate
-            
+
         Returns:
             bool: True if valid credentials are configured, False otherwise
-            
+
         Validation Logic:
             - Webhook URL alone is sufficient for basic messaging
             - Bot token + channel ID combination is required for bot API
             - At least one method must be configured
-            
+
         Example:
             >>> config = {"webhook_url": "https://discord.com/api/webhooks/..."}
             >>> ConfigValidator.validate_credentials(config)  # True
@@ -736,34 +822,31 @@ class ConfigValidator:
             >>> config = {"bot_token": "token"}  # Missing channel_id
             >>> ConfigValidator.validate_credentials(config)  # False
         """
-        return bool(
-            config.get("webhook_url") or 
-            (config.get("bot_token") and config.get("channel_id"))
-        )
-    
+        return bool(config.get("webhook_url") or (config.get("bot_token") and config.get("channel_id")))
+
     @staticmethod
     def validate_thread_config(config: Config) -> bool:
         """Validate thread configuration consistency.
-        
+
         Ensures that thread configuration is consistent with available
         authentication methods and channel types.
-        
+
         Args:
             config: Configuration dictionary to validate
-            
+
         Returns:
             bool: True if thread configuration is valid, False otherwise
-            
+
         Validation Rules:
             - If threads are disabled, configuration is always valid
             - Forum channels require webhook URL for thread creation
             - Text channels require bot token + channel ID for thread creation
             - Invalid channel types are rejected
-            
+
         Thread Types:
             - Forum channels: Use webhook API with thread_name parameter
             - Text channels: Use bot API to create public threads
-            
+
         Example:
             >>> # Valid forum channel config
             >>> config = {
@@ -772,7 +855,7 @@ class ConfigValidator:
             ...     "webhook_url": "https://discord.com/api/webhooks/..."
             ... }
             >>> ConfigValidator.validate_thread_config(config)  # True
-            
+
             >>> # Invalid: forum channel without webhook
             >>> config = {
             ...     "use_threads": True,
@@ -783,49 +866,48 @@ class ConfigValidator:
         """
         if not config.get("use_threads", False):
             return True
-        
-        channel_type = cast(str, config.get("channel_type", "text"))
+
+        channel_type = cast("str", config.get("channel_type", "text"))
         if channel_type == "forum":
             return bool(config.get("webhook_url"))
-        elif channel_type == "text":
+        if channel_type == "text":
             return bool(config.get("bot_token") and config.get("channel_id"))
-        else:
-            # Invalid channel type
-            return False
-    
+        # Invalid channel type
+        return False
+
     @staticmethod
     def validate_mention_config(config: Config) -> bool:
         """Validate mention configuration.
-        
+
         Validates Discord user ID format for mention functionality.
         Discord user IDs are numeric strings with specific length requirements.
-        
+
         Args:
             config: Configuration dictionary to validate
-            
+
         Returns:
             bool: True if mention configuration is valid, False otherwise
-            
+
         Validation Rules:
             - If no mention_user_id is configured, validation passes
             - Discord user IDs must be numeric strings
             - Discord user IDs must be at least 17 characters long
             - User IDs are typically 17-19 characters in length
-            
+
         Discord User ID Format:
             - Numeric string (e.g., "123456789012345678")
             - Generated using Discord's snowflake algorithm
             - Unique across all Discord users
-            
+
         Example:
             >>> # Valid user ID
             >>> config = {"mention_user_id": "123456789012345678"}
             >>> ConfigValidator.validate_mention_config(config)  # True
-            
+
             >>> # Invalid: non-numeric
             >>> config = {"mention_user_id": "invalid_id"}
             >>> ConfigValidator.validate_mention_config(config)  # False
-            
+
             >>> # Invalid: too short
             >>> config = {"mention_user_id": "12345"}
             >>> ConfigValidator.validate_mention_config(config)  # False
@@ -835,35 +917,35 @@ class ConfigValidator:
             # Basic validation: Discord user IDs are numeric strings
             return mention_user_id.isdigit() and len(mention_user_id) >= 17
         return True
-    
+
     @staticmethod
     def validate_all(config: Config) -> bool:
         """Validate all configuration aspects.
-        
+
         Performs comprehensive validation of all configuration aspects,
         ensuring the configuration is complete and consistent.
-        
+
         Args:
             config: Configuration dictionary to validate
-            
+
         Returns:
             bool: True if all validation checks pass, False otherwise
-            
+
         Validation Performed:
             1. Credentials validation (webhook URL or bot token/channel ID)
             2. Thread configuration consistency
             3. Mention configuration format
-            
+
         Usage:
             This is the recommended method for validating configuration
             before using the Discord notifier.
-            
+
         Example:
             >>> config = ConfigLoader.load()
             >>> if not ConfigValidator.validate_all(config):
             ...     raise ConfigurationError("Configuration validation failed")
             >>> # Safe to use config for Discord operations
-            
+
         Failure Scenarios:
             - No authentication method configured
             - Thread configuration mismatch with auth method
@@ -871,39 +953,39 @@ class ConfigValidator:
             - Missing required fields for selected features
         """
         return (
-            ConfigValidator.validate_credentials(config) and
-            ConfigValidator.validate_thread_config(config) and
-            ConfigValidator.validate_mention_config(config)
+            ConfigValidator.validate_credentials(config)
+            and ConfigValidator.validate_thread_config(config)
+            and ConfigValidator.validate_mention_config(config)
         )
 
 
 # Event data validation
 class EventDataValidator:
     """Validator for EventData structures."""
-    
+
     @staticmethod
     def validate_base_event_data(data: dict[str, Any]) -> bool:
         """Validate base event data requirements."""
         required_fields = {"session_id", "hook_event_name"}
         return all(field in data for field in required_fields)
-    
+
     @staticmethod
     def validate_tool_event_data(data: dict[str, Any]) -> bool:
         """Validate tool event data requirements."""
         if not EventDataValidator.validate_base_event_data(data):
             return False
-        
+
         required_fields = {"tool_name", "tool_input"}
         return all(field in data for field in required_fields)
-    
+
     @staticmethod
     def validate_notification_event_data(data: dict[str, Any]) -> bool:
         """Validate notification event data requirements."""
         if not EventDataValidator.validate_base_event_data(data):
             return False
-        
+
         return "message" in data
-    
+
     @staticmethod
     def validate_stop_event_data(data: dict[str, Any]) -> bool:
         """Validate stop event data requirements."""
@@ -913,28 +995,30 @@ class EventDataValidator:
 # Tool input validation
 class ToolInputValidator:
     """Validator for ToolInput structures."""
-    
+
     @staticmethod
     def validate_bash_input(tool_input: dict[str, Any]) -> bool:
         """Validate Bash tool input."""
         return "command" in tool_input and isinstance(tool_input["command"], str)
-    
+
     @staticmethod
     def validate_file_input(tool_input: dict[str, Any]) -> bool:
         """Validate file tool input."""
         return "file_path" in tool_input and isinstance(tool_input["file_path"], str)
-    
+
     @staticmethod
     def validate_search_input(tool_input: dict[str, Any]) -> bool:
         """Validate search tool input."""
         return "pattern" in tool_input and isinstance(tool_input["pattern"], str)
-    
+
     @staticmethod
     def validate_web_input(tool_input: dict[str, Any]) -> bool:
         """Validate web tool input."""
         return (
-            "url" in tool_input and isinstance(tool_input["url"], str) and
-            "prompt" in tool_input and isinstance(tool_input["prompt"], str)
+            "url" in tool_input
+            and isinstance(tool_input["url"], str)
+            and "prompt" in tool_input
+            and isinstance(tool_input["prompt"], str)
         )
 
 
@@ -1055,6 +1139,8 @@ ENV_THREAD_PREFIX: Final[str] = "DISCORD_THREAD_PREFIX"
 ENV_MENTION_USER_ID: Final[str] = "DISCORD_MENTION_USER_ID"
 ENV_ENABLED_EVENTS: Final[str] = "DISCORD_ENABLED_EVENTS"
 ENV_DISABLED_EVENTS: Final[str] = "DISCORD_DISABLED_EVENTS"
+ENV_THREAD_STORAGE_PATH: Final[str] = "DISCORD_THREAD_STORAGE_PATH"
+ENV_THREAD_CLEANUP_DAYS: Final[str] = "DISCORD_THREAD_CLEANUP_DAYS"
 ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"
 
 # Other constants
@@ -1100,23 +1186,23 @@ def is_list_tool(tool_name: str) -> bool:
 # Utility functions
 def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
     """Truncate string to maximum length with suffix.
-    
+
     Safely truncates text to fit within Discord's character limits while
     preserving readability by adding a truncation indicator.
-    
+
     Args:
         text: The string to potentially truncate
         max_length: Maximum allowed length including suffix
         suffix: String to append when truncation occurs (default: "...")
-        
+
     Returns:
         str: Original string if within limit, or truncated string with suffix
-        
+
     Behavior:
         - If text is within limit, returns unchanged
         - If truncation needed, reserves space for suffix
         - Ensures result never exceeds max_length
-        
+
     Example:
         >>> truncate_string("Hello world!", 10)
         'Hello w...'
@@ -1132,23 +1218,23 @@ def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX)
 
 def format_file_path(file_path: str) -> str:
     """Format file path to be relative if possible.
-    
+
     Converts absolute file paths to relative paths when possible to improve
     readability in Discord messages. Falls back to filename only if relative
     path conversion fails.
-    
+
     Args:
         file_path: Absolute or relative file path to format
-        
+
     Returns:
         str: Formatted path string, empty string if input is empty
-        
+
     Formatting Logic:
         1. If empty path, return empty string
         2. Try to convert to relative path from current working directory
         3. If relative conversion fails, return just the filename
         4. If all else fails, return the original path
-        
+
     Example:
         >>> # Assuming cwd is /home/user/project
         >>> format_file_path("/home/user/project/src/main.py")
@@ -1157,7 +1243,7 @@ def format_file_path(file_path: str) -> str:
         'passwd'
         >>> format_file_path("")
         ''
-        
+
     Error Handling:
         - ValueError: Path is not relative to current directory
         - OSError: File system access issues
@@ -1175,27 +1261,27 @@ def format_file_path(file_path: str) -> str:
 
 def parse_env_file(file_path: Path) -> dict[str, str]:
     """Parse environment file and return key-value pairs.
-    
+
     Parses .env format files containing KEY=VALUE pairs, with support for
     comments and quoted values. Used to load Discord configuration from
     the ~/.claude/hooks/.env.discord file.
-    
+
     Args:
         file_path: Path to the environment file to parse
-        
+
     Returns:
         dict[str, str]: Dictionary mapping environment variable names to values
-        
+
     Raises:
         ConfigurationError: If file cannot be read or parsed
-        
+
     File Format:
         - KEY=VALUE pairs, one per line
         - Comments start with # and are ignored
         - Values can be quoted with single or double quotes
         - Quotes are stripped from values
         - Empty lines are ignored
-        
+
     Example File Content:
         ```
         # Discord configuration
@@ -1205,11 +1291,11 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
         # Thread settings
         DISCORD_USE_THREADS=1
         ```
-        
+
     Example Usage:
         >>> env_vars = parse_env_file(Path(".env.discord"))
         >>> webhook_url = env_vars.get("DISCORD_WEBHOOK_URL")
-        
+
     Error Handling:
         - IOError: File access issues (permissions, file not found)
         - ValueError: Line parsing issues (malformed KEY=VALUE pairs)
@@ -1225,7 +1311,7 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
                     key, value = line.split("=", 1)
                     value = value.strip('"').strip("'")
                     env_vars[key] = value
-    except (IOError, ValueError) as e:
+    except (OSError, ValueError) as e:
         raise ConfigurationError(f"Error reading {file_path}: {e}")
 
     return env_vars
@@ -1233,17 +1319,17 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
 
 def parse_event_list(event_list_str: str) -> list[str]:
     """Parse comma-separated event list string into validated list.
-    
+
     Parses environment variable values like "Stop,Notification" into a list
     of valid event type strings. Invalid event types are filtered out with
     debug logging.
-    
+
     Args:
         event_list_str: Comma-separated string of event types
-        
+
     Returns:
         list[str]: List of valid event type strings
-        
+
     Example:
         >>> parse_event_list("Stop,Notification,InvalidEvent")
         ['Stop', 'Notification']
@@ -1254,11 +1340,11 @@ def parse_event_list(event_list_str: str) -> list[str]:
     """
     if not event_list_str:
         return []
-    
+
     # Split and clean up event names
     events = [event.strip() for event in event_list_str.split(",")]
     valid_events = []
-    
+
     # Filter to only valid event types
     for event in events:
         if event and is_valid_event_type(event):
@@ -1267,33 +1353,33 @@ def parse_event_list(event_list_str: str) -> list[str]:
             # Note: We can't access logger here, so invalid events are silently filtered
             # This maintains the principle of graceful degradation
             pass
-    
-    return valid_events
+
+    return cast("list[str]", valid_events)
 
 
 def should_process_event(event_type: str, config: Config) -> bool:
     """Determine if an event should be processed based on filtering configuration.
-    
+
     Implements event filtering logic with the following precedence:
     1. If enabled_events is configured, only process events in that list
     2. If disabled_events is configured, skip events in that list
     3. If both are configured, enabled_events takes precedence
     4. If neither is configured, process all events (default behavior)
-    
+
     Args:
         event_type: The event type to check (e.g., "Stop", "Notification")
         config: Configuration containing filtering settings
-        
+
     Returns:
         bool: True if the event should be processed, False otherwise
-        
+
     Examples:
         >>> config = {"enabled_events": ["Stop", "Notification"], "disabled_events": None}
         >>> should_process_event("Stop", config)
         True
         >>> should_process_event("PreToolUse", config)
         False
-        >>> 
+        >>>
         >>> config = {"enabled_events": None, "disabled_events": ["PreToolUse"]}
         >>> should_process_event("PreToolUse", config)
         False
@@ -1302,37 +1388,37 @@ def should_process_event(event_type: str, config: Config) -> bool:
     """
     enabled_events = config.get("enabled_events")
     disabled_events = config.get("disabled_events")
-    
+
     # If enabled_events is configured, only process events in that list
     if enabled_events:
         return event_type in enabled_events
-    
+
     # If disabled_events is configured, skip events in that list
     if disabled_events:
         return event_type not in disabled_events
-    
+
     # Default: process all events
     return True
 
 
 def get_truncation_suffix(original_length: int, limit: int) -> str:
     """Get truncation suffix if text was truncated.
-    
+
     Returns a formatted truncation indicator if the original text length
     exceeded the specified limit. Used to indicate when content has been
     shortened for display.
-    
+
     Args:
         original_length: Length of the original text before truncation
         limit: Maximum length limit that was applied
-        
+
     Returns:
         str: Formatted truncation suffix with space, or empty string if no truncation
-        
+
     Usage:
         This function is used in formatting functions to indicate when
         content has been truncated for Discord display limits.
-        
+
     Example:
         >>> get_truncation_suffix(150, 100)
         ' ...'
@@ -1347,35 +1433,33 @@ def get_truncation_suffix(original_length: int, limit: int) -> str:
     return f" {TRUNCATION_SUFFIX}" if original_length > limit else ""
 
 
-def add_field(
-    desc_parts: list[str], label: str, value: str, code: bool = False
-) -> None:
+def add_field(desc_parts: list[str], label: str, value: str, code: bool = False) -> None:
     """Add a field to description parts.
-    
+
     Adds a formatted field to a list of description parts, with optional
     code formatting for technical content like file paths and commands.
-    
+
     Args:
         desc_parts: List to append the formatted field to
         label: Field label/name (will be bolded)
         value: Field value/content
         code: Whether to format value as inline code (default: False)
-        
+
     Returns:
         None: Modifies desc_parts list in place
-        
+
     Formatting:
         - Label is always bolded with **label**
         - Value is either plain text or inline code with backticks
         - Code formatting is used for technical content (paths, commands)
-        
+
     Example:
         >>> parts = []
         >>> add_field(parts, "Status", "Success")
         >>> add_field(parts, "Command", "git status", code=True)
         >>> parts
         ['**Status:** Success', '**Command:** `git status`']
-        
+
     Usage:
         Primarily used in event formatting functions to build Discord
         embed descriptions with consistent field formatting.
@@ -1386,37 +1470,35 @@ def add_field(
         desc_parts.append(f"**{label}:** {value}")
 
 
-def format_json_field(
-    value: Any, label: str, limit: int = TruncationLimits.JSON_PREVIEW
-) -> str:
+def format_json_field(value: Any, label: str, limit: int = TruncationLimits.JSON_PREVIEW) -> str:
     """Format a JSON value as a field.
-    
+
     Formats complex data structures as JSON code blocks for Discord display.
     Handles truncation for large JSON objects while preserving readability.
-    
+
     Args:
         value: Any JSON-serializable value to format
         label: Field label for the JSON block
         limit: Maximum character limit for JSON content
-        
+
     Returns:
         str: Formatted JSON field with markdown code block
-        
+
     Formatting:
         - JSON is formatted with 2-space indentation
         - Displayed in a ```json code block for syntax highlighting
         - Truncated if exceeds limit, with truncation indicator
         - Label is bolded and appears before the code block
-        
+
     Example:
         >>> data = {"status": "success", "count": 42}
         >>> format_json_field(data, "Response", 100)
         '**Response:**\n```json\n{\n  "status": "success",\n  "count": 42\n}\n```'
-        
+
     Usage:
         Used to display complex event data, tool inputs, and responses
         in a readable format within Discord embeds.
-        
+
     Error Handling:
         - json.dumps() may raise TypeError for non-serializable objects
         - Non-serializable objects should be converted to strings first
@@ -1453,9 +1535,7 @@ class HTTPClient:
             "Authorization": f"Bot {token}",
         }
 
-        return self._make_request(
-            url, data, headers, "Bot API", lambda s: 200 <= s < 300
-        )
+        return self._make_request(url, data, headers, "Bot API", lambda s: 200 <= s < 300)
 
     def _make_request(
         self,
@@ -1463,7 +1543,7 @@ class HTTPClient:
         data: DiscordMessage,
         headers: dict[str, str],
         api_name: str,
-        success_check: Union[int, Callable[[int], bool]],
+        success_check: int | Callable[[int], bool],
     ) -> bool:
         """Make HTTP request with error handling."""
         try:
@@ -1488,9 +1568,7 @@ class HTTPClient:
             self.logger.error(f"{api_name} unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"{api_name} unexpected error: {e}")
 
-    def post_webhook_to_thread(
-        self, url: str, data: DiscordMessage, thread_id: str
-    ) -> bool:
+    def post_webhook_to_thread(self, url: str, data: DiscordMessage, thread_id: str) -> bool:
         """Send message to existing thread via Discord webhook."""
         thread_url = f"{url}?thread_id={thread_id}"
         headers = {
@@ -1500,9 +1578,7 @@ class HTTPClient:
 
         return self._make_request(thread_url, data, headers, "Webhook Thread", 204)
 
-    def create_forum_thread(
-        self, url: str, data: DiscordThreadMessage, thread_name: str
-    ) -> Optional[str]:
+    def create_forum_thread(self, url: str, data: DiscordThreadMessage, thread_name: str) -> str | None:
         """Create new forum thread via Discord webhook. Returns thread_id if successful."""
         thread_data = {**data, "thread_name": thread_name}
         headers = {
@@ -1521,7 +1597,7 @@ class HTTPClient:
                 if status == 200:
                     # Parse response to get thread_id
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return cast(Optional[str], response_data.get("id"))  # thread_id
+                    return cast("str | None", response_data.get("id"))  # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
@@ -1529,18 +1605,12 @@ class HTTPClient:
             raise DiscordAPIError(f"Forum thread creation failed: {e.code} {e.reason}")
         except urllib.error.URLError as e:
             self.logger.error(f"Forum Thread Creation URL error: {e.reason}")
-            raise DiscordAPIError(
-                f"Forum thread creation connection failed: {e.reason}"
-            )
+            raise DiscordAPIError(f"Forum thread creation connection failed: {e.reason}")
         except Exception as e:
-            self.logger.error(
-                f"Forum Thread Creation unexpected error: {type(e).__name__}: {e}"
-            )
+            self.logger.error(f"Forum Thread Creation unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"Forum thread creation unexpected error: {e}")
 
-    def create_text_thread(
-        self, channel_id: str, name: str, token: str
-    ) -> Optional[str]:
+    def create_text_thread(self, channel_id: str, name: str, token: str) -> str | None:
         """Create new text channel thread via Discord bot API. Returns thread_id if successful."""
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
         data = {"name": name, "type": 11}  # 11 = public thread
@@ -1561,7 +1631,7 @@ class HTTPClient:
                 if 200 <= status < 300:
                     # Parse response to get thread_id
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return cast(Optional[str], response_data.get("id"))  # thread_id
+                    return cast("str | None", response_data.get("id"))  # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
@@ -1571,10 +1641,158 @@ class HTTPClient:
             self.logger.error(f"Text Thread Creation URL error: {e.reason}")
             raise DiscordAPIError(f"Text thread creation connection failed: {e.reason}")
         except Exception as e:
-            self.logger.error(
-                f"Text Thread Creation unexpected error: {type(e).__name__}: {e}"
-            )
+            self.logger.error(f"Text Thread Creation unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"Text thread creation unexpected error: {e}")
+
+    def list_active_threads(self, channel_id: str, token: str) -> list[dict[str, Any]]:
+        """List active threads in a channel via Discord bot API.
+
+        Args:
+            channel_id: Discord channel ID (snowflake)
+            token: Discord bot token
+
+        Returns:
+            List of thread objects from Discord API
+        """
+        url = f"https://discord.com/api/v10/channels/{channel_id}/threads/active"
+        headers = {
+            **self.headers_base,
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"List Active Threads response: {status}")
+
+                if 200 <= status < 300:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    return cast("list[dict[str, Any]]", response_data.get("threads", []))
+                return []
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"List Active Threads HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                # Channel not found or no access - return empty list
+                return []
+            raise DiscordAPIError(f"List active threads failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"List Active Threads URL error: {e.reason}")
+            raise DiscordAPIError(f"List active threads connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"List Active Threads unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"List active threads unexpected error: {e}")
+
+    def get_thread_details(self, thread_id: str, token: str) -> dict[str, Any] | None:
+        """Get details of a specific thread via Discord bot API.
+
+        Args:
+            thread_id: Discord thread ID (snowflake)
+            token: Discord bot token
+
+        Returns:
+            Thread object from Discord API if found, None otherwise
+        """
+        url = f"https://discord.com/api/v10/channels/{thread_id}"
+        headers = {
+            **self.headers_base,
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Get Thread Details response: {status}")
+
+                if 200 <= status < 300:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    return cast("dict[str, Any]", response_data)
+                return None
+
+        except urllib.error.HTTPError as e:
+            self.logger.debug(f"Get Thread Details HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                # Thread not found - return None
+                return None
+            raise DiscordAPIError(f"Get thread details failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Get Thread Details URL error: {e.reason}")
+            raise DiscordAPIError(f"Get thread details connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"Get Thread Details unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"Get thread details unexpected error: {e}")
+
+    def unarchive_thread(self, thread_id: str, token: str) -> bool:
+        """Unarchive a thread via Discord bot API.
+
+        Args:
+            thread_id: Discord thread ID (snowflake)
+            token: Discord bot token
+
+        Returns:
+            True if successful, False otherwise
+        """
+        url = f"https://discord.com/api/v10/channels/{thread_id}"
+        data = {"archived": False}
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            json_data = json.dumps(data).encode("utf-8")
+
+            # Create a custom request class to override the HTTP method
+            class PatchRequest(urllib.request.Request):
+                def get_method(self) -> str:
+                    return "PATCH"
+
+            req = PatchRequest(url, data=json_data, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Unarchive Thread response: {status}")
+
+                return bool(200 <= status < 300)
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"Unarchive Thread HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                # Thread not found
+                return False
+            raise DiscordAPIError(f"Unarchive thread failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Unarchive Thread URL error: {e.reason}")
+            raise DiscordAPIError(f"Unarchive thread connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"Unarchive Thread unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"Unarchive thread unexpected error: {e}")
+
+    def search_threads_by_name(self, channel_id: str, name_pattern: str, token: str) -> list[dict[str, Any]]:
+        """Search for threads by name pattern in a channel.
+
+        Args:
+            channel_id: Discord channel ID (snowflake)
+            name_pattern: Pattern to search for in thread names
+            token: Discord bot token
+
+        Returns:
+            List of matching thread objects
+        """
+        threads = self.list_active_threads(channel_id, token)
+
+        # Filter threads by name pattern (case-insensitive)
+        pattern_lower = name_pattern.lower()
+        matching_threads = [thread for thread in threads if pattern_lower in thread.get("name", "").lower()]
+
+        self.logger.debug(f"Found {len(matching_threads)} threads matching pattern '{name_pattern}'")
+
+        return matching_threads
 
 
 # Formatter base class
@@ -1586,64 +1804,330 @@ class EventFormatter(Protocol):
         ...
 
 
-# Thread management
+# Thread validation and management
+def validate_thread_exists(
+    thread_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+) -> dict[str, Any] | None:
+    """Validate that a thread still exists and get its current status.
+
+    Args:
+        thread_id: Discord thread ID to validate
+        config: Discord configuration
+        http_client: HTTP client for API calls
+        logger: Logger instance
+
+    Returns:
+        Thread details dict if thread exists and is accessible, None otherwise
+    """
+    bot_token = config.get("bot_token")
+    if not thread_id or not bot_token:
+        return None
+
+    try:
+        thread_details = http_client.get_thread_details(thread_id, bot_token)
+        if thread_details:
+            logger.debug(f"Thread {thread_id} exists and is accessible")
+            return thread_details
+        logger.debug(f"Thread {thread_id} not found or not accessible")
+        return None
+
+    except DiscordAPIError as e:
+        logger.warning(f"Discord API error validating thread {thread_id}: {e}")
+        return None
+    except ThreadManagementError as e:
+        logger.warning(f"Thread management error validating thread {thread_id}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error validating thread {thread_id}: {type(e).__name__}: {e}")
+        return None
+
+
+def find_existing_thread_by_name(
+    channel_id: str,
+    thread_name: str,
+    config: Config,
+    http_client: HTTPClient,
+    logger: logging.Logger,
+) -> dict[str, Any] | None:
+    """Find an existing thread by name in a channel.
+
+    Args:
+        channel_id: Discord channel ID to search in
+        thread_name: Thread name to search for
+        config: Discord configuration
+        http_client: HTTP client for API calls
+        logger: Logger instance
+
+    Returns:
+        Thread details dict if found, None otherwise
+    """
+    bot_token = config.get("bot_token")
+    if not channel_id or not thread_name or not bot_token:
+        return None
+
+    try:
+        matching_threads = http_client.search_threads_by_name(channel_id, thread_name, bot_token)
+
+        if matching_threads:
+            # Return the first exact match, or the first partial match
+            for thread in matching_threads:
+                if thread.get("name") == thread_name:
+                    logger.debug(f"Found exact thread match: {thread['id']} - {thread['name']}")
+                    return thread
+
+            # If no exact match, return the first partial match
+            thread = matching_threads[0]
+            logger.debug(f"Found partial thread match: {thread['id']} - {thread['name']}")
+            return thread
+
+        logger.debug(f"No threads found matching name '{thread_name}' in channel {channel_id}")
+        return None
+
+    except DiscordAPIError as e:
+        logger.warning(f"Discord API error searching for thread '{thread_name}': {e}")
+        return None
+    except ThreadManagementError as e:
+        logger.warning(f"Thread management error searching for thread '{thread_name}': {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error searching for thread '{thread_name}': {type(e).__name__}: {e}")
+        return None
+
+
+def ensure_thread_is_usable(
+    thread_details: dict[str, Any],
+    config: Config,
+    http_client: HTTPClient,
+    logger: logging.Logger,
+) -> bool:
+    """Ensure a thread is in a usable state (unarchived and unlocked).
+
+    Args:
+        thread_details: Thread details from Discord API
+        config: Discord configuration
+        http_client: HTTP client for API calls
+        logger: Logger instance
+
+    Returns:
+        True if thread is usable or was made usable, False otherwise
+    """
+    thread_id = thread_details.get("id")
+    bot_token = config.get("bot_token")
+    if not thread_id or not bot_token:
+        return False
+
+    thread_metadata = thread_details.get("thread_metadata", {})
+    is_archived = thread_metadata.get("archived", False)
+    is_locked = thread_metadata.get("locked", False)
+
+    # If thread is neither archived nor locked, it's already usable
+    if not is_archived and not is_locked:
+        logger.debug(f"Thread {thread_id} is already usable")
+        return True
+
+    # If thread is locked, we can't unarchive it
+    if is_locked:
+        logger.warning(f"Thread {thread_id} is locked and cannot be used")
+        return False
+
+    # If thread is archived, try to unarchive it
+    if is_archived:
+        logger.info(f"Thread {thread_id} is archived, attempting to unarchive")
+        try:
+            if http_client.unarchive_thread(thread_id, bot_token):
+                logger.info(f"Successfully unarchived thread {thread_id}")
+                return True
+            logger.warning(f"Failed to unarchive thread {thread_id}")
+            return False
+
+        except DiscordAPIError as e:
+            logger.warning(f"Discord API error unarchiving thread {thread_id}: {e}")
+            return False
+        except ThreadManagementError as e:
+            logger.warning(f"Thread management error unarchiving thread {thread_id}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error unarchiving thread {thread_id}: {type(e).__name__}: {e}")
+            return False
+
+    return False
+
+
 def get_or_create_thread(
     session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-) -> Optional[str]:
-    """Get existing thread ID or create new thread for session. Returns thread_id if successful."""
+) -> str | None:
+    """Get existing thread ID or create new thread for session using intelligent lookup.
+
+    Priority sequence:
+    1. Check in-memory cache
+    2. Check persistent storage (ThreadStorage)
+    3. Search Discord API for existing threads by name
+    4. Create new thread if none found
+
+    Returns thread_id if successful, None otherwise.
+    """
     if not config["use_threads"]:
         return None
 
-    # Check cache first
+    # Step 1: Check in-memory cache first (fastest)
     if session_id in SESSION_THREAD_CACHE:
-        logger.debug(
-            f"Found existing thread for session {session_id}: {SESSION_THREAD_CACHE[session_id]}"
-        )
-        return SESSION_THREAD_CACHE[session_id]
+        cached_thread_id = SESSION_THREAD_CACHE[session_id]
+        logger.debug(f"Found cached thread for session {session_id}: {cached_thread_id}")
 
-    # Create thread name
+        # Validate that cached thread still exists and is usable
+        thread_details = validate_thread_exists(cached_thread_id, config, http_client, logger)
+        if thread_details and ensure_thread_is_usable(thread_details, config, http_client, logger):
+            logger.debug(f"Cached thread {cached_thread_id} is valid and usable")
+            return cached_thread_id
+        # Remove invalid thread from cache
+        logger.warning(f"Cached thread {cached_thread_id} is invalid, removing from cache")
+        del SESSION_THREAD_CACHE[session_id]
+
+    # Step 2: Check persistent storage
+    try:
+        from pathlib import Path
+
+        from .thread_storage import ThreadStorage
+
+        # Use configured storage path or default
+        storage_path = None
+        thread_storage_path = config.get("thread_storage_path")
+        if thread_storage_path:
+            storage_path = Path(thread_storage_path)
+
+        cleanup_days = config.get("thread_cleanup_days", 30)
+        storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
+        stored_record = storage.get_thread(session_id)
+
+        if stored_record:
+            logger.debug(f"Found stored thread for session {session_id}: {stored_record.thread_id}")
+
+            # Validate that stored thread still exists and is usable
+            thread_details = validate_thread_exists(stored_record.thread_id, config, http_client, logger)
+            if thread_details and ensure_thread_is_usable(thread_details, config, http_client, logger):
+                # Update cache and return valid stored thread
+                thread_id = str(stored_record.thread_id)
+                SESSION_THREAD_CACHE[session_id] = thread_id
+                logger.info(f"Restored thread {thread_id} from storage for session {session_id}")
+                return thread_id
+            # Remove invalid thread from storage
+            logger.warning(f"Stored thread {stored_record.thread_id} is invalid, removing from storage")
+            storage.remove_thread(session_id)
+
+    except ThreadStorageError as e:
+        logger.warning(f"Thread storage error for session {session_id}: {e}")
+    except Exception as e:
+        logger.warning(
+            f"Unexpected error checking persistent storage for session {session_id}: {type(e).__name__}: {e}"
+        )
+
+    # Step 3: Search Discord API for existing threads by name
     thread_name = f"{config['thread_prefix']} {session_id[:8]}"
-    logger.debug(f"Creating new thread: {thread_name}")
+    channel_id = config.get("channel_id")
+
+    if channel_id and config.get("bot_token"):
+        logger.debug(f"Searching Discord API for thread: {thread_name}")
+        existing_thread = find_existing_thread_by_name(channel_id, thread_name, config, http_client, logger)
+
+        if existing_thread:
+            if ensure_thread_is_usable(existing_thread, config, http_client, logger):
+                thread_id = str(existing_thread["id"])
+
+                # Cache the discovered thread
+                SESSION_THREAD_CACHE[session_id] = thread_id
+
+                # Store in persistent storage for future use
+                try:
+                    # Use same storage configuration
+                    storage_path = None
+                    thread_storage_path = config.get("thread_storage_path")
+                    if thread_storage_path:
+                        storage_path = Path(thread_storage_path)
+                    cleanup_days = config.get("thread_cleanup_days", 30)
+                    storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
+
+                    storage.store_thread(
+                        session_id=session_id,
+                        thread_id=thread_id,
+                        channel_id=channel_id,
+                        thread_name=thread_name,
+                        is_archived=existing_thread.get("thread_metadata", {}).get("archived", False),
+                    )
+                    logger.info(f"Discovered and restored existing thread {thread_id} for session {session_id}")
+                except ThreadStorageError as e:
+                    logger.warning(f"Thread storage error storing discovered thread: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error storing discovered thread: {type(e).__name__}: {e}")
+
+                return thread_id
+            logger.warning(f"Found thread {existing_thread['id']} but it cannot be made usable")
+
+    # Step 4: Create new thread if none found
+    logger.debug(f"No existing thread found, creating new thread: {thread_name}")
 
     try:
-        thread_id = None
-
         if config["channel_type"] == "forum":
             # Forum channels: Use webhook with thread_name
             if config["webhook_url"]:
-                # We'll handle thread creation in the actual message sending
-                # For now, just return None to indicate we need to create it
+                # For forum channels, thread creation happens with the first message
+                # We'll return None to indicate thread creation should be deferred
+                logger.debug("Forum channel thread creation deferred to message sending")
                 return None
-            else:
-                logger.warning("Forum channel threads require webhook URL")
-                return None
+            logger.warning("Forum channel threads require webhook URL")
+            return None
 
-        elif config["channel_type"] == "text":
+        if config["channel_type"] == "text":
             # Text channels: Use bot API to create thread
             if config["bot_token"] and config["channel_id"]:
-                thread_id = http_client.create_text_thread(
-                    config["channel_id"], thread_name, config["bot_token"]
-                )
-                if thread_id:
-                    SESSION_THREAD_CACHE[session_id] = thread_id
-                    logger.info(
-                        f"Created text thread {thread_id} for session {session_id}"
-                    )
-                else:
-                    logger.warning(
-                        f"Failed to create text thread for session {session_id}"
-                    )
-            else:
-                logger.warning("Text channel threads require bot token and channel ID")
-                return None
+                new_thread_id = http_client.create_text_thread(config["channel_id"], thread_name, config["bot_token"])
 
-        return thread_id
+                if new_thread_id:
+                    # Cache the new thread
+                    SESSION_THREAD_CACHE[session_id] = new_thread_id
+
+                    # Store in persistent storage
+                    try:
+                        # Use same storage configuration
+                        storage_path = None
+                        if config.get("thread_storage_path"):
+                            storage_path = Path(config["thread_storage_path"])
+                        cleanup_days = config.get("thread_cleanup_days", 30)
+                        storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
+
+                        storage.store_thread(
+                            session_id=session_id,
+                            thread_id=new_thread_id,
+                            channel_id=config["channel_id"],
+                            thread_name=thread_name,
+                            is_archived=False,
+                        )
+                    except ThreadStorageError as e:
+                        logger.warning(f"Thread storage error storing new thread: {e}")
+                    except Exception as e:
+                        logger.warning(f"Unexpected error storing new thread: {type(e).__name__}: {e}")
+
+                    logger.info(f"Created new text thread {new_thread_id} for session {session_id}")
+                    return new_thread_id
+                logger.warning(f"Failed to create text thread for session {session_id}")
+                return None
+            logger.warning("Text channel threads require bot token and channel ID")
+            return None
+
+        # Should not reach here
+        logger.warning("Unknown channel type or configuration")
+        return None
 
     except DiscordAPIError as e:
-        logger.error(f"Failed to create thread for session {session_id}: {e}")
+        logger.error(f"Discord API error creating thread for session {session_id}: {e}")
+        return None
+    except ThreadManagementError as e:
+        logger.error(f"Thread management error for session {session_id}: {e}")
+        return None
+    except ThreadStorageError as e:
+        logger.error(f"Thread storage error for session {session_id}: {e}")
         return None
     except Exception as e:
-        logger.error(f"Unexpected error creating thread for session {session_id}: {e}")
+        logger.error(f"Unexpected error creating thread for session {session_id}: {type(e).__name__}: {e}")
         return None
 
 
@@ -1663,6 +2147,8 @@ class ConfigLoader:
             "use_threads": False,
             "channel_type": "text",
             "thread_prefix": "Session",
+            "thread_storage_path": None,
+            "thread_cleanup_days": 30,
             "mention_user_id": None,
             "enabled_events": None,
             "disabled_events": None,
@@ -1687,7 +2173,7 @@ class ConfigLoader:
                 if ENV_CHANNEL_TYPE in env_vars:
                     channel_type = env_vars[ENV_CHANNEL_TYPE]
                     if channel_type in ["text", "forum"]:
-                        config["channel_type"] = cast(Literal["text", "forum"], channel_type)
+                        config["channel_type"] = cast("Literal['text', 'forum']", channel_type)
                 if ENV_THREAD_PREFIX in env_vars:
                     config["thread_prefix"] = env_vars[ENV_THREAD_PREFIX]
                 if ENV_MENTION_USER_ID in env_vars:
@@ -1698,6 +2184,15 @@ class ConfigLoader:
                 if ENV_DISABLED_EVENTS in env_vars:
                     disabled_events = parse_event_list(env_vars[ENV_DISABLED_EVENTS])
                     config["disabled_events"] = disabled_events if disabled_events else None
+                if ENV_THREAD_STORAGE_PATH in env_vars:
+                    config["thread_storage_path"] = env_vars[ENV_THREAD_STORAGE_PATH]
+                if ENV_THREAD_CLEANUP_DAYS in env_vars:
+                    try:
+                        cleanup_days = int(env_vars[ENV_THREAD_CLEANUP_DAYS])
+                        if cleanup_days > 0:
+                            config["thread_cleanup_days"] = cleanup_days
+                    except ValueError:
+                        pass  # Keep default value if invalid
 
             except ConfigurationError as e:
                 print(str(e), file=sys.stderr)
@@ -1715,9 +2210,9 @@ class ConfigLoader:
         if os.environ.get(ENV_USE_THREADS):
             config["use_threads"] = os.environ.get(ENV_USE_THREADS) == "1"
         if os.environ.get(ENV_CHANNEL_TYPE):
-            env_channel_type: Optional[str] = os.environ.get(ENV_CHANNEL_TYPE)
+            env_channel_type: str | None = os.environ.get(ENV_CHANNEL_TYPE)
             if env_channel_type is not None and env_channel_type in ["text", "forum"]:
-                config["channel_type"] = cast(Literal["text", "forum"], env_channel_type)
+                config["channel_type"] = cast("Literal['text', 'forum']", env_channel_type)
         if os.environ.get(ENV_THREAD_PREFIX):
             thread_prefix = os.environ.get(ENV_THREAD_PREFIX)
             if thread_prefix is not None:
@@ -1730,18 +2225,23 @@ class ConfigLoader:
         if os.environ.get(ENV_DISABLED_EVENTS):
             disabled_events = parse_event_list(os.environ.get(ENV_DISABLED_EVENTS, ""))
             config["disabled_events"] = disabled_events if disabled_events else None
+        if os.environ.get(ENV_THREAD_STORAGE_PATH):
+            config["thread_storage_path"] = os.environ.get(ENV_THREAD_STORAGE_PATH)
+        if os.environ.get(ENV_THREAD_CLEANUP_DAYS):
+            try:
+                cleanup_days = int(os.environ.get(ENV_THREAD_CLEANUP_DAYS, "30"))
+                if cleanup_days > 0:
+                    config["thread_cleanup_days"] = cleanup_days
+            except ValueError:
+                pass  # Keep default value if invalid
 
         return config
 
     @staticmethod
     def validate(config: Config) -> None:
         """Validate configuration."""
-        if not config["webhook_url"] and not (
-            config["bot_token"] and config["channel_id"]
-        ):
-            raise ConfigurationError(
-                "No Discord configuration found. Please set webhook URL or bot token/channel ID."
-            )
+        if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
+            raise ConfigurationError("No Discord configuration found. Please set webhook URL or bot token/channel ID.")
 
 
 def setup_logging(debug: bool) -> logging.Logger:
@@ -1751,9 +2251,7 @@ def setup_logging(debug: bool) -> logging.Logger:
     if debug:
         log_dir = Path.home() / ".claude" / "hooks" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = (
-            log_dir / f"discord_notifier_{datetime.now().strftime('%Y-%m-%d')}.log"
-        )
+        log_file = log_dir / f"discord_notifier_{datetime.now().strftime('%Y-%m-%d')}.log"
 
         logging.basicConfig(
             level=logging.DEBUG,
@@ -1791,9 +2289,7 @@ def format_bash_pre_use(tool_input: dict[str, Any]) -> list[str]:
     return desc_parts
 
 
-def format_file_operation_pre_use(
-    tool_name: str, tool_input: dict[str, Any]
-) -> list[str]:
+def format_file_operation_pre_use(tool_name: str, tool_input: dict[str, Any]) -> list[str]:
     """Format file operation tool pre-use details."""
     desc_parts: list[str] = []
     file_path: str = tool_input.get("file_path", "")
@@ -1809,16 +2305,12 @@ def format_file_operation_pre_use(
 
         if old_str:
             truncated = truncate_string(old_str, TruncationLimits.STRING_PREVIEW)
-            suffix = get_truncation_suffix(
-                len(old_str), TruncationLimits.STRING_PREVIEW
-            )
+            suffix = get_truncation_suffix(len(old_str), TruncationLimits.STRING_PREVIEW)
             add_field(desc_parts, "Replacing", f"{truncated}{suffix}", code=True)
 
         if new_str:
             truncated = truncate_string(new_str, TruncationLimits.STRING_PREVIEW)
-            suffix = get_truncation_suffix(
-                len(new_str), TruncationLimits.STRING_PREVIEW
-            )
+            suffix = get_truncation_suffix(len(new_str), TruncationLimits.STRING_PREVIEW)
             add_field(desc_parts, "With", f"{truncated}{suffix}", code=True)
 
     elif tool_name == ToolNames.MULTI_EDIT.value:
@@ -1903,7 +2395,7 @@ def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordE
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}  # type: ignore[typeddict-item]
+    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
 
     # Build detailed description
     desc_parts: list[str] = []
@@ -1932,15 +2424,11 @@ def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordE
 
 
 # Post-use formatters
-def format_bash_post_use(
-    tool_input: dict[str, Any], tool_response: ToolResponse
-) -> list[str]:
+def format_bash_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
     """Format Bash tool post-use results."""
     desc_parts: list[str] = []
 
-    command: str = truncate_string(
-        tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW
-    )
+    command: str = truncate_string(tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW)
     add_field(desc_parts, "Command", command, code=True)
 
     if isinstance(tool_response, dict):
@@ -1997,9 +2485,7 @@ def format_read_operation_post_use(
     return desc_parts
 
 
-def format_write_operation_post_use(
-    tool_input: dict[str, Any], tool_response: ToolResponse
-) -> list[str]:
+def format_write_operation_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
     """Format write operation tool post-use results."""
     desc_parts: list[str] = []
 
@@ -2023,9 +2509,7 @@ def format_write_operation_post_use(
     return desc_parts
 
 
-def format_task_post_use(
-    tool_input: dict[str, Any], tool_response: ToolResponse
-) -> list[str]:
+def format_task_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
     """Format Task tool post-use results."""
     desc_parts: list[str] = []
 
@@ -2040,9 +2524,7 @@ def format_task_post_use(
     return desc_parts
 
 
-def format_web_fetch_post_use(
-    tool_input: dict[str, Any], tool_response: ToolResponse
-) -> list[str]:
+def format_web_fetch_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
     """Format WebFetch tool post-use results."""
     desc_parts: list[str] = []
 
@@ -2064,11 +2546,7 @@ def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
     desc_parts: list[str] = []
 
     if isinstance(tool_response, dict):
-        desc_parts.append(
-            format_json_field(
-                tool_response, "Response", TruncationLimits.RESULT_PREVIEW
-            )
-        )
+        desc_parts.append(format_json_field(tool_response, "Response", TruncationLimits.RESULT_PREVIEW))
     elif isinstance(tool_response, str):
         response_str = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
         add_field(desc_parts, "Response", response_str)
@@ -2083,7 +2561,7 @@ def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> Discord
     tool_response = event_data.get("tool_response", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}  # type: ignore[typeddict-item]
+    embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}
 
     # Build detailed description
     desc_parts: list[str] = []
@@ -2092,14 +2570,8 @@ def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> Discord
     # Dispatch to tool-specific formatter
     if is_bash_tool(tool_name):
         desc_parts.extend(format_bash_post_use(tool_input, tool_response))
-    elif tool_name == ToolNames.READ.value:
-        desc_parts.extend(
-            format_read_operation_post_use(tool_name, tool_input, tool_response)
-        )
-    elif is_list_tool(tool_name):
-        desc_parts.extend(
-            format_read_operation_post_use(tool_name, tool_input, tool_response)
-        )
+    elif tool_name == ToolNames.READ.value or is_list_tool(tool_name):
+        desc_parts.extend(format_read_operation_post_use(tool_name, tool_input, tool_response))
     elif is_file_tool(tool_name):
         desc_parts.extend(format_write_operation_post_use(tool_input, tool_response))
     elif tool_name == ToolNames.TASK.value:
@@ -2129,9 +2601,7 @@ def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordE
 
     # Add any additional data from the event
     extra_keys: list[str] = [
-        k
-        for k in event_data.keys()
-        if k not in ["message", "session_id", "transcript_path", "hook_event_name"]
+        k for k in event_data if k not in ["message", "session_id", "transcript_path", "hook_event_name"]
     ]
 
     if extra_keys:
@@ -2141,13 +2611,9 @@ def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordE
                 add_field(desc_parts, key.title(), str(value))
             else:
                 # For complex types, show as JSON
-                desc_parts.append(
-                    format_json_field(
-                        value, key.title(), TruncationLimits.PROMPT_PREVIEW
-                    )
-                )
+                desc_parts.append(format_json_field(value, key.title(), TruncationLimits.PROMPT_PREVIEW))
 
-    return {"title": "📢 Notification", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
+    return {"title": "📢 Notification", "description": "\n".join(desc_parts)}
 
 
 def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2168,7 +2634,7 @@ def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
             label = key.replace("_", " ").title()
             add_field(desc_parts, label, str(event_data[key]))
 
-    return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
+    return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}
 
 
 def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2190,9 +2656,7 @@ def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> Discord
             result_summary = truncate_string(result, TruncationLimits.JSON_PREVIEW)
             desc_parts.append(f"**Result:**\n{result_summary}")
         else:
-            desc_parts.append(
-                format_json_field(result, "Result", TruncationLimits.JSON_PREVIEW)
-            )
+            desc_parts.append(format_json_field(result, "Result", TruncationLimits.JSON_PREVIEW))
 
     # Add execution stats if available
     for key in ["execution_time", "tools_used", "status"]:
@@ -2200,23 +2664,21 @@ def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> Discord
             label = key.replace("_", " ").title()
             add_field(desc_parts, label, str(event_data[key]))
 
-    return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
+    return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
 
 
-def format_default_impl(
-    event_type: str, event_data: dict[str, Any], session_id: str
-) -> DiscordEmbed:
+def format_default_impl(event_type: str, event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
     """Format unknown event types."""
     desc_parts: list[str] = []
     desc_parts.append(f"**Session:** `{session_id}`")
     desc_parts.append(f"**Event Type:** {event_type}")
-    
+
     # Show event data if available
     if event_data:
         desc_parts.append("\n**Event Data:**")
         desc_parts.append(format_json_field(event_data, "", TruncationLimits.JSON_PREVIEW))
-    
-    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}  # type: ignore[typeddict-item]
+
+    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}
 
 
 def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
@@ -2237,21 +2699,14 @@ class FormatterRegistry:
             EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
         }
 
-    def get_formatter(
-        self, event_type: str
-    ) -> Callable[[dict[str, Any], str], DiscordEmbed]:
+    def get_formatter(self, event_type: str) -> Callable[[dict[str, Any], str], DiscordEmbed]:
         """Get formatter for event type."""
         if event_type in self._formatters:
             return self._formatters[event_type]
-        else:
-            # Return a lambda that captures the event_type for unknown events
-            return lambda event_data, session_id: format_default_impl(
-                event_type, event_data, session_id
-            )
+        # Return a lambda that captures the event_type for unknown events
+        return lambda event_data, session_id: format_default_impl(event_type, event_data, session_id)
 
-    def register(
-        self, event_type: str, formatter: Callable[[dict[str, Any], str], DiscordEmbed]
-    ) -> None:
+    def register(self, event_type: str, formatter: Callable[[dict[str, Any], str], DiscordEmbed]) -> None:
         """Register a new formatter."""
         self._formatters[event_type] = formatter
 
@@ -2274,30 +2729,28 @@ def format_event(
     if "title" in embed and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
         embed["title"] = truncate_string(embed["title"], DiscordLimits.MAX_TITLE_LENGTH)
 
-    if (
-        "description" in embed
-        and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH
-    ):
-        embed["description"] = truncate_string(
-            embed["description"], DiscordLimits.MAX_DESCRIPTION_LENGTH
-        )
+    if "description" in embed and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
+        embed["description"] = truncate_string(embed["description"], DiscordLimits.MAX_DESCRIPTION_LENGTH)
 
     # Add common fields
     embed["timestamp"] = timestamp
 
     # Get color for event type
     if is_valid_event_type(event_type):
-        embed["color"] = EVENT_COLORS.get(event_type, DiscordColors.DEFAULT)  # type: ignore[call-overload]
+        embed["color"] = EVENT_COLORS.get(event_type, DiscordColors.DEFAULT)
     else:
         embed["color"] = DiscordColors.DEFAULT
 
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
     # Create message with embeds
-    message: DiscordMessage = {"embeds": [embed]}  # type: ignore[typeddict-item]
+    message: DiscordMessage = {"embeds": [embed]}
 
     # Add user mention for Notification and Stop events if configured
-    if event_type in [EventTypes.NOTIFICATION.value, EventTypes.STOP.value] and config.get("mention_user_id"):
+    if event_type in [
+        EventTypes.NOTIFICATION.value,
+        EventTypes.STOP.value,
+    ] and config.get("mention_user_id"):
         # Extract appropriate message based on event type
         if event_type == EventTypes.NOTIFICATION.value:
             display_message = event_data.get("message", "System notification")
@@ -2325,13 +2778,9 @@ def send_to_discord(
             # Send to existing thread
             if config["webhook_url"]:
                 try:
-                    return http_client.post_webhook_to_thread(
-                        config["webhook_url"], message, thread_id
-                    )
+                    return http_client.post_webhook_to_thread(config["webhook_url"], message, thread_id)
                 except DiscordAPIError:
-                    logger.warning(
-                        "Failed to send to thread, falling back to regular channel"
-                    )
+                    logger.warning("Failed to send to thread, falling back to regular channel")
 
         elif config["channel_type"] == "forum" and config["webhook_url"]:
             # Create forum thread with first message
@@ -2342,23 +2791,14 @@ def send_to_discord(
             }
 
             try:
-                thread_id = http_client.create_forum_thread(
-                    config["webhook_url"], thread_message, thread_name
-                )
+                thread_id = http_client.create_forum_thread(config["webhook_url"], thread_message, thread_name)
                 if thread_id:
                     SESSION_THREAD_CACHE[session_id] = thread_id
-                    logger.info(
-                        f"Created forum thread {thread_id} for session {session_id}"
-                    )
+                    logger.info(f"Created forum thread {thread_id} for session {session_id}")
                     return True
-                else:
-                    logger.warning(
-                        "Forum thread creation failed, falling back to regular channel"
-                    )
+                logger.warning("Forum thread creation failed, falling back to regular channel")
             except DiscordAPIError:
-                logger.warning(
-                    "Forum thread creation failed, falling back to regular channel"
-                )
+                logger.warning("Forum thread creation failed, falling back to regular channel")
 
     # Regular channel messaging (no threads or fallback)
     # Try webhook first
@@ -2371,9 +2811,7 @@ def send_to_discord(
     # Try bot API as fallback
     if config["bot_token"] and config["channel_id"]:
         try:
-            url = (
-                f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
-            )
+            url = f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
             return http_client.post_bot_api(url, message, config["bot_token"])
         except DiscordAPIError:
             pass

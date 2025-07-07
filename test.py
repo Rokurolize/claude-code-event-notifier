@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Test script for the simplified Discord notifier.
+"""Test script for the simplified Discord notifier.
 
 Usage: python3 test.py
 """
@@ -127,6 +126,7 @@ def test_notifier():
         try:
             proc = subprocess.run(
                 [sys.executable, str(script_path)],
+                check=False,
                 input=json.dumps(event["data"]),
                 text=True,
                 capture_output=True,
