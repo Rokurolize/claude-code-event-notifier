@@ -61,7 +61,9 @@ python3 configure_hooks.py --remove
 
 ## Architecture
 
-- **Single file:** `discord_notifier.py` (~240 lines)
-- **No dependencies:** Uses only Python standard library
-- **Fast:** Minimal overhead, exits quickly
+- **Modular design:** Core implementation in `src/` directory with 4 focused modules
+- **Comprehensive:** ~4,900 lines of Python code with advanced type safety
+- **Zero dependencies:** Uses only Python 3.13+ standard library
+- **Intelligent threading:** 4-tier thread management with persistent storage
+- **Type-safe:** Comprehensive TypedDict definitions and runtime validation
 - **Reliable:** Fails gracefully without blocking Claude Code
