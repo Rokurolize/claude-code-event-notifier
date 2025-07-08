@@ -82,6 +82,45 @@ from typing import (
     cast,
 )
 
+# Try to import ThreadStorage - handle both module and script execution
+try:
+    # When run as a module
+    from .thread_storage import ThreadStorage
+
+    THREAD_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        # When run as a script - try absolute import
+        from thread_storage import ThreadStorage
+
+        THREAD_STORAGE_AVAILABLE = True
+    except ImportError:
+        # ThreadStorage not available
+        THREAD_STORAGE_AVAILABLE = False
+
+        class ThreadStorage:  # type: ignore[no-redef]
+            """Dummy ThreadStorage class when imports fail."""
+
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                """Initialize dummy ThreadStorage that always raises ImportError."""
+                _ = args, kwargs  # Mark as used
+                raise ImportError("ThreadStorage module not available")
+
+            def get_thread(self, session_id: str) -> None:
+                """Get thread - always raises ImportError."""
+                _ = session_id  # Mark as used
+                raise ImportError("ThreadStorage module not available")
+
+            def store_thread(self, **kwargs: Any) -> None:
+                """Store thread - always raises ImportError."""
+                _ = kwargs  # Mark as used
+                raise ImportError("ThreadStorage module not available")
+
+            def remove_thread(self, session_id: str) -> None:
+                """Remove thread - always raises ImportError."""
+                _ = session_id  # Mark as used
+                raise ImportError("ThreadStorage module not available")
+
 
 # Custom exceptions
 class DiscordNotifierError(Exception):
@@ -1635,14 +1674,59 @@ class HTTPClient:
                 return None
 
         except urllib.error.HTTPError as e:
-            self.logger.error(f"Text Thread Creation HTTP error {e.code}: {e.reason}")
-            raise DiscordAPIError(f"Text thread creation failed: {e.code} {e.reason}")
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+                self.logger.error(f"Text Thread Creation HTTP error {e.code}: {e.reason}, body: {error_body}")
+            except Exception:
+                self.logger.error(f"Text Thread Creation HTTP error {e.code}: {e.reason}")
+            raise DiscordAPIError(f"Text thread creation failed: {e.code} {e.reason}, details: {error_body}")
         except urllib.error.URLError as e:
             self.logger.error(f"Text Thread Creation URL error: {e.reason}")
             raise DiscordAPIError(f"Text thread creation connection failed: {e.reason}")
         except Exception as e:
             self.logger.error(f"Text Thread Creation unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"Text thread creation unexpected error: {e}")
+
+    def get_channel_info(self, channel_id: str, token: str) -> dict[str, Any] | None:
+        """Get channel information via Discord bot API.
+
+        Args:
+            channel_id: Discord channel ID (snowflake)
+            token: Discord bot token
+
+        Returns:
+            Channel object from Discord API if found, None otherwise
+        """
+        url = f"https://discord.com/api/v10/channels/{channel_id}"
+        headers = {
+            **self.headers_base,
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Get Channel Info response: {status}")
+
+                if 200 <= status < 300:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    return cast("dict[str, Any]", response_data)
+                return None
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"Get Channel Info HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                # Channel not found
+                return None
+            raise DiscordAPIError(f"Get channel info failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Get Channel Info URL error: {e.reason}")
+            raise DiscordAPIError(f"Get channel info connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"Get Channel Info unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"Get channel info unexpected error: {e}")
 
     def list_active_threads(self, channel_id: str, token: str) -> list[dict[str, Any]]:
         """List active threads in a channel via Discord bot API.
@@ -1654,7 +1738,19 @@ class HTTPClient:
         Returns:
             List of thread objects from Discord API
         """
-        url = f"https://discord.com/api/v10/channels/{channel_id}/threads/active"
+        # Step 1: Get guild_id from channel
+        channel_info = self.get_channel_info(channel_id, token)
+        if not channel_info:
+            self.logger.error(f"Could not get channel info for {channel_id}")
+            return []
+
+        guild_id = channel_info.get("guild_id")
+        if not guild_id:
+            self.logger.error(f"No guild_id found for channel {channel_id}")
+            return []
+
+        # Step 2: Use correct endpoint with guild_id
+        url = f"https://discord.com/api/v10/guilds/{guild_id}/threads/active"
         headers = {
             **self.headers_base,
             "Authorization": f"Bot {token}",
@@ -1669,15 +1765,23 @@ class HTTPClient:
 
                 if 200 <= status < 300:
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("list[dict[str, Any]]", response_data.get("threads", []))
+                    # Filter threads to only include those from our channel
+                    all_threads = response_data.get("threads", [])
+                    channel_threads = [t for t in all_threads if t.get("parent_id") == channel_id]
+                    return cast("list[dict[str, Any]]", channel_threads)
                 return []
 
         except urllib.error.HTTPError as e:
-            self.logger.error(f"List Active Threads HTTP error {e.code}: {e.reason}")
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8")
+                self.logger.error(f"List Active Threads HTTP error {e.code}: {e.reason}, body: {error_body}")
+            except Exception:
+                self.logger.error(f"List Active Threads HTTP error {e.code}: {e.reason}")
             if e.code == 404:
-                # Channel not found or no access - return empty list
+                # Guild not found or no access - return empty list
                 return []
-            raise DiscordAPIError(f"List active threads failed: {e.code} {e.reason}")
+            raise DiscordAPIError(f"List active threads failed: {e.code} {e.reason}, details: {error_body}")
         except urllib.error.URLError as e:
             self.logger.error(f"List Active Threads URL error: {e.reason}")
             raise DiscordAPIError(f"List active threads connection failed: {e.reason}")
@@ -1773,8 +1877,231 @@ class HTTPClient:
             self.logger.error(f"Unarchive Thread unexpected error: {type(e).__name__}: {e}")
             raise DiscordAPIError(f"Unarchive thread unexpected error: {e}")
 
+    def archive_thread(self, thread_id: str, token: str, locked: bool = False) -> bool:
+        """Archive/close a thread via Discord bot API.
+
+        Args:
+            thread_id: Discord thread ID (snowflake)
+            token: Discord bot token
+            locked: Whether to lock the thread (prevents non-moderators from unarchiving)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        url = f"https://discord.com/api/v10/channels/{thread_id}"
+        data = {"archived": True}
+        if locked:
+            data["locked"] = True
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            json_data = json.dumps(data).encode("utf-8")
+
+            # Create a custom request class to override the HTTP method
+            class PatchRequest(urllib.request.Request):
+                def get_method(self) -> str:
+                    return "PATCH"
+
+            req = PatchRequest(url, data=json_data, headers=headers)
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"Archive Thread response: {status}")
+
+                return bool(200 <= status < 300)
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"Archive Thread HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                # Thread not found
+                return False
+            raise DiscordAPIError(f"Archive thread failed: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            self.logger.error(f"Archive Thread URL error: {e.reason}")
+            raise DiscordAPIError(f"Archive thread connection failed: {e.reason}")
+        except Exception as e:
+            self.logger.error(f"Archive Thread unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"Archive thread unexpected error: {e}")
+
+    def list_public_archived_threads(
+        self, channel_id: str, token: str, before: str | None = None, limit: int = 100
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """List public archived threads in a channel.
+
+        Args:
+            channel_id: Discord channel ID
+            token: Discord bot token
+            before: Get threads before this timestamp (snowflake)
+            limit: Maximum number of threads to return (max 100)
+
+        Returns:
+            Tuple of (list of thread objects, has_more flag)
+        """
+        url = f"https://discord.com/api/v10/channels/{channel_id}/threads/archived/public"
+        params = []
+        if before:
+            params.append(f"before={before}")
+        params.append(f"limit={min(limit, 100)}")
+        if params:
+            url += "?" + "&".join(params)
+
+        headers = {
+            **self.headers_base,
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"List Public Archived Threads response: {status}")
+
+                if 200 <= status < 300:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    threads = response_data.get("threads", [])
+                    has_more = response_data.get("has_more", False)
+                    return threads, has_more
+                return [], False
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"List Public Archived Threads HTTP error {e.code}: {e.reason}")
+            if e.code == 404:
+                return [], False
+            raise DiscordAPIError(f"List public archived threads failed: {e.code} {e.reason}") from e
+        except urllib.error.URLError as e:
+            self.logger.error(f"List Public Archived Threads URL error: {e.reason}")
+            raise DiscordAPIError(f"List public archived threads connection failed: {e.reason}") from e
+        except Exception as e:
+            self.logger.error(f"List Public Archived Threads unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"List public archived threads unexpected error: {e}") from e
+
+    def list_private_archived_threads(
+        self, channel_id: str, token: str, before: str | None = None, limit: int = 100
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """List private archived threads in a channel (requires MANAGE_THREADS permission).
+
+        Args:
+            channel_id: Discord channel ID
+            token: Discord bot token
+            before: Get threads before this timestamp (snowflake)
+            limit: Maximum number of threads to return (max 100)
+
+        Returns:
+            Tuple of (list of thread objects, has_more flag)
+        """
+        url = f"https://discord.com/api/v10/channels/{channel_id}/threads/archived/private"
+        params = []
+        if before:
+            params.append(f"before={before}")
+        params.append(f"limit={min(limit, 100)}")
+        if params:
+            url += "?" + "&".join(params)
+
+        headers = {
+            **self.headers_base,
+            "Authorization": f"Bot {token}",
+        }
+
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status = response.status
+                self.logger.debug(f"List Private Archived Threads response: {status}")
+
+                if 200 <= status < 300:
+                    response_data = json.loads(response.read().decode("utf-8"))
+                    threads = response_data.get("threads", [])
+                    has_more = response_data.get("has_more", False)
+                    return threads, has_more
+                return [], False
+
+        except urllib.error.HTTPError as e:
+            self.logger.error(f"List Private Archived Threads HTTP error {e.code}: {e.reason}")
+            if e.code in (403, 404):  # No permission or not found
+                return [], False
+            raise DiscordAPIError(f"List private archived threads failed: {e.code} {e.reason}") from e
+        except urllib.error.URLError as e:
+            self.logger.error(f"List Private Archived Threads URL error: {e.reason}")
+            raise DiscordAPIError(f"List private archived threads connection failed: {e.reason}") from e
+        except Exception as e:
+            self.logger.error(f"List Private Archived Threads unexpected error: {type(e).__name__}: {e}")
+            raise DiscordAPIError(f"List private archived threads unexpected error: {e}") from e
+
+    def search_all_threads(self, channel_id: str, name_pattern: str, token: str) -> list[dict[str, Any]]:
+        """Search for threads by name pattern in all thread states (active + archived).
+
+        Args:
+            channel_id: Discord channel ID
+            name_pattern: Pattern to search for in thread names
+            token: Discord bot token
+
+        Returns:
+            List of matching thread objects
+        """
+        all_threads = []
+        pattern_lower = name_pattern.lower()
+
+        # 1. Search active threads
+        try:
+            active_threads = self.list_active_threads(channel_id, token)
+            all_threads.extend(active_threads)
+            self.logger.debug(f"Found {len(active_threads)} active threads")
+        except Exception as e:
+            self.logger.warning(f"Failed to list active threads: {e}")
+
+        # 2. Search public archived threads
+        try:
+            public_archived, has_more = self.list_public_archived_threads(channel_id, token)
+            all_threads.extend(public_archived)
+            self.logger.debug(f"Found {len(public_archived)} public archived threads")
+
+            # Handle pagination if needed
+            while has_more and public_archived:
+                last_thread = public_archived[-1]
+                before = last_thread.get("thread_metadata", {}).get("archive_timestamp")
+                if before:
+                    public_archived, has_more = self.list_public_archived_threads(channel_id, token, before)
+                    all_threads.extend(public_archived)
+                else:
+                    break
+        except Exception as e:
+            self.logger.warning(f"Failed to list public archived threads: {e}")
+
+        # 3. Search private archived threads (may fail due to permissions)
+        try:
+            private_archived, has_more = self.list_private_archived_threads(channel_id, token)
+            all_threads.extend(private_archived)
+            self.logger.debug(f"Found {len(private_archived)} private archived threads")
+
+            # Handle pagination if needed
+            while has_more and private_archived:
+                last_thread = private_archived[-1]
+                before = last_thread.get("thread_metadata", {}).get("archive_timestamp")
+                if before:
+                    private_archived, has_more = self.list_private_archived_threads(channel_id, token, before)
+                    all_threads.extend(private_archived)
+                else:
+                    break
+        except Exception as e:
+            self.logger.debug(f"Failed to list private archived threads (may lack permissions): {e}")
+
+        # Filter by name pattern
+        matching_threads = [thread for thread in all_threads if pattern_lower in thread.get("name", "").lower()]
+
+        self.logger.debug(
+            f"Found {len(matching_threads)} threads matching '{name_pattern}' out of {len(all_threads)} total threads"
+        )
+
+        return matching_threads
+
     def search_threads_by_name(self, channel_id: str, name_pattern: str, token: str) -> list[dict[str, Any]]:
         """Search for threads by name pattern in a channel.
+
+        This method searches ALL threads (active + archived) for better thread discovery.
 
         Args:
             channel_id: Discord channel ID (snowflake)
@@ -1784,15 +2111,7 @@ class HTTPClient:
         Returns:
             List of matching thread objects
         """
-        threads = self.list_active_threads(channel_id, token)
-
-        # Filter threads by name pattern (case-insensitive)
-        pattern_lower = name_pattern.lower()
-        matching_threads = [thread for thread in threads if pattern_lower in thread.get("name", "").lower()]
-
-        self.logger.debug(f"Found {len(matching_threads)} threads matching pattern '{name_pattern}'")
-
-        return matching_threads
+        return self.search_all_threads(channel_id, name_pattern, token)
 
 
 # Formatter base class
@@ -1984,42 +2303,43 @@ def get_or_create_thread(
         del SESSION_THREAD_CACHE[session_id]
 
     # Step 2: Check persistent storage
-    try:
-        from pathlib import Path
+    if not THREAD_STORAGE_AVAILABLE:
+        logger.debug("ThreadStorage not available, skipping persistent storage check")
+    else:
+        try:
+            # Use configured storage path or default
+            storage_path = None
+            thread_storage_path = config.get("thread_storage_path")
+            if thread_storage_path:
+                storage_path = Path(thread_storage_path)
 
-        from .thread_storage import ThreadStorage
+            cleanup_days = config.get("thread_cleanup_days", 30)
+            storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
+            stored_record = storage.get_thread(session_id)
 
-        # Use configured storage path or default
-        storage_path = None
-        thread_storage_path = config.get("thread_storage_path")
-        if thread_storage_path:
-            storage_path = Path(thread_storage_path)
+            if stored_record:
+                logger.debug(f"Found stored thread for session {session_id}: {stored_record.thread_id}")
 
-        cleanup_days = config.get("thread_cleanup_days", 30)
-        storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
-        stored_record = storage.get_thread(session_id)
+                # Validate that stored thread still exists and is usable
+                thread_details = validate_thread_exists(stored_record.thread_id, config, http_client, logger)
+                if thread_details and ensure_thread_is_usable(thread_details, config, http_client, logger):
+                    # Update cache and return valid stored thread
+                    thread_id = str(stored_record.thread_id)
+                    SESSION_THREAD_CACHE[session_id] = thread_id
+                    logger.info(f"Restored thread {thread_id} from storage for session {session_id}")
+                    return thread_id
+                # Remove invalid thread from storage
+                logger.warning(f"Stored thread {stored_record.thread_id} is invalid, removing from storage")
+                storage.remove_thread(session_id)
 
-        if stored_record:
-            logger.debug(f"Found stored thread for session {session_id}: {stored_record.thread_id}")
-
-            # Validate that stored thread still exists and is usable
-            thread_details = validate_thread_exists(stored_record.thread_id, config, http_client, logger)
-            if thread_details and ensure_thread_is_usable(thread_details, config, http_client, logger):
-                # Update cache and return valid stored thread
-                thread_id = str(stored_record.thread_id)
-                SESSION_THREAD_CACHE[session_id] = thread_id
-                logger.info(f"Restored thread {thread_id} from storage for session {session_id}")
-                return thread_id
-            # Remove invalid thread from storage
-            logger.warning(f"Stored thread {stored_record.thread_id} is invalid, removing from storage")
-            storage.remove_thread(session_id)
-
-    except ThreadStorageError as e:
-        logger.warning(f"Thread storage error for session {session_id}: {e}")
-    except Exception as e:
-        logger.warning(
-            f"Unexpected error checking persistent storage for session {session_id}: {type(e).__name__}: {e}"
-        )
+        except ImportError as e:
+            logger.warning(f"ThreadStorage import error: {e}")
+        except ThreadStorageError as e:
+            logger.warning(f"Thread storage error for session {session_id}: {e}")
+        except Exception as e:
+            logger.warning(
+                f"Unexpected error checking persistent storage for session {session_id}: {type(e).__name__}: {e}"
+            )
 
     # Step 3: Search Discord API for existing threads by name
     thread_name = f"{config['thread_prefix']} {session_id[:8]}"
@@ -2768,8 +3088,81 @@ def send_to_discord(
     logger: logging.Logger,
     http_client: HTTPClient,
     session_id: str = "",
+    event_type: str = "",
 ) -> bool:
-    """Send message to Discord via webhook or bot API, with optional thread support."""
+    """Send message to Discord via webhook or bot API, with optional thread support.
+
+    For Stop/Notification events:
+    - Send embed-only message to thread
+    - Send mention-only message to main channel
+    - Archive thread for Stop events
+    """
+    # Special handling for Stop and Notification events
+    if event_type in [EventTypes.STOP.value, EventTypes.NOTIFICATION.value] and config["use_threads"] and session_id:
+        success = False
+
+        # 1. Send embed to thread (if exists)
+        thread_id = get_or_create_thread(session_id, config, http_client, logger)
+        if thread_id:
+            # Create embed-only message for thread
+            thread_message: DiscordMessage = {"embeds": message.get("embeds", [])}
+
+            try:
+                if config["webhook_url"]:
+                    success = http_client.post_webhook_to_thread(config["webhook_url"], thread_message, thread_id)
+                elif config["bot_token"]:
+                    url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
+                    success = http_client.post_bot_api(url, thread_message, config["bot_token"])
+
+                if success:
+                    logger.debug(f"Sent embed to thread {thread_id} for {event_type} event")
+            except DiscordAPIError as e:
+                logger.warning(f"Failed to send embed to thread {thread_id}: {e}")
+
+        # 2. Send mention-only message to main channel
+        if config.get("mention_user_id"):
+            # Extract display message based on event type
+            if event_type == EventTypes.NOTIFICATION.value:
+                display_message = (
+                    message.get("content", "").replace(f"<@{config['mention_user_id']}> ", "") or "System notification"
+                )
+            else:  # Stop event
+                display_message = "Session ended"
+
+            # Create mention-only message for main channel
+            mention_message: DiscordMessage = {"content": f"<@{config['mention_user_id']}> {display_message}"}
+
+            try:
+                if config["webhook_url"]:
+                    main_success = http_client.post_webhook(config["webhook_url"], mention_message)
+                elif config["bot_token"] and config["channel_id"]:
+                    url = f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
+                    main_success = http_client.post_bot_api(url, mention_message, config["bot_token"])
+                else:
+                    main_success = False
+
+                if main_success:
+                    logger.debug(f"Sent mention to main channel for {event_type} event")
+                    success = True  # Consider successful if either thread or main channel succeeds
+
+            except DiscordAPIError as e:
+                logger.warning(f"Failed to send mention to main channel: {e}")
+
+        # 3. Archive thread for Stop events
+        if event_type == EventTypes.STOP.value and thread_id and config.get("bot_token"):
+            try:
+                if http_client.archive_thread(thread_id, config["bot_token"]):
+                    logger.info(f"Archived thread {thread_id} after session {session_id} ended")
+                    # Remove from cache since it's now archived
+                    SESSION_THREAD_CACHE.pop(session_id, None)
+                else:
+                    logger.warning(f"Failed to archive thread {thread_id}")
+            except DiscordAPIError as e:
+                logger.warning(f"Failed to archive thread {thread_id}: {e}")
+
+        return success
+
+    # Regular event handling (PreToolUse, PostToolUse, etc.)
     # Handle thread support if enabled
     if config["use_threads"] and session_id:
         thread_id = get_or_create_thread(session_id, config, http_client, logger)
@@ -2855,7 +3248,7 @@ def main() -> None:
         # Format and send message
         message = format_event(event_type, event_data, formatter_registry, config)
         session_id = event_data.get("session_id", "")
-        success = send_to_discord(message, config, logger, http_client, session_id)
+        success = send_to_discord(message, config, logger, http_client, session_id, event_type)
 
         if success:
             logger.info(f"{event_type} notification sent successfully")
