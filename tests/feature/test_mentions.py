@@ -18,9 +18,9 @@ import time
 from pathlib import Path
 
 
-def test_mention_notifications():
+def test_mention_notifications() -> bool:
     """Test Discord notifications with user mentions."""
-    script_path = Path(__file__).parent / "src" / "discord_notifier.py"
+    script_path = Path(__file__).parent.parent.parent / "src" / "discord_notifier.py"
 
     if not script_path.exists():
         print(f"Error: Notifier script not found at {script_path}")
@@ -32,9 +32,7 @@ def test_mention_notifications():
         print("⚠️  DISCORD_MENTION_USER_ID not set!")
         print("Please set: export DISCORD_MENTION_USER_ID=YOUR_DISCORD_USER_ID")
         print("\nTo find your Discord User ID:")
-        print(
-            "1. Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)"
-        )
+        print("1. Enable Developer Mode in Discord (Settings → Advanced → Developer Mode)")
         print("2. Right-click on your username in any channel")
         print("3. Select 'Copy User ID'")
         return False
@@ -64,9 +62,15 @@ def test_mention_notifications():
             "name": "Long message with emojis",
             "data": {
                 "session_id": "mention-test-003",
-                "message": "🎉 All tests passed! Build #1234 completed successfully. Coverage: 98.5%. Time: 2m 34s. Ready for production deployment! 🚀",
+                "message": (
+                    "🎉 All tests passed! Build #1234 completed successfully. "
+                    "Coverage: 98.5%. Time: 2m 34s. Ready for production deployment! 🚀"
+                ),
             },
-            "expected": f"<@{mention_user_id}> 🎉 All tests passed! Build #1234 completed successfully. Coverage: 98.5%. Time: 2m 34s. Ready for production deployment! 🚀",
+            "expected": (
+                f"<@{mention_user_id}> 🎉 All tests passed! Build #1234 completed successfully. "
+                f"Coverage: 98.5%. Time: 2m 34s. Ready for production deployment! 🚀"
+            ),
         },
         {
             "name": "Message with Discord formatting",
@@ -109,7 +113,7 @@ def test_mention_notifications():
 
         # Run the notifier
         try:
-            proc = subprocess.run(
+            proc: subprocess.CompletedProcess[str] = subprocess.run(
                 [sys.executable, str(script_path)],
                 check=False,
                 input=json.dumps(event["data"]).encode(),
@@ -128,7 +132,7 @@ def test_mention_notifications():
                 print(f"   Error: {proc.stderr}")
         except subprocess.TimeoutExpired:
             print(" ✗ (timeout)")
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f" ✗ ({e})")
 
         # Small delay between tests
@@ -143,9 +147,9 @@ def test_mention_notifications():
     return True
 
 
-def test_without_mention():
+def test_without_mention() -> None:
     """Test that notifications work without mention configuration."""
-    script_path = Path(__file__).parent / "src" / "discord_notifier.py"
+    script_path = Path(__file__).parent.parent.parent / "src" / "discord_notifier.py"
 
     print("\nTesting notification WITHOUT mention...")
 
@@ -163,7 +167,7 @@ def test_without_mention():
     }
 
     try:
-        proc = subprocess.run(
+        proc: subprocess.CompletedProcess[str] = subprocess.run(
             [sys.executable, str(script_path)],
             check=False,
             input=json.dumps(event_data).encode(),
@@ -177,7 +181,7 @@ def test_without_mention():
             print("✓ Notification sent without mention")
         else:
             print(f"✗ Error: {proc.stderr}")
-    except Exception as e:
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
         print(f"✗ Error: {e}")
 
 

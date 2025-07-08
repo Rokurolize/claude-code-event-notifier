@@ -19,18 +19,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, Mock, patch
 
-# Add parent directory to Python path for imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Add src directory to Python path for imports
+src_path = Path(__file__).parent.parent.parent / "src"
+sys.path.insert(0, str(src_path))
 
-from src.discord_notifier import (
-    HTTPClient, 
-    find_existing_thread_by_name, 
-    get_or_create_thread,
-    DiscordAPIError
-)
+from discord_notifier import DiscordAPIError, HTTPClient, find_existing_thread_by_name, get_or_create_thread  # noqa: E402
 
 if TYPE_CHECKING:
-    from src.discord_notifier import Config
+    from discord_notifier import Config
 
 
 class TestArchivedThreadSearch(unittest.TestCase):
@@ -187,7 +183,10 @@ class TestArchivedThreadSearch(unittest.TestCase):
         call_count = 0
 
         def mock_list_public_archived(
-            _channel_id: str, _token: str, before: str | None = None, limit: int = 100
+            _channel_id: str,
+            _token: str,
+            before: str | None = None,  # noqa: ARG001
+            limit: int = 100,  # noqa: ARG001
         ) -> tuple[list[dict[str, Any]], bool]:  # type: ignore[misc]
             nonlocal call_count
             call_count += 1
@@ -250,7 +249,7 @@ class TestArchivedThreadSearch(unittest.TestCase):
             assert thread is not None
             assert thread["id"] == exact_match["id"]  # type: ignore[misc]
 
-    @patch("src.discord_notifier.SESSION_THREAD_CACHE", {})
+    @patch("discord_notifier.SESSION_THREAD_CACHE", {})
     def test_get_or_create_thread_finds_archived(self) -> None:
         """Test that get_or_create_thread finds and unarchives existing archived threads."""
         http_client = HTTPClient(self.logger)
@@ -259,15 +258,15 @@ class TestArchivedThreadSearch(unittest.TestCase):
 
         # Mock finding an archived thread
         with (
-            patch("src.discord_notifier.find_existing_thread_by_name", return_value=self.archived_thread),
-            patch("src.discord_notifier.ensure_thread_is_usable", return_value=True),
-            patch("src.thread_storage.ThreadStorage") as mock_storage,
+            patch("discord_notifier.find_existing_thread_by_name", return_value=self.archived_thread),
+            patch("discord_notifier.ensure_thread_is_usable", return_value=True),
+            patch("thread_storage.ThreadStorage") as mock_storage,
         ):
             # Configure mock storage
             mock_storage_instance = MagicMock()
             mock_storage_instance.get_thread.return_value = None  # Not in storage yet
             mock_storage.return_value = mock_storage_instance
-            
+
             thread_id = get_or_create_thread(session_id, self.config, http_client, self.logger)
 
             # Should find and return the existing archived thread

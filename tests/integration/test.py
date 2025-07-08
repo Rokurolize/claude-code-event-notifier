@@ -13,11 +13,8 @@ from pathlib import Path
 
 def test_notifier():
     """Test the Discord notifier with sample events."""
-    # Allow testing v2 with USE_V2 env var
-    if os.environ.get("USE_V2", ""):
-        script_path = Path(__file__).parent / "src" / "discord_notifier_v2.py"
-    else:
-        script_path = Path(__file__).parent / "src" / "discord_notifier.py"
+    # Always use the main discord_notifier.py from the src directory
+    script_path = Path(__file__).parent.parent.parent / "src" / "discord_notifier.py"
 
     if not script_path.exists():
         print(f"Error: Notifier script not found at {script_path}")
@@ -113,9 +110,7 @@ def test_notifier():
 
     # Test each event
     for i, event in enumerate(test_events, 1):
-        print(
-            f"Test {i}/{len(test_events)}: {event['type']} event...", end="", flush=True
-        )
+        print(f"Test {i}/{len(test_events)}: {event['type']} event...", end="", flush=True)
 
         # Set event type in environment
         env = os.environ.copy()

@@ -15,14 +15,18 @@ to test actual API interactions.
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Import the modules we're testing
-from src.discord_notifier import (
+# Add src directory to Python path for imports
+src_path = Path(__file__).parent.parent.parent / "src"
+sys.path.insert(0, str(src_path))
+
+from discord_notifier import (
     SESSION_THREAD_CACHE,
     ConfigLoader,
     HTTPClient,
@@ -32,7 +36,7 @@ from src.discord_notifier import (
     get_or_create_thread,
     validate_thread_exists,
 )
-from src.thread_storage import ThreadRecord, ThreadStorage
+from thread_storage import ThreadRecord, ThreadStorage
 
 
 class TestIntelligentThreadManagement(unittest.TestCase):
@@ -140,16 +144,12 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         self.assertEqual(len(threads), 3)
 
         # Test finding thread by name
-        found_thread = storage.find_thread_by_name(
-            self.config["channel_id"], "TestSession session-1"
-        )
+        found_thread = storage.find_thread_by_name(self.config["channel_id"], "TestSession session-1")
         self.assertIsNotNone(found_thread)
         self.assertEqual(found_thread.session_id, "session-1")
 
         # Test finding non-existent thread by name
-        not_found = storage.find_thread_by_name(
-            self.config["channel_id"], "NonExistent thread"
-        )
+        not_found = storage.find_thread_by_name(self.config["channel_id"], "NonExistent thread")
         self.assertIsNone(not_found)
 
     def test_thread_storage_cleanup(self):
@@ -199,12 +199,8 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         storage = ThreadStorage(db_path=self.test_db_path)
 
         # Store some test threads
-        storage.store_thread(
-            "session-1", "thread-1", self.config["channel_id"], "Session 1", False
-        )
-        storage.store_thread(
-            "session-2", "thread-2", self.config["channel_id"], "Session 2", True
-        )
+        storage.store_thread("session-1", "thread-1", self.config["channel_id"], "Session 1", False)
+        storage.store_thread("session-2", "thread-2", self.config["channel_id"], "Session 2", True)
 
         stats = storage.get_stats()
 
@@ -213,7 +209,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         self.assertEqual(stats["archived_threads"], 1)
         self.assertEqual(stats["db_path"], str(self.test_db_path))
 
-    @patch("src.discord_notifier.ThreadStorage")
+    @patch("discord_notifier.ThreadStorage")
     def test_get_or_create_thread_cache_hit(self, mock_storage_class):
         """Test thread retrieval from in-memory cache."""
         # Pre-populate cache
@@ -226,16 +222,14 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             "thread_metadata": {"archived": False, "locked": False},
         }
 
-        result = get_or_create_thread(
-            self.session_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertEqual(result, self.thread_id)
         self.mock_http_client.get_thread_details.assert_called_once()
         # Storage should not be accessed for cache hits
         mock_storage_class.assert_not_called()
 
-    @patch("src.discord_notifier.ThreadStorage")
+    @patch("discord_notifier.ThreadStorage")
     def test_get_or_create_thread_storage_recovery(self, mock_storage_class):
         """Test thread recovery from persistent storage."""
         # Mock storage to return a stored thread
@@ -260,16 +254,14 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             "thread_metadata": {"archived": False, "locked": False},
         }
 
-        result = get_or_create_thread(
-            self.session_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertEqual(result, self.thread_id)
         # Thread should be added to cache
         self.assertEqual(SESSION_THREAD_CACHE[self.session_id], self.thread_id)
         mock_storage.get_thread.assert_called_with(self.session_id)
 
-    @patch("src.discord_notifier.ThreadStorage")
+    @patch("discord_notifier.ThreadStorage")
     def test_get_or_create_thread_api_discovery(self, mock_storage_class):
         """Test thread discovery via Discord API search."""
         # Mock storage to return None (no stored thread)
@@ -286,9 +278,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             }
         ]
 
-        result = get_or_create_thread(
-            self.session_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertEqual(result, self.thread_id)
         # Thread should be stored for future use
@@ -296,7 +286,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Thread should be cached
         self.assertEqual(SESSION_THREAD_CACHE[self.session_id], self.thread_id)
 
-    @patch("src.discord_notifier.ThreadStorage")
+    @patch("discord_notifier.ThreadStorage")
     def test_get_or_create_thread_creation(self, mock_storage_class):
         """Test new thread creation when none exists."""
         # Mock storage to return None
@@ -310,9 +300,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Mock thread creation to succeed
         self.mock_http_client.create_text_thread.return_value = self.thread_id
 
-        result = get_or_create_thread(
-            self.session_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertEqual(result, self.thread_id)
         # Thread creation should be called
@@ -332,9 +320,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             "thread_metadata": {"archived": False, "locked": False},
         }
 
-        result = validate_thread_exists(
-            self.thread_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = validate_thread_exists(self.thread_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertIsNotNone(result)
         self.assertEqual(result["id"], self.thread_id)
@@ -343,9 +329,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         """Test thread validation when thread doesn't exist."""
         self.mock_http_client.get_thread_details.return_value = None
 
-        result = validate_thread_exists(
-            self.thread_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = validate_thread_exists(self.thread_id, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertIsNone(result)
 
@@ -383,9 +367,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             "thread_metadata": {"archived": False, "locked": False},
         }
 
-        result = ensure_thread_is_usable(
-            thread_details, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = ensure_thread_is_usable(thread_details, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertTrue(result)
         # Should not attempt to unarchive
@@ -400,14 +382,10 @@ class TestIntelligentThreadManagement(unittest.TestCase):
 
         self.mock_http_client.unarchive_thread.return_value = True
 
-        result = ensure_thread_is_usable(
-            thread_details, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = ensure_thread_is_usable(thread_details, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertTrue(result)
-        self.mock_http_client.unarchive_thread.assert_called_once_with(
-            self.thread_id, self.config["bot_token"]
-        )
+        self.mock_http_client.unarchive_thread.assert_called_once_with(self.thread_id, self.config["bot_token"])
 
     def test_ensure_thread_is_usable_locked_thread(self):
         """Test handling of locked threads."""
@@ -416,9 +394,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             "thread_metadata": {"archived": False, "locked": True},
         }
 
-        result = ensure_thread_is_usable(
-            thread_details, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = ensure_thread_is_usable(thread_details, self.config, self.mock_http_client, self.mock_logger)
 
         self.assertFalse(result)
         # Should not attempt to unarchive locked threads
@@ -447,19 +423,15 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             # Should keep default value
             self.assertEqual(config["thread_cleanup_days"], 30)
 
-    @patch("src.discord_notifier.ThreadStorage")
+    @patch("discord_notifier.ThreadStorage")
     def test_error_handling_storage_failure(self, mock_storage_class):
         """Test error handling when storage operations fail."""
         # Mock storage to raise an exception
         mock_storage = MagicMock()
         mock_storage_class.return_value = mock_storage
-        mock_storage.get_thread.side_effect = ThreadStorageError(
-            "Database error", operation="retrieve"
-        )
+        mock_storage.get_thread.side_effect = ThreadStorageError("Database error", operation="retrieve")
 
-        result = get_or_create_thread(
-            self.session_id, self.config, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, self.config, self.mock_http_client, self.mock_logger)
 
         # Should continue with API search despite storage error
         # (assuming no threads found and creation succeeds)
@@ -471,9 +443,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         config_no_threads = self.config.copy()
         config_no_threads["use_threads"] = False
 
-        result = get_or_create_thread(
-            self.session_id, config_no_threads, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, config_no_threads, self.mock_http_client, self.mock_logger)
 
         self.assertIsNone(result)
 
@@ -481,9 +451,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         config_no_token = self.config.copy()
         config_no_token["bot_token"] = None
 
-        result = get_or_create_thread(
-            self.session_id, config_no_token, self.mock_http_client, self.mock_logger
-        )
+        result = get_or_create_thread(self.session_id, config_no_token, self.mock_http_client, self.mock_logger)
 
         self.assertIsNone(result)
 

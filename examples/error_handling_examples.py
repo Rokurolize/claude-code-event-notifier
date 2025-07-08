@@ -7,19 +7,18 @@ with better type safety and error recovery mechanisms.
 
 import json
 import logging
-
-# Add src to path for imports
 import sys
 import urllib.error
+import urllib.request
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, TypeAlias, TypeVar
+from typing import Any, TypeVar
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from discord_notifier import (
+from src.discord_notifier import (
     Config,
     ConfigurationError,
     DiscordAPIError,
@@ -27,10 +26,10 @@ from discord_notifier import (
 )
 
 # Type aliases for better error handling
-NetworkError: TypeAlias = urllib.error.HTTPError | urllib.error.URLError
-ConfigError: TypeAlias = ConfigurationError | json.JSONDecodeError
-ValidationError: TypeAlias = TypeError | ValueError
-DiscordError: TypeAlias = DiscordAPIError | NetworkError
+type NetworkError = urllib.error.HTTPError | urllib.error.URLError
+type ConfigError = ConfigurationError | json.JSONDecodeError
+type ValidationError = TypeError | ValueError
+type DiscordError = DiscordAPIError | NetworkError
 
 # Result type for operations that can fail
 T = TypeVar("T")
@@ -38,7 +37,7 @@ E = TypeVar("E", bound=Exception)
 
 
 @dataclass
-class Result(Generic[T, E]):
+class Result[T, E]:
     """Result type for operations that can fail with type-safe error handling."""
 
     success: bool
@@ -86,32 +85,26 @@ class EnhancedErrorHandler:
             result = json.loads(data)
             if not isinstance(result, dict):
                 # Convert type mismatch to JSON decode error for consistency
-                error = json.JSONDecodeError(
-                    f"Expected dict, got {type(result).__name__}", data, 0
-                )
+                error = json.JSONDecodeError(f"Expected dict, got {type(result).__name__}", data, 0)
                 return Result.err(error)
             return Result.ok(result)
         except json.JSONDecodeError as e:
-            self.logger.error(f"JSON decode error at line {e.lineno}: {e.msg}")
+            self.logger.exception("JSON decode error at line %d: %s", e.lineno, e.msg)
             return Result.err(e)
 
-    def safe_config_load(self, config_data: Any) -> Result[Config, ConfigError]:
+    def safe_config_load(self, config_data: dict[str, Any]) -> Result[Config, ConfigError]:
         """Load config with comprehensive error handling."""
         try:
             # Type validation
             if not isinstance(config_data, dict):
-                error = TypeError(
-                    f"Config must be dict, got {type(config_data).__name__}"
-                )
+                error = TypeError(f"Config must be dict, got {type(config_data).__name__}")
                 return Result.err(error)
 
             # Required field validation
             if not config_data.get("webhook_url") and not (
                 config_data.get("bot_token") and config_data.get("channel_id")
             ):
-                error = ConfigurationError(
-                    "Must provide either webhook_url or bot_token + channel_id"
-                )
+                error = ConfigurationError("Must provide either webhook_url or bot_token + channel_id")
                 return Result.err(error)
 
             # Create typed config
@@ -129,38 +122,32 @@ class EnhancedErrorHandler:
             return Result.ok(config)
 
         except (TypeError, ValueError) as e:
-            self.logger.error(f"Config validation error: {e}")
+            self.logger.exception("Config validation error")
             return Result.err(e)
         except ConfigurationError as e:
-            self.logger.error(f"Configuration error: {e}")
+            self.logger.exception("Configuration error")
             return Result.err(e)
 
     def safe_network_request(self, url: str, data: bytes) -> Result[bool, NetworkError]:
         """Make network request with type-safe error handling."""
         try:
-            import urllib.request
-
             req = urllib.request.Request(url, data=data)
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=10) as response:  # noqa: S310
                 return Result.ok(200 <= response.status < 300)
 
         except urllib.error.HTTPError as e:
-            self.logger.error(f"HTTP error {e.code}: {e.reason}")
+            self.logger.exception("HTTP error %d: %s", e.code, e.reason)
             return Result.err(e)
         except urllib.error.URLError as e:
-            self.logger.error(f"URL error: {e.reason}")
+            self.logger.exception("URL error: %s", e.reason)
             return Result.err(e)
 
-    def safe_discord_send(
-        self, message: DiscordMessage, config: Config
-    ) -> Result[bool, DiscordError]:
+    def safe_discord_send(self, message: DiscordMessage, config: Config) -> Result[bool, DiscordError]:
         """Send Discord message with comprehensive error handling."""
         try:
             # Validate message structure
             if not isinstance(message, dict):
-                error = DiscordAPIError(
-                    f"Message must be dict, got {type(message).__name__}"
-                )
+                error = DiscordAPIError(f"Message must be dict, got {type(message).__name__}")
                 return Result.err(error)
 
             if "embeds" not in message:
@@ -169,32 +156,28 @@ class EnhancedErrorHandler:
 
             # Try webhook first
             if config.get("webhook_url"):
-                webhook_result = self.safe_network_request(
-                    config["webhook_url"], json.dumps(message).encode()
-                )
+                webhook_result = self.safe_network_request(config["webhook_url"], json.dumps(message).encode())
                 if webhook_result.is_ok():
                     return Result.ok(True)
-                self.logger.warning(f"Webhook failed: {webhook_result.error}")
+                self.logger.warning("Webhook failed: %s", webhook_result.error)
 
             # Try bot API as fallback
             if config.get("bot_token") and config.get("channel_id"):
                 bot_url = f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
-                bot_result = self.safe_network_request(
-                    bot_url, json.dumps(message).encode()
-                )
+                bot_result = self.safe_network_request(bot_url, json.dumps(message).encode())
                 if bot_result.is_ok():
                     return Result.ok(True)
-                self.logger.warning(f"Bot API failed: {bot_result.error}")
+                self.logger.warning("Bot API failed: %s", bot_result.error)
 
             # If we get here, both methods failed
             error = DiscordAPIError("All Discord sending methods failed")
             return Result.err(error)
 
         except DiscordAPIError as e:
-            self.logger.error(f"Discord API error: {e}")
+            self.logger.exception("Discord API error")
             return Result.err(e)
-        except Exception as e:
-            # Convert unexpected errors to our domain error
+        except (NetworkError, json.JSONEncodeError) as e:
+            # Convert expected errors to our domain error
             api_error = DiscordAPIError(f"Unexpected error: {type(e).__name__}: {e}")
             return Result.err(api_error)
 
@@ -209,21 +192,17 @@ def safe_file_operation(filepath: Path) -> Generator[Path, None, None]:
         # Atomic rename on success
         if temp_path.exists():
             temp_path.rename(filepath)
-    except OSError as e:
-        logging.exception(f"File operation failed: {e}")
+    except OSError:
+        logging.exception("File operation failed")
         raise
-    except Exception as e:
-        logging.exception(
-            f"Unexpected error in file operation: {type(e).__name__}: {e}"
-        )
+    except Exception:
+        logging.exception("Unexpected error in file operation")
         raise
     finally:
         # Clean up temp file if it exists
         if temp_path and temp_path.exists():
-            try:
+            with suppress(OSError):
                 temp_path.unlink()
-            except OSError:
-                pass
 
 
 def enhanced_main() -> int:
@@ -237,24 +216,22 @@ def enhanced_main() -> int:
         json_result = handler.safe_json_load(raw_input)
 
         if json_result.is_err():
-            logger.error(f"Failed to parse JSON: {json_result.error}")
+            logger.error("Failed to parse JSON: %s", json_result.error)
             return 1
 
-        event_data = json_result.unwrap()
+        _event_data = json_result.unwrap()
 
         # Load configuration
-        config_result = handler.safe_config_load(
-            {
-                "webhook_url": "https://discord.com/api/webhooks/test/test",
-                "debug": False,
-                "use_threads": False,
-                "channel_type": "text",
-                "thread_prefix": "Session",
-            }
-        )
+        config_result = handler.safe_config_load({
+            "webhook_url": "https://discord.com/api/webhooks/test/test",
+            "debug": False,
+            "use_threads": False,
+            "channel_type": "text",
+            "thread_prefix": "Session",
+        })
 
         if config_result.is_err():
-            logger.error(f"Failed to load config: {config_result.error}")
+            logger.error("Failed to load config: %s", config_result.error)
             return 1
 
         config = config_result.unwrap()
@@ -276,14 +253,15 @@ def enhanced_main() -> int:
         if send_result.is_ok():
             logger.info("Message sent successfully")
             return 0
-        logger.error(f"Failed to send message: {send_result.error}")
-        return 1
+        else:
+            logger.error("Failed to send message: %s", send_result.error)
+            return 1
 
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user")
         return 130
-    except Exception as e:
-        logger.error(f"Unexpected error: {type(e).__name__}: {e}")
+    except Exception:
+        logger.exception("Unexpected error")
         return 1
 
 
@@ -332,7 +310,7 @@ def demonstrate_error_handling() -> None:
             temp_path.write_text("Test content")
             print(f"✓ File written to {temp_path}")
         print(f"✓ File moved to {test_file}")
-    except Exception as e:
+    except OSError as e:
         print(f"✗ File operation failed: {e}")
     finally:
         # Cleanup

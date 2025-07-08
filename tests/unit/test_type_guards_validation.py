@@ -12,7 +12,7 @@ from typing import Any
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-import discord_notifier
+import src.discord_notifier as discord_notifier
 
 
 class TestTypeGuardFunctions(unittest.TestCase):

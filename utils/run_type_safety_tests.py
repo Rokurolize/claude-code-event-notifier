@@ -17,8 +17,14 @@ def run_test_suite(test_module_name: str) -> tuple[bool, str, int, int]:
         Tuple of (success, output, tests_run, failures)
     """
     try:
-        # Import the test module
-        test_module = __import__(test_module_name)
+        # Import the test module - handle new test structure
+        try:
+            # Try new path first (tests.unit.*)
+            new_module_name = f"tests.unit.{test_module_name}"
+            test_module = __import__(new_module_name, fromlist=[""])
+        except ImportError:
+            # Fallback to old path
+            test_module = __import__(test_module_name)
 
         # Create test suite
         loader = unittest.TestLoader()
@@ -53,10 +59,8 @@ def run_test_suite(test_module_name: str) -> tuple[bool, str, int, int]:
         output = "\n".join(output_lines)
         return success, output, tests_run, failures
 
-    except Exception as e:
-        error_output = (
-            f"Failed to run {test_module_name}: {e!s}\n{traceback.format_exc()}"
-        )
+    except (ImportError, AttributeError, ModuleNotFoundError) as e:
+        error_output = f"Failed to run {test_module_name}: {e!s}\n{traceback.format_exc()}"
         return False, error_output, 0, 1
 
 
@@ -128,14 +132,12 @@ def main() -> None:
         print("❌ SOME TYPE SAFETY TESTS FAILED")
         print()
         print("Issues found in:")
-        for description, success, output, tests_run, failures in suite_results:
+        for description, success, _output, _tests_run, failures in suite_results:
             if not success:
                 print(f"  • {description}: {failures} failures")
 
         print()
-        print(
-            "Review the detailed output above to identify and fix type safety issues."
-        )
+        print("Review the detailed output above to identify and fix type safety issues.")
         exit_code = 1
 
     print()

@@ -9,9 +9,11 @@ Claude Code's hook system configuration.
 from typing import (
     Any,
     Literal,
-    ReadOnly,  # Python 3.13 features via backport
     TypedDict,
 )
+
+# ReadOnly removed for Python < 3.13 compatibility
+# All ReadOnly[type] annotations have been replaced with type for broader compatibility
 
 
 # Hook-related types
@@ -103,8 +105,8 @@ class SecureClaudeSettings(TypedDict, total=False):
     """
 
     # Critical settings that should never be modified
-    version: ReadOnly[str]  # Application version - immutable
-    installation_id: ReadOnly[str]  # Unique installation identifier
+    version: str  # Application version - immutable
+    installation_id: str  # Unique installation identifier
 
     # Mutable configuration
     hooks: HooksDict
@@ -112,7 +114,7 @@ class SecureClaudeSettings(TypedDict, total=False):
     editorFontSize: int
 
     # Plugin settings with ReadOnly metadata
-    plugins: ReadOnly[dict[str, Any]]  # Plugin registry - read-only
+    plugins: dict[str, Any]  # Plugin registry - read-only
 
     # User preferences - mutable
     preferences: dict[str, Any]
@@ -126,9 +128,9 @@ class DiscordNotifierConfig(TypedDict, total=False):
     """
 
     # Immutable configuration (set once during setup)
-    webhook_url: ReadOnly[str]  # Discord webhook URL - never change
-    bot_token: ReadOnly[str | None]  # Bot token - security critical
-    channel_id: ReadOnly[str | None]  # Channel ID - infrastructure setting
+    webhook_url: str  # Discord webhook URL - never change
+    bot_token: str | None  # Bot token - security critical
+    channel_id: str | None  # Channel ID - infrastructure setting
 
     # Mutable runtime settings
     enabled_events: list[str] | None
@@ -139,7 +141,7 @@ class DiscordNotifierConfig(TypedDict, total=False):
     # Thread configuration - some readonly, some mutable
     use_threads: bool  # Can be toggled
     thread_prefix: str  # Can be customized
-    channel_type: ReadOnly[Literal["text", "forum"]]  # Infrastructure setting
+    channel_type: Literal["text", "forum"]  # Infrastructure setting
 
 
 # Example usage type guards

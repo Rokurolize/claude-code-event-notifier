@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 try:
-    from .type_guards import is_valid_snowflake
+    from src.type_guards import is_valid_snowflake
 except ImportError:
     from type_guards import is_valid_snowflake
 
@@ -33,7 +33,7 @@ class ThreadRecord(NamedTuple):
 
 # Import ThreadStorageError from discord_notifier to maintain consistency
 try:
-    from .discord_notifier import ThreadStorageError
+    from src.discord_notifier import ThreadStorageError
 except ImportError:
     # Fallback definition if import fails
     class ThreadStorageError(Exception):

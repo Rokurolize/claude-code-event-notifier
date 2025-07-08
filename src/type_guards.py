@@ -23,7 +23,7 @@ except ImportError:
     pass  # Fallback for older versions
 
 # Import Discord notifier types
-from .discord_notifier import (
+from src.discord_notifier import (
     BaseEventData,
     BashToolInput,
     BashToolResponse,
@@ -51,7 +51,7 @@ from .discord_notifier import (
 )
 
 # Import all the type definitions we need to validate
-from .settings_types import (
+from src.settings_types import (
     ClaudeSettings,
     HookConfig,
     HookEntry,

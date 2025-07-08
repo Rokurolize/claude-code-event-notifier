@@ -85,7 +85,7 @@ from typing import (
 # Try to import ThreadStorage - handle both module and script execution
 try:
     # When run as a module
-    from .thread_storage import ThreadStorage
+    from src.thread_storage import ThreadStorage
 
     THREAD_STORAGE_AVAILABLE = True
 except ImportError:

@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, Mock, mock_open, patch
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-import discord_notifier
+import src.discord_notifier as discord_notifier
 
 
 class TestConfigLoading(unittest.TestCase):
@@ -272,8 +272,8 @@ class TestMainFunction(unittest.TestCase):
     """Test the main function with mocked stdin and Discord sending."""
 
     @patch("sys.stdin.read")
-    @patch("discord_notifier.send_to_discord")
-    @patch("discord_notifier.ConfigLoader.load")
+    @patch("src.discord_notifier.send_to_discord")
+    @patch("src.discord_notifier.ConfigLoader.load")
     def test_main_success(
         self, mock_load_config: MagicMock, mock_send: MagicMock, mock_stdin: MagicMock
     ) -> None:
@@ -314,7 +314,7 @@ class TestMainFunction(unittest.TestCase):
         self.assertIn("embeds", sent_message)
 
     @patch("sys.stdin.read")
-    @patch("discord_notifier.ConfigLoader.load")
+    @patch("src.discord_notifier.ConfigLoader.load")
     def test_main_invalid_json(
         self, mock_load_config: MagicMock, mock_stdin: MagicMock
     ) -> None:
@@ -337,7 +337,7 @@ class TestMainFunction(unittest.TestCase):
             mock_exit.assert_called_once_with(0)  # Should still exit 0
 
     @patch("sys.stdin.read")
-    @patch("discord_notifier.ConfigLoader.load")
+    @patch("src.discord_notifier.ConfigLoader.load")
     def test_main_no_credentials(
         self, mock_load_config: MagicMock, mock_stdin: MagicMock
     ) -> None:
@@ -507,7 +507,7 @@ DISCORD_DISABLED_EVENTS=PreToolUse
 
     @patch("os.environ.get")
     @patch("sys.stdin.read")
-    @patch("discord_notifier.ConfigLoader.load")
+    @patch("src.discord_notifier.ConfigLoader.load")
     def test_main_event_filtering_early_exit(
         self,
         mock_load_config: MagicMock,

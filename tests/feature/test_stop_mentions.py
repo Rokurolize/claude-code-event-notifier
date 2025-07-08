@@ -4,10 +4,11 @@
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 # Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from discord_notifier import EventTypes
 
@@ -16,11 +17,14 @@ def test_stop_event_with_mention():
     """Test Stop event with user mention configured."""
     print("Testing Stop event with mention...")
 
-    # Create test Stop event
+    # Create test Stop event with secure temporary file
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as temp_file:
+        temp_path = temp_file.name
+
     event_data = {
         "hook_event_name": EventTypes.STOP.value,
         "session_id": "test-session-123",
-        "transcript_path": "/tmp/test-transcript.txt",
+        "transcript_path": temp_path,
         "duration": 300,
         "tools_used": 5,
         "messages_exchanged": 10,
@@ -34,9 +38,7 @@ def test_stop_event_with_mention():
     event_json = json.dumps(event_data)
 
     print(f"Event data: {event_json}")
-    print(
-        "\nThis should send a Discord message with mention: <@123456789012345678> Session ended"
-    )
+    print("\nThis should send a Discord message with mention: <@123456789012345678> Session ended")
     print("\nNote: This test will only work if you have configured DISCORD_WEBHOOK_URL")
 
     # Note: We won't actually send the message in this test script
@@ -55,9 +57,7 @@ def test_notification_event_with_mention():
     }
 
     print(f"Event data: {json.dumps(event_data)}")
-    print(
-        "\nThis should send a Discord message with mention: <@123456789012345678> Test notification message"
-    )
+    print("\nThis should send a Discord message with mention: <@123456789012345678> Test notification message")
 
 
 if __name__ == "__main__":

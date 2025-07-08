@@ -13,8 +13,8 @@ from unittest.mock import Mock, patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from discord_notifier import ConfigurationError, DiscordAPIError
-from error_handling_examples import EnhancedErrorHandler, Result, safe_file_operation
+from examples.error_handling_examples import EnhancedErrorHandler, Result, safe_file_operation
+from src.discord_notifier import ConfigurationError, DiscordAPIError
 
 
 class TestResultType(unittest.TestCase):
@@ -68,7 +68,7 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         self.assertTrue(result.is_err())
         self.assertIsInstance(result.error, json.JSONDecodeError)
-        self.logger.error.assert_called_once()
+        self.logger.exception.assert_called_once()
 
     def test_safe_json_load_non_dict(self) -> None:
         """Test JSON loading with non-dict result."""
@@ -89,9 +89,7 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         self.assertTrue(result.is_ok())
         config = result.unwrap()
-        self.assertEqual(
-            config["webhook_url"], "https://discord.com/api/webhooks/123/abc"
-        )
+        self.assertEqual(config["webhook_url"], "https://discord.com/api/webhooks/123/abc")
         self.assertTrue(config["debug"])
 
     def test_safe_config_load_invalid_type(self) -> None:
@@ -136,9 +134,7 @@ class TestEnhancedErrorHandler(unittest.TestCase):
         mock_response.__exit__ = Mock(return_value=None)
         mock_urlopen.return_value = mock_response
 
-        result = self.handler.safe_network_request(
-            "https://example.com", b'{"test": "data"}'
-        )
+        result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
         self.assertTrue(result.is_ok())
         self.assertTrue(result.unwrap())
@@ -148,13 +144,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
         """Test network request with HTTP error."""
         import urllib.error
 
-        mock_urlopen.side_effect = urllib.error.HTTPError(
-            "https://example.com", 404, "Not Found", {}, None
-        )
+        mock_urlopen.side_effect = urllib.error.HTTPError("https://example.com", 404, "Not Found", {}, None)
 
-        result = self.handler.safe_network_request(
-            "https://example.com", b'{"test": "data"}'
-        )
+        result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
         self.assertTrue(result.is_err())
         self.assertIsInstance(result.error, urllib.error.HTTPError)
@@ -167,9 +159,7 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         mock_urlopen.side_effect = urllib.error.URLError("Connection failed")
 
-        result = self.handler.safe_network_request(
-            "https://example.com", b'{"test": "data"}'
-        )
+        result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
         self.assertTrue(result.is_err())
         self.assertIsInstance(result.error, urllib.error.URLError)
