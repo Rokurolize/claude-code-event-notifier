@@ -8,21 +8,21 @@ Usage: python3 configure_hooks.py [--remove]
 """
 
 import argparse
+import contextlib
 import json
 import os
-import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
 
 # Import all types from settings_types module
-from src.settings_types import (
-    ClaudeSettings,
-    HookConfig,
-    HookEventType,
-    create_hook_config,
-)
+from src.settings_types import HookConfig, create_hook_config
+
+if TYPE_CHECKING:
+    from src.settings_types import ClaudeSettings
+
+HookEventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 
 
 def atomic_write(filepath: str | Path, content: str) -> None:
@@ -37,17 +37,15 @@ def atomic_write(filepath: str | Path, content: str) -> None:
             os.fsync(f.fileno())  # Force write to disk
 
         # Atomic rename
-        os.rename(temp_path, filepath)
-    except Exception as e:
+        Path(temp_path).rename(filepath)
+    except Exception:
         # Clean up temp file on error
-        try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
-        raise e
+        with contextlib.suppress(OSError):
+            Path(temp_path).unlink()
+        raise
 
 
-def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
+def is_hook_config(value: object) -> TypeGuard[HookConfig]:
     """Type guard to check if a value is a valid HookConfig."""
     if not isinstance(value, dict):
         return False
@@ -66,10 +64,7 @@ def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
             return False
 
     # Check optional matcher field for tool events
-    if "matcher" in value and not isinstance(value["matcher"], str):
-        return False
-
-    return True
+    return not ("matcher" in value and not isinstance(value["matcher"], str))
 
 
 def should_keep_hook(hook: HookConfig) -> bool:
@@ -95,12 +90,15 @@ def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Configure Claude Code hooks for Discord notifications"
-    )
-    parser.add_argument(
-        "--remove", action="store_true", help="Remove the notifier from Claude Code"
-    )
+    """Configure Claude Code hooks for Discord notifications."""
+    # Split into smaller functions to reduce complexity
+    return _main_impl()
+
+
+def _main_impl() -> int:
+    """Main implementation split from main() to reduce complexity."""
+    parser = argparse.ArgumentParser(description="Configure Claude Code hooks for Discord notifications")
+    parser.add_argument("--remove", action="store_true", help="Remove the notifier from Claude Code")
     args = parser.parse_args()
 
     # Paths
@@ -108,21 +106,19 @@ def main() -> int:
     hooks_dir = claude_dir / "hooks"
     settings_file = claude_dir / "settings.json"
 
-    # Source and target for the notifier script
+    # Source script in the project directory
     source_script = Path(__file__).parent / "src" / "discord_notifier.py"
-    target_script = hooks_dir / "discord_notifier.py"
+    # No target script needed - we'll reference source directly
 
     if args.remove:
         print("Removing Claude Code Discord Notifier...")
 
-        # Remove script
-        if target_script.exists():
-            target_script.unlink()
-            print(f"✓ Removed {target_script}")
+        # Note: Script removal not needed since we're using source directly
+        print("✓ Notifier hooks will be removed from settings.json")
 
         # Remove from settings.json
         if settings_file.exists():
-            with open(settings_file) as f:
+            with settings_file.open() as f:
                 settings_data = json.load(f)
 
             # Type cast to ensure proper typing
@@ -130,10 +126,8 @@ def main() -> int:
 
             # Remove discord notifier hooks
             if "hooks" in settings:
-                for event_type in list(settings["hooks"].keys()):
-                    settings["hooks"][event_type] = filter_hooks(
-                        settings["hooks"][event_type]
-                    )
+                for event_type in cast("list[HookEventType]", list(settings["hooks"].keys())):
+                    settings["hooks"][event_type] = filter_hooks(settings["hooks"][event_type])
 
             atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
             print("✓ Removed hooks from settings.json")
@@ -152,14 +146,18 @@ def main() -> int:
     # Create directories
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy script
-    shutil.copy2(source_script, target_script)
-    target_script.chmod(0o755)  # Make executable
-    print(f"✓ Copied notifier to {target_script}")
+    # Ensure source script exists and is executable
+    if not source_script.exists():
+        print(f"Error: Source script not found at {source_script}")
+        return 1
+
+    # Make source script executable
+    source_script.chmod(0o755)
+    print(f"✓ Using source script at {source_script}")
 
     # Update settings.json
     if settings_file.exists():
-        with open(settings_file) as f:
+        with settings_file.open() as f:
             settings_data = json.load(f)
     else:
         settings_data = {}
@@ -188,7 +186,8 @@ def main() -> int:
         settings["hooks"][event] = filter_hooks(hooks_list)
 
         # Add new hook using imported helper functions
-        command = f"CLAUDE_HOOK_EVENT={event} python3 {target_script}"
+        # Use absolute path to source script
+        command = f"CLAUDE_HOOK_EVENT={event} python3 {source_script.absolute()}"
         hook_config = create_hook_config(event, command, ".*")
 
         # Append the new config - now properly typed

@@ -13,7 +13,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from .type_guards import is_valid_snowflake
+try:
+    from .type_guards import is_valid_snowflake
+except ImportError:
+    from type_guards import is_valid_snowflake
 
 
 class ThreadRecord(NamedTuple):

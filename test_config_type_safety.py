@@ -121,7 +121,11 @@ class TestConfigLoaderTypeSafety(unittest.TestCase):
                     "use_threads",
                     "channel_type",
                     "thread_prefix",
+                    "thread_storage_path",
+                    "thread_cleanup_days",
                     "mention_user_id",
+                    "enabled_events",
+                    "disabled_events",
                 }
                 self.assertEqual(set(config.keys()), expected_keys)
 
@@ -133,7 +137,11 @@ class TestConfigLoaderTypeSafety(unittest.TestCase):
                 self.assertIsInstance(config["use_threads"], bool)
                 self.assertIsInstance(config["channel_type"], str)
                 self.assertIsInstance(config["thread_prefix"], str)
+                self.assertIsInstance(config["thread_storage_path"], (str, type(None)))
+                self.assertIsInstance(config["thread_cleanup_days"], int)
                 self.assertIsInstance(config["mention_user_id"], (str, type(None)))
+                self.assertIsInstance(config["enabled_events"], (list, type(None)))
+                self.assertIsInstance(config["disabled_events"], (list, type(None)))
 
     def test_type_casting_safety(self) -> None:
         """Test that type casting is safely handled in ConfigLoader."""
@@ -240,15 +248,9 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
         }
 
         # Test that all validators accept Config type
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_credentials(valid_config)
-        )
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_thread_config(valid_config)
-        )
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_mention_config(valid_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_credentials(valid_config))
+        self.assertTrue(discord_notifier.ConfigValidator.validate_thread_config(valid_config))
+        self.assertTrue(discord_notifier.ConfigValidator.validate_mention_config(valid_config))
         self.assertTrue(discord_notifier.ConfigValidator.validate_all(valid_config))
 
     def test_validator_return_types(self) -> None:
@@ -290,9 +292,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_credentials(webhook_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_credentials(webhook_config))
 
         # Test bot-only config
         bot_config: discord_notifier.Config = {
@@ -305,9 +305,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_credentials(bot_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_credentials(bot_config))
 
         # Test invalid config (missing both)
         invalid_config: discord_notifier.Config = {
@@ -320,9 +318,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertFalse(
-            discord_notifier.ConfigValidator.validate_credentials(invalid_config)
-        )
+        self.assertFalse(discord_notifier.ConfigValidator.validate_credentials(invalid_config))
 
     def test_thread_validation_type_safety(self) -> None:
         """Test thread configuration validation with proper types."""
@@ -337,9 +333,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_thread_config(text_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_thread_config(text_config))
 
         # Test forum channel with webhook
         forum_config: discord_notifier.Config = {
@@ -352,9 +346,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_thread_config(forum_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_thread_config(forum_config))
 
     def test_mention_validation_type_safety(self) -> None:
         """Test mention configuration validation with proper types."""
@@ -369,9 +361,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": "123456789012345678",
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_mention_config(valid_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_mention_config(valid_config))
 
         # Test None mention user ID
         none_config: discord_notifier.Config = {
@@ -384,9 +374,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.assertTrue(
-            discord_notifier.ConfigValidator.validate_mention_config(none_config)
-        )
+        self.assertTrue(discord_notifier.ConfigValidator.validate_mention_config(none_config))
 
         # Test invalid mention user ID
         invalid_config: discord_notifier.Config = {
@@ -399,9 +387,7 @@ class TestConfigValidatorTypeSafety(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": "invalid_id",
         }
-        self.assertFalse(
-            discord_notifier.ConfigValidator.validate_mention_config(invalid_config)
-        )
+        self.assertFalse(discord_notifier.ConfigValidator.validate_mention_config(invalid_config))
 
 
 class TestEnvironmentVariableTypeSafety(unittest.TestCase):
@@ -428,9 +414,7 @@ class TestEnvironmentVariableTypeSafety(unittest.TestCase):
         self.assertEqual(discord_notifier.ENV_USE_THREADS, "DISCORD_USE_THREADS")
         self.assertEqual(discord_notifier.ENV_CHANNEL_TYPE, "DISCORD_CHANNEL_TYPE")
         self.assertEqual(discord_notifier.ENV_THREAD_PREFIX, "DISCORD_THREAD_PREFIX")
-        self.assertEqual(
-            discord_notifier.ENV_MENTION_USER_ID, "DISCORD_MENTION_USER_ID"
-        )
+        self.assertEqual(discord_notifier.ENV_MENTION_USER_ID, "DISCORD_MENTION_USER_ID")
         self.assertEqual(discord_notifier.ENV_HOOK_EVENT, "CLAUDE_HOOK_EVENT")
 
     def test_env_var_parsing_type_safety(self) -> None:
@@ -455,18 +439,14 @@ DISCORD_MENTION_USER_ID=987654321012345678
                     self.assertIsInstance(value, str)
 
                 # Test specific values
-                self.assertEqual(
-                    env_vars["DISCORD_WEBHOOK_URL"], "https://example.com/webhook"
-                )
+                self.assertEqual(env_vars["DISCORD_WEBHOOK_URL"], "https://example.com/webhook")
                 self.assertEqual(env_vars["DISCORD_TOKEN"], "bot_token_123")
                 self.assertEqual(env_vars["DISCORD_CHANNEL_ID"], "123456789")
                 self.assertEqual(env_vars["DISCORD_DEBUG"], "1")
                 self.assertEqual(env_vars["DISCORD_USE_THREADS"], "1")
                 self.assertEqual(env_vars["DISCORD_CHANNEL_TYPE"], "forum")
                 self.assertEqual(env_vars["DISCORD_THREAD_PREFIX"], "CustomSession")
-                self.assertEqual(
-                    env_vars["DISCORD_MENTION_USER_ID"], "987654321012345678"
-                )
+                self.assertEqual(env_vars["DISCORD_MENTION_USER_ID"], "987654321012345678")
 
     def test_env_var_error_handling(self) -> None:
         """Test type-safe error handling in environment variable parsing."""
@@ -513,14 +493,10 @@ DISCORD_MENTION_USER_ID=123456789012345678
                     self.assertIsInstance(config, dict)
 
                     # Test precedence: env vars override file
-                    self.assertEqual(
-                        config["webhook_url"], "https://example.com/webhook"
-                    )
+                    self.assertEqual(config["webhook_url"], "https://example.com/webhook")
                     self.assertEqual(config["bot_token"], "override_token")
                     self.assertEqual(config["channel_id"], "override_channel")
-                    self.assertFalse(
-                        config["debug"]
-                    )  # env var "0" should override file "1"
+                    self.assertFalse(config["debug"])  # env var "0" should override file "1"
 
                     # Test file values when no env override
                     self.assertTrue(config["use_threads"])
@@ -529,9 +505,7 @@ DISCORD_MENTION_USER_ID=123456789012345678
                     self.assertEqual(config["mention_user_id"], "123456789012345678")
 
                     # Test validation passes
-                    self.assertTrue(
-                        discord_notifier.ConfigValidator.validate_all(config)
-                    )
+                    self.assertTrue(discord_notifier.ConfigValidator.validate_all(config))
 
     def test_configuration_error_propagation(self) -> None:
         """Test that configuration errors are properly typed and propagated."""

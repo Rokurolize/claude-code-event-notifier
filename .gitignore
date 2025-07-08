@@ -80,3 +80,6 @@ Thumbs.db
 
 # Generated files
 repomix-output.xml
+
+# Claude-specific working documents
+.claude/
