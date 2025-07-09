@@ -9,48 +9,23 @@ for the nested structures used throughout the Discord notifier system, including
 - Discord API structures
 - Configuration objects
 
-All type guards follow the TypeGuard protocol and provide both runtime validation
+All type guards follow the TypeIs protocol and provide both runtime validation
 and static type narrowing for improved type safety.
 """
 
 import json
-from typing import Any, TypeGuard, cast
+from typing import Any, cast
 
-# Python 3.13 enhanced type narrowing
+# TypeIs is available in Python 3.13+
 try:
-    from typing import TypeIs  # Python 3.13+
+    from typing import TypeIs
 except ImportError:
-    pass  # Fallback for older versions
+    from typing_extensions import TypeIs
 
-# Import Discord notifier types
-from src.discord_notifier import (
-    BaseEventData,
-    BashToolInput,
-    BashToolResponse,
-    Config,
-    DiscordEmbed,
-    DiscordFooter,
-    DiscordMessage,
-    DiscordThreadMessage,
-    EventData,
-    EventType,
-    FileEditOperation,
-    FileOperationResponse,
-    FileToolInput,
-    NotificationEventData,
-    PostToolUseEventData,
-    PreToolUseEventData,
-    SearchToolInput,
-    StopEventData,
-    SubagentStopEventData,
-    TaskToolInput,
-    ToolInput,
-    ToolName,
-    ToolResponse,
-    WebToolInput,
-)
-
-# Import all the type definitions we need to validate
+# Import Discord notifier types from reorganized modules
+from src.core.constants import EventTypes as EventType
+from src.core.constants import ToolNames as ToolName
+from src.core.http_client import DiscordEmbed, DiscordFooter, DiscordMessage, DiscordThreadMessage
 from src.settings_types import (
     ClaudeSettings,
     HookConfig,
@@ -61,42 +36,70 @@ from src.settings_types import (
     ToolHookConfig,
 )
 
+# Define local type aliases for the type guards
+Config = dict[str, Any]
+ToolResponse = dict[str, Any] | str | list[Any]
+ToolInput = dict[str, Any]
+EventData = dict[str, Any]
+
+# Event data type aliases
+BaseEventData = dict[str, Any]
+PreToolUseEventData = dict[str, Any]
+PostToolUseEventData = dict[str, Any]
+NotificationEventData = dict[str, Any]
+StopEventData = dict[str, Any]
+SubagentStopEventData = dict[str, Any]
+
+# Tool input type aliases
+BashToolInput = dict[str, Any]
+FileToolInput = dict[str, Any]
+SearchToolInput = dict[str, Any]
+TaskToolInput = dict[str, Any]
+WebToolInput = dict[str, Any]
+
+# Tool response type aliases
+BashToolResponse = dict[str, Any]
+FileOperationResponse = dict[str, Any]
+
+# File operation type aliases
+FileEditOperation = dict[str, Any]
+
 # =============================================================================
 # Basic Type Guards
 # =============================================================================
 
 
-def is_non_empty_string(value: Any) -> TypeGuard[str]:
+def is_non_empty_string(value: object) -> TypeIs[str]:
     """Check if value is a non-empty string."""
     return isinstance(value, str) and len(value.strip()) > 0
 
 
-def is_string_or_none(value: Any) -> TypeGuard[str | None]:
+def is_string_or_none(value: object) -> TypeIs[str | None]:
     """Check if value is a string or None."""
     return value is None or isinstance(value, str)
 
 
-def is_boolean_or_none(value: Any) -> TypeGuard[bool | None]:
+def is_boolean_or_none(value: object) -> TypeIs[bool | None]:
     """Check if value is a boolean or None."""
     return value is None or isinstance(value, bool)
 
 
-def is_number_or_none(value: Any) -> TypeGuard[int | float | None]:
+def is_number_or_none(value: object) -> TypeIs[int | float | None]:
     """Check if value is a number or None."""
     return value is None or isinstance(value, (int, float))
 
 
-def is_dict_with_str_keys(value: Any) -> TypeGuard[dict[str, Any]]:
+def is_dict_with_str_keys(value: object) -> TypeIs[dict[str, Any]]:
     """Check if value is a dictionary with string keys."""
-    return isinstance(value, dict) and all(isinstance(key, str) for key in value.keys())
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
-def is_list_of_dicts(value: Any) -> TypeGuard[list[dict[str, Any]]]:
+def is_list_of_dicts(value: object) -> TypeIs[list[dict[str, Any]]]:
     """Check if value is a list of dictionaries."""
     return isinstance(value, list) and all(isinstance(item, dict) for item in value)
 
 
-def is_valid_snowflake(value: Any) -> TypeGuard[str]:
+def is_valid_snowflake(value: object) -> TypeIs[str]:
     """Check if value is a valid Discord snowflake ID.
 
     Discord snowflakes are 64-bit unsigned integers represented as strings.
@@ -133,17 +136,17 @@ def is_valid_snowflake(value: Any) -> TypeGuard[str]:
 # =============================================================================
 
 
-def is_hook_entry(value: Any) -> TypeGuard[HookEntry]:
+def is_hook_entry(value: object) -> TypeIs[HookEntry]:
     """Check if value is a valid HookEntry."""
     return isinstance(value, dict) and value.get("type") == "command" and is_non_empty_string(value.get("command"))
 
 
-def is_hook_entry_list(value: Any) -> TypeGuard[list[HookEntry]]:
+def is_hook_entry_list(value: object) -> TypeIs[list[HookEntry]]:
     """Check if value is a list of valid HookEntry objects."""
     return isinstance(value, list) and all(is_hook_entry(entry) for entry in value)
 
 
-def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
+def is_hook_config(value: object) -> TypeIs[HookConfig]:
     """Check if value is a valid HookConfig."""
     if not isinstance(value, dict):
         return False
@@ -158,20 +161,20 @@ def is_hook_config(value: Any) -> TypeGuard[HookConfig]:
 
     # No other keys should be present
     allowed_keys = {"hooks", "matcher"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_tool_hook_config(value: Any) -> TypeGuard[ToolHookConfig]:
+def is_tool_hook_config(value: object) -> TypeIs[ToolHookConfig]:
     """Check if value is a valid ToolHookConfig (requires matcher)."""
     return is_hook_config(value) and "matcher" in value and isinstance(value["matcher"], str)
 
 
-def is_non_tool_hook_config(value: Any) -> TypeGuard[NonToolHookConfig]:
+def is_non_tool_hook_config(value: object) -> TypeIs[NonToolHookConfig]:
     """Check if value is a valid NonToolHookConfig (no matcher)."""
     return is_hook_config(value) and "matcher" not in value
 
 
-def is_hook_event_type(value: Any) -> TypeGuard[HookEventType]:
+def is_hook_event_type(value: object) -> TypeIs[HookEventType]:
     """Check if value is a valid hook event type."""
     return value in [
         "PreToolUse",
@@ -182,7 +185,7 @@ def is_hook_event_type(value: Any) -> TypeGuard[HookEventType]:
     ]
 
 
-def is_hooks_dict(value: Any) -> TypeGuard[HooksDict]:
+def is_hooks_dict(value: object) -> TypeIs[HooksDict]:
     """Check if value is a valid HooksDict."""
     if not isinstance(value, dict):
         return False
@@ -194,31 +197,36 @@ def is_hooks_dict(value: Any) -> TypeGuard[HooksDict]:
         if not isinstance(hook_configs, list):
             return False
 
-        for hook_config in hook_configs:
-            if not is_hook_config(hook_config):
-                return False
-
-            # Validate matcher requirements based on event type
-            if event_type in ["PreToolUse", "PostToolUse"]:
-                if not is_tool_hook_config(hook_config):
-                    return False
-            elif not is_non_tool_hook_config(hook_config):
-                return False
+        if not _validate_hook_configs_for_event_type(hook_configs, event_type):
+            return False
 
     return True
 
 
-def is_claude_settings(value: Any) -> TypeGuard[ClaudeSettings]:
+def _validate_hook_configs_for_event_type(hook_configs: list[Any], event_type: str) -> bool:
+    """Validate hook configurations for a specific event type."""
+    for hook_config in hook_configs:
+        if not is_hook_config(hook_config):
+            return False
+
+        # Validate matcher requirements based on event type
+        if event_type in ["PreToolUse", "PostToolUse"]:
+            if not is_tool_hook_config(hook_config):
+                return False
+        elif not is_non_tool_hook_config(hook_config):
+            return False
+
+    return True
+
+
+def is_claude_settings(value: object) -> TypeIs[ClaudeSettings]:
     """Check if value is a valid ClaudeSettings object."""
     if not isinstance(value, dict):
         return False
 
     # If hooks are present, they must be valid
-    if "hooks" in value and not is_hooks_dict(value["hooks"]):
-        return False
-
     # Other fields are optional and can be any type
-    return True
+    return "hooks" not in value or is_hooks_dict(value["hooks"])
 
 
 # =============================================================================
@@ -226,43 +234,46 @@ def is_claude_settings(value: Any) -> TypeGuard[ClaudeSettings]:
 # =============================================================================
 
 
-def is_discord_footer(value: Any) -> TypeGuard[DiscordFooter]:
+def is_discord_footer(value: object) -> TypeIs[DiscordFooter]:
     """Check if value is a valid DiscordFooter."""
     return isinstance(value, dict) and is_non_empty_string(value.get("text"))
 
 
-def is_discord_embed(value: Any) -> TypeGuard[DiscordEmbed]:
+def is_discord_embed(value: object) -> TypeIs[DiscordEmbed]:
     """Check if value is a valid DiscordEmbed."""
     if not isinstance(value, dict):
         return False
 
+    # Check optional fields with helper function
+    return _validate_discord_embed_fields(value)
+
+
+def _validate_discord_embed_fields(value: dict[str, Any]) -> bool:
+    """Validate Discord embed fields."""
     # Check optional fields
-    if "title" in value and not isinstance(value["title"], str):
-        return False
+    field_checks = [
+        ("title", lambda v: isinstance(v, str)),
+        ("description", lambda v: isinstance(v, str)),
+        ("color", lambda v: isinstance(v, int)),
+        ("timestamp", lambda v: isinstance(v, str)),
+        ("footer", lambda v: is_discord_footer(v)),
+    ]
 
-    if "description" in value and not isinstance(value["description"], str):
-        return False
-
-    if "color" in value and not isinstance(value["color"], int):
-        return False
-
-    if "timestamp" in value and not isinstance(value["timestamp"], str):
-        return False
-
-    if "footer" in value and not is_discord_footer(value["footer"]):
-        return False
+    for field_name, validator in field_checks:
+        if field_name in value and not validator(value[field_name]):
+            return False
 
     # No other keys should be present
     allowed_keys = {"title", "description", "color", "timestamp", "footer"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_discord_embed_list(value: Any) -> TypeGuard[list[DiscordEmbed]]:
+def is_discord_embed_list(value: object) -> TypeIs[list[DiscordEmbed]]:
     """Check if value is a list of valid DiscordEmbed objects."""
     return isinstance(value, list) and all(is_discord_embed(embed) for embed in value)
 
 
-def is_discord_message(value: Any) -> TypeGuard[DiscordMessage]:
+def is_discord_message(value: object) -> TypeIs[DiscordMessage]:
     """Check if value is a valid DiscordMessage."""
     if not isinstance(value, dict):
         return False
@@ -276,10 +287,10 @@ def is_discord_message(value: Any) -> TypeGuard[DiscordMessage]:
 
     # No other keys should be present
     allowed_keys = {"embeds", "content"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_discord_thread_message(value: Any) -> TypeGuard[DiscordThreadMessage]:
+def is_discord_thread_message(value: object) -> TypeIs[DiscordThreadMessage]:
     """Check if value is a valid DiscordThreadMessage."""
     if not isinstance(value, dict):
         return False
@@ -293,7 +304,7 @@ def is_discord_thread_message(value: Any) -> TypeGuard[DiscordThreadMessage]:
 
     # No other keys should be present
     allowed_keys = {"embeds", "thread_name"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
 # =============================================================================
@@ -301,7 +312,7 @@ def is_discord_thread_message(value: Any) -> TypeGuard[DiscordThreadMessage]:
 # =============================================================================
 
 
-def is_config(value: Any) -> TypeGuard[Config]:
+def is_config(value: object) -> TypeIs[Config]:
     """Check if value is a valid Config object."""
     if not isinstance(value, dict):
         return False
@@ -323,7 +334,7 @@ def is_config(value: Any) -> TypeGuard[Config]:
             return False
 
     # No other keys should be present
-    return all(key in required_fields for key in value.keys())
+    return all(key in required_fields for key in value)
 
 
 # =============================================================================
@@ -331,7 +342,7 @@ def is_config(value: Any) -> TypeGuard[Config]:
 # =============================================================================
 
 
-def is_bash_tool_input(value: Any) -> TypeGuard[BashToolInput]:
+def is_bash_tool_input(value: object) -> TypeIs[BashToolInput]:
     """Check if value is a valid BashToolInput."""
     if not isinstance(value, dict):
         return False
@@ -345,10 +356,10 @@ def is_bash_tool_input(value: Any) -> TypeGuard[BashToolInput]:
 
     # No other keys should be present
     allowed_keys = {"command", "description"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_file_edit(value: Any) -> TypeGuard[FileEditOperation]:
+def is_file_edit(value: object) -> TypeIs[FileEditOperation]:
     """Check if value is a valid FileEdit."""
     if not isinstance(value, dict):
         return False
@@ -366,44 +377,40 @@ def is_file_edit(value: Any) -> TypeGuard[FileEditOperation]:
 
     # No other keys should be present
     allowed_keys = {"old_string", "new_string", "replace_all"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_file_edit_list(value: Any) -> TypeGuard[list[FileEditOperation]]:
+def is_file_edit_list(value: object) -> TypeIs[list[FileEditOperation]]:
     """Check if value is a list of valid FileEdit objects."""
     return isinstance(value, list) and all(is_file_edit(edit) for edit in value)
 
 
-def is_file_tool_input(value: Any) -> TypeGuard[FileToolInput]:
+def is_file_tool_input(value: object) -> TypeIs[FileToolInput]:
     """Check if value is a valid FileToolInput."""
     if not isinstance(value, dict):
         return False
 
-    # Check optional fields
-    if "file_path" in value and not isinstance(value["file_path"], str):
-        return False
+    # Define field validators
+    field_validators = {
+        "file_path": lambda v: isinstance(v, str),
+        "old_string": lambda v: isinstance(v, str),
+        "new_string": lambda v: isinstance(v, str),
+        "edits": is_file_edit_list,
+        "offset": is_number_or_none,
+        "limit": is_number_or_none,
+    }
 
-    if "old_string" in value and not isinstance(value["old_string"], str):
-        return False
-
-    if "new_string" in value and not isinstance(value["new_string"], str):
-        return False
-
-    if "edits" in value and not is_file_edit_list(value["edits"]):
-        return False
-
-    if "offset" in value and not is_number_or_none(value["offset"]):
-        return False
-
-    if "limit" in value and not is_number_or_none(value["limit"]):
-        return False
+    # Check all fields are valid
+    for field, validator in field_validators.items():
+        if field in value and not validator(value[field]):
+            return False
 
     # No other keys should be present
-    allowed_keys = {"file_path", "old_string", "new_string", "edits", "offset", "limit"}
-    return all(key in allowed_keys for key in value.keys())
+    allowed_keys = set(field_validators.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_search_tool_input(value: Any) -> TypeGuard[SearchToolInput]:
+def is_search_tool_input(value: object) -> TypeIs[SearchToolInput]:
     """Check if value is a valid SearchToolInput."""
     if not isinstance(value, dict):
         return False
@@ -420,10 +427,10 @@ def is_search_tool_input(value: Any) -> TypeGuard[SearchToolInput]:
 
     # No other keys should be present
     allowed_keys = {"pattern", "path", "include"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_task_tool_input(value: Any) -> TypeGuard[TaskToolInput]:
+def is_task_tool_input(value: object) -> TypeIs[TaskToolInput]:
     """Check if value is a valid TaskToolInput."""
     if not isinstance(value, dict):
         return False
@@ -437,10 +444,10 @@ def is_task_tool_input(value: Any) -> TypeGuard[TaskToolInput]:
 
     # No other keys should be present
     allowed_keys = {"description", "prompt"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_web_tool_input(value: Any) -> TypeGuard[WebToolInput]:
+def is_web_tool_input(value: object) -> TypeIs[WebToolInput]:
     """Check if value is a valid WebToolInput."""
     if not isinstance(value, dict):
         return False
@@ -454,10 +461,10 @@ def is_web_tool_input(value: Any) -> TypeGuard[WebToolInput]:
 
     # No other keys should be present
     allowed_keys = {"url", "prompt"}
-    return all(key in allowed_keys for key in value.keys())
+    return all(key in allowed_keys for key in value)
 
 
-def is_tool_input(value: Any) -> TypeGuard[ToolInput]:
+def is_tool_input(value: object) -> TypeIs[ToolInput]:
     """Check if value is a valid ToolInput (union of all tool input types)."""
     return (
         is_bash_tool_input(value)
@@ -474,7 +481,7 @@ def is_tool_input(value: Any) -> TypeGuard[ToolInput]:
 # =============================================================================
 
 
-def is_bash_tool_response(value: Any) -> TypeGuard[BashToolResponse]:
+def is_bash_tool_response(value: object) -> TypeIs[BashToolResponse]:
     """Check if value is a valid BashToolResponse."""
     if not isinstance(value, dict):
         return False
@@ -492,10 +499,10 @@ def is_bash_tool_response(value: Any) -> TypeGuard[BashToolResponse]:
             return False
 
     # No other keys should be present
-    return all(key in required_fields for key in value.keys())
+    return all(key in required_fields for key in value)
 
 
-def is_file_operation_response(value: Any) -> TypeGuard[FileOperationResponse]:
+def is_file_operation_response(value: object) -> TypeIs[FileOperationResponse]:
     """Check if value is a valid FileOperationResponse."""
     if not isinstance(value, dict):
         return False
@@ -512,18 +519,12 @@ def is_file_operation_response(value: Any) -> TypeGuard[FileOperationResponse]:
             return False
 
     # No other keys should be present
-    return all(key in required_fields for key in value.keys())
+    return all(key in required_fields for key in value)
 
 
-def is_tool_response(value: Any) -> TypeGuard[ToolResponse]:
+def is_tool_response(value: object) -> TypeIs[ToolResponse]:
     """Check if value is a valid ToolResponse (union of all tool response types)."""
-    return (
-        isinstance(value, str)
-        or is_bash_tool_response(value)
-        or is_file_operation_response(value)
-        or isinstance(value, dict)
-        or isinstance(value, list)
-    )
+    return isinstance(value, (str, dict, list)) or is_bash_tool_response(value) or is_file_operation_response(value)
 
 
 # =============================================================================
@@ -531,7 +532,7 @@ def is_tool_response(value: Any) -> TypeGuard[ToolResponse]:
 # =============================================================================
 
 
-def is_base_event_data(value: Any) -> TypeGuard[BaseEventData]:
+def is_base_event_data(value: object) -> TypeIs[BaseEventData]:
     """Check if value is a valid BaseEventData."""
     if not isinstance(value, dict):
         return False
@@ -543,14 +544,10 @@ def is_base_event_data(value: Any) -> TypeGuard[BaseEventData]:
         "hook_event_name": lambda v: isinstance(v, str),
     }
 
-    for field, validator in required_fields.items():
-        if field not in value or not validator(value[field]):
-            return False
-
-    return True
+    return all(field in value and validator(value[field]) for field, validator in required_fields.items())
 
 
-def is_pre_tool_use_event_data(value: Any) -> TypeGuard[PreToolUseEventData]:
+def is_pre_tool_use_event_data(value: object) -> TypeIs[PreToolUseEventData]:
     """Check if value is a valid PreToolUseEventData."""
     if not is_base_event_data(value):
         return False
@@ -559,26 +556,20 @@ def is_pre_tool_use_event_data(value: Any) -> TypeGuard[PreToolUseEventData]:
     if "tool_name" not in value or not isinstance(value["tool_name"], str):
         return False
 
-    if "tool_input" not in value or not isinstance(value["tool_input"], dict):
-        return False
-
-    return True
+    return "tool_input" in value and isinstance(value["tool_input"], dict)
 
 
-def is_post_tool_use_event_data(value: Any) -> TypeGuard[PostToolUseEventData]:
+def is_post_tool_use_event_data(value: object) -> TypeIs[PostToolUseEventData]:
     """Check if value is a valid PostToolUseEventData."""
     if not is_pre_tool_use_event_data(value):
         return False
 
     # Check additional required field
-    if "tool_response" not in value:
-        return False
-
     # tool_response can be any type
-    return True
+    return "tool_response" in value
 
 
-def is_notification_event_data(value: Any) -> TypeGuard[NotificationEventData]:
+def is_notification_event_data(value: object) -> TypeIs[NotificationEventData]:
     """Check if value is a valid NotificationEventData."""
     if not is_base_event_data(value):
         return False
@@ -588,13 +579,10 @@ def is_notification_event_data(value: Any) -> TypeGuard[NotificationEventData]:
         return False
 
     # Check optional fields
-    if "title" in value and not is_string_or_none(value["title"]):
-        return False
-
-    return True
+    return "title" not in value or is_string_or_none(value["title"])
 
 
-def is_stop_event_data(value: Any) -> TypeGuard[StopEventData]:
+def is_stop_event_data(value: object) -> TypeIs[StopEventData]:
     """Check if value is a valid StopEventData."""
     if not is_base_event_data(value):
         return False
@@ -609,13 +597,10 @@ def is_stop_event_data(value: Any) -> TypeGuard[StopEventData]:
     if "tools_used" in value and not is_number_or_none(value["tools_used"]):
         return False
 
-    if "messages_exchanged" in value and not is_number_or_none(value["messages_exchanged"]):
-        return False
-
-    return True
+    return "messages_exchanged" not in value or is_number_or_none(value["messages_exchanged"])
 
 
-def is_subagent_stop_event_data(value: Any) -> TypeGuard[SubagentStopEventData]:
+def is_subagent_stop_event_data(value: object) -> TypeIs[SubagentStopEventData]:
     """Check if value is a valid SubagentStopEventData."""
     if not is_stop_event_data(value):
         return False
@@ -624,21 +609,17 @@ def is_subagent_stop_event_data(value: Any) -> TypeGuard[SubagentStopEventData]:
     if "task_description" in value and not is_string_or_none(value["task_description"]):
         return False
 
-    if "result" in value and value["result"] is not None:
+    if "result" in value and value["result"] is not None and not isinstance(value["result"], (str, dict)):
         # result can be string, dict, or None
-        if not isinstance(value["result"], (str, dict)):
-            return False
+        return False
 
     if "execution_time" in value and not is_number_or_none(value["execution_time"]):
         return False
 
-    if "status" in value and not is_string_or_none(value["status"]):
-        return False
-
-    return True
+    return not ("status" in value and not is_string_or_none(value["status"]))
 
 
-def is_event_data(value: Any) -> TypeGuard[EventData]:
+def is_event_data(value: object) -> TypeIs[EventData]:
     """Check if value is a valid EventData (union of all event data types)."""
     return (
         is_pre_tool_use_event_data(value)
@@ -655,7 +636,7 @@ def is_event_data(value: Any) -> TypeGuard[EventData]:
 # =============================================================================
 
 
-def is_event_type(value: Any) -> TypeGuard[EventType]:
+def is_event_type(value: object) -> TypeIs[EventType]:
     """Check if value is a valid EventType."""
     return value in [
         "PreToolUse",
@@ -666,7 +647,7 @@ def is_event_type(value: Any) -> TypeGuard[EventType]:
     ]
 
 
-def is_tool_name(value: Any) -> TypeGuard[ToolName]:
+def is_tool_name(value: object) -> TypeIs[ToolName]:
     """Check if value is a valid ToolName."""
     return value in [
         "Bash",
@@ -687,16 +668,17 @@ def is_tool_name(value: Any) -> TypeGuard[ToolName]:
 # =============================================================================
 
 
-def is_json_serializable(value: Any) -> bool:
+def is_json_serializable(value: object) -> bool:
     """Check if value can be serialized to JSON."""
     try:
         json.dumps(value)
-        return True
     except (TypeError, ValueError):
         return False
+    else:
+        return True
 
 
-def is_valid_url(value: Any) -> bool:
+def is_valid_url(value: object) -> bool:
     """Check if value is a valid URL string."""
     if not isinstance(value, str):
         return False
@@ -704,7 +686,7 @@ def is_valid_url(value: Any) -> bool:
     return value.startswith(("http://", "https://")) and len(value) > 10 and "." in value
 
 
-def is_valid_discord_webhook_url(value: Any) -> bool:
+def is_valid_discord_webhook_url(value: object) -> bool:
     """Check if value is a valid Discord webhook URL."""
     if not isinstance(value, str):
         return False
@@ -712,7 +694,7 @@ def is_valid_discord_webhook_url(value: Any) -> bool:
     return value.startswith("https://discord.com/api/webhooks/") and len(value.split("/")) >= 7
 
 
-def is_valid_discord_user_id(value: Any) -> bool:
+def is_valid_discord_user_id(value: object) -> bool:
     """Check if value is a valid Discord user ID."""
     if not isinstance(value, str):
         return False
@@ -729,7 +711,7 @@ def is_valid_discord_user_id(value: Any) -> bool:
 # =============================================================================
 
 
-def validate_and_narrow_hook_config(value: Any, event_type: str) -> ToolHookConfig | NonToolHookConfig:
+def validate_and_narrow_hook_config(value: object, event_type: str) -> ToolHookConfig | NonToolHookConfig:
     """Validate and narrow a hook configuration for a specific event type."""
     if not is_hook_config(value):
         raise TypeError(f"Invalid hook configuration: {value}")
@@ -743,7 +725,7 @@ def validate_and_narrow_hook_config(value: Any, event_type: str) -> ToolHookConf
     return cast("NonToolHookConfig", value)
 
 
-def validate_and_narrow_event_data(value: Any, event_type: str) -> EventData:
+def validate_and_narrow_event_data(value: object, event_type: str) -> EventData:
     """Validate and narrow event data for a specific event type."""
     if not is_event_data(value):
         raise TypeError(f"Invalid event data: {value}")
@@ -772,7 +754,7 @@ def validate_and_narrow_event_data(value: Any, event_type: str) -> EventData:
     return cast("dict[str, Any]", value)
 
 
-def validate_and_narrow_tool_input(value: Any, tool_name: str) -> ToolInput:
+def validate_and_narrow_tool_input(value: object, tool_name: str) -> ToolInput:
     """Validate and narrow tool input for a specific tool type."""
     if not is_tool_input(value):
         raise TypeError(f"Invalid tool input: {value}")
@@ -806,7 +788,7 @@ def validate_and_narrow_tool_input(value: Any, tool_name: str) -> ToolInput:
 # =============================================================================
 
 
-def validate_complete_settings(settings_data: Any) -> ClaudeSettings:
+def validate_complete_settings(settings_data: object) -> ClaudeSettings:
     """Perform comprehensive validation of Claude settings and return typed object."""
     if not is_claude_settings(settings_data):
         raise TypeError("Invalid Claude settings structure")
@@ -819,12 +801,12 @@ def validate_complete_settings(settings_data: Any) -> ClaudeSettings:
                 try:
                     validate_and_narrow_hook_config(hook_config, event_type)
                 except (TypeError, ValueError) as e:
-                    raise ValueError(f"Invalid hook config at {event_type}[{i}]: {e}")
+                    raise ValueError(f"Invalid hook config at {event_type}[{i}]: {e}") from e
 
     return cast("ClaudeSettings", settings_data)
 
 
-def validate_complete_config(config_data: Any) -> Config:
+def validate_complete_config(config_data: object) -> Config:
     """Perform comprehensive validation of Discord config and return typed object."""
     if not is_config(config_data):
         raise TypeError("Invalid Discord configuration structure")
@@ -844,7 +826,7 @@ def validate_complete_config(config_data: Any) -> Config:
     return config
 
 
-def validate_complete_discord_message(message_data: Any) -> DiscordMessage:
+def validate_complete_discord_message(message_data: object) -> DiscordMessage:
     """Perform comprehensive validation of Discord message and return typed object."""
     if not is_discord_message(message_data):
         raise TypeError("Invalid Discord message structure")
@@ -870,7 +852,7 @@ def validate_complete_discord_message(message_data: Any) -> DiscordMessage:
 # =============================================================================
 
 # Registry of all type guards for runtime discovery
-TYPE_GUARDS = {
+TYPE_GUARDS: dict[str, Any] = {
     # Basic types
     "non_empty_string": is_non_empty_string,
     "string_or_none": is_string_or_none,
@@ -932,12 +914,12 @@ VALIDATORS = {
 }
 
 
-def get_type_guard(name: str) -> Any:
+def get_type_guard(name: str) -> object:
     """Get a type guard function by name."""
     return TYPE_GUARDS.get(name)
 
 
-def get_validator(name: str) -> Any:
+def get_validator(name: str) -> object:
     """Get a validator function by name."""
     return VALIDATORS.get(name)
 

@@ -11,10 +11,11 @@ import argparse
 import contextlib
 import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
+from typing import TYPE_CHECKING, Literal, TypeGuard, cast
 
 # Import all types from settings_types module
 from src.settings_types import HookConfig, create_hook_config
@@ -23,6 +24,16 @@ if TYPE_CHECKING:
     from src.settings_types import ClaudeSettings
 
 HookEventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
+
+
+def check_uv_available() -> bool:
+    """Check if uv is available in the system PATH."""
+    try:
+        result = subprocess.run(["uv", "--version"], capture_output=True, text=True, check=False)  # noqa: S607
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+    else:
+        return result.returncode == 0
 
 
 def atomic_write(filepath: str | Path, content: str) -> None:
@@ -39,7 +50,7 @@ def atomic_write(filepath: str | Path, content: str) -> None:
         # Atomic rename
         Path(temp_path).rename(filepath)
     except Exception:
-        # Clean up temp file on error
+        # Clean up temp file on error - catch all exceptions to ensure cleanup
         with contextlib.suppress(OSError):
             Path(temp_path).unlink()
         raise
@@ -67,6 +78,31 @@ def is_hook_config(value: object) -> TypeGuard[HookConfig]:
     return not ("matcher" in value and not isinstance(value["matcher"], str))
 
 
+def find_project_root() -> Path | None:
+    """Find project root using Path.full_match() for better pattern matching.
+
+    Returns:
+        Path to project root directory, or None if not found
+    """
+    current = Path.cwd()
+
+    # Look for project indicators
+    for parent in [current, *current.parents]:
+        # Check for pyproject.toml first
+        if (parent / "pyproject.toml").exists():
+            # Use full_match to verify it's our project
+            notifier_path = parent / "src" / "discord_notifier.py"
+            if notifier_path.exists() and notifier_path.full_match("**/src/discord_notifier.py"):
+                return parent
+
+        # Also check for the notifier script directly
+        for path in parent.rglob("discord_notifier.py"):
+            if path.full_match("**/src/discord_notifier.py"):
+                return path.parent.parent
+
+    return None
+
+
 def should_keep_hook(hook: HookConfig) -> bool:
     """Check if a hook should be kept (i.e., it's not a discord notifier hook).
 
@@ -80,7 +116,21 @@ def should_keep_hook(hook: HookConfig) -> bool:
     first_hook = hook["hooks"][0]
     command = first_hook["command"]
 
-    # Check if it's a discord notifier command
+    # Check if it's a discord notifier command using Path operations
+    # Extract script path from command
+    parts = command.split()
+    for part in parts:
+        if part.endswith(".py"):
+            try:
+                script_path = Path(part)
+                # Use full_match for pattern checking
+                if script_path.full_match("**/discord_notifier.py"):
+                    return False
+            except (ValueError, TypeError):
+                # Invalid path, continue checking other parts
+                continue
+
+    # Fallback to simple string check
     return "discord_notifier.py" not in command
 
 
@@ -89,10 +139,14 @@ def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
     return [hook for hook in event_hooks if should_keep_hook(hook)]
 
 
-def main() -> int:
-    """Configure Claude Code hooks for Discord notifications."""
-    # Split into smaller functions to reduce complexity
-    return _main_impl()
+def get_python_command(script_path: Path) -> str:
+    """Get the appropriate Python command, preferring uv with Python 3.13+."""
+    if check_uv_available():
+        # Use uv to ensure Python 3.13+ is used
+        return f"uv run --no-sync --python 3.13 python {script_path}"
+    # Fall back to system python3
+    print("⚠️  Warning: uv not found, using system python3. Python 3.13+ required.")
+    return f"python3 {script_path}"
 
 
 def _main_impl() -> int:
@@ -106,36 +160,55 @@ def _main_impl() -> int:
     hooks_dir = claude_dir / "hooks"
     settings_file = claude_dir / "settings.json"
 
+    # Find project root using Path.full_match()
+    project_root = find_project_root()
+    if project_root is None:
+        # Fallback to script parent
+        project_root = Path(__file__).parent
+
     # Source script in the project directory
-    source_script = Path(__file__).parent / "src" / "discord_notifier.py"
-    # No target script needed - we'll reference source directly
+    source_script = project_root / "src" / "discord_notifier.py"
 
     if args.remove:
-        print("Removing Claude Code Discord Notifier...")
+        return _handle_remove_command(settings_file)
+    return _handle_install_command(hooks_dir, settings_file, source_script)
 
-        # Note: Script removal not needed since we're using source directly
-        print("✓ Notifier hooks will be removed from settings.json")
 
-        # Remove from settings.json
-        if settings_file.exists():
-            with settings_file.open() as f:
-                settings_data = json.load(f)
+def main() -> int:
+    """Configure Claude Code hooks for Discord notifications."""
+    # Split into smaller functions to reduce complexity
+    return _main_impl()
 
-            # Type cast to ensure proper typing
-            settings = cast("ClaudeSettings", settings_data)
 
-            # Remove discord notifier hooks
-            if "hooks" in settings:
-                for event_type in cast("list[HookEventType]", list(settings["hooks"].keys())):
-                    settings["hooks"][event_type] = filter_hooks(settings["hooks"][event_type])
+def _handle_remove_command(settings_file: Path) -> int:
+    """Handle remove command to uninstall the notifier."""
+    print("Removing Claude Code Discord Notifier...")
 
-            atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
-            print("✓ Removed hooks from settings.json")
+    # Note: Script removal not needed since we're using source directly
+    print("✓ Notifier hooks will be removed from settings.json")
 
-        print("\nRemoval complete!")
-        return 0
+    # Remove from settings.json
+    if settings_file.exists():
+        with settings_file.open() as f:
+            settings_data = json.load(f)
 
-    # Install mode
+        # Type cast to ensure proper typing
+        settings = cast("ClaudeSettings", settings_data)
+
+        # Remove discord notifier hooks
+        if "hooks" in settings:
+            for event_type in cast("list[HookEventType]", list(settings["hooks"].keys())):
+                settings["hooks"][event_type] = filter_hooks(settings["hooks"][event_type])
+
+        atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
+        print("✓ Removed hooks from settings.json")
+
+    print("\nRemoval complete!")
+    return 0
+
+
+def _handle_install_command(hooks_dir: Path, settings_file: Path, source_script: Path) -> int:
+    """Handle install command to setup the notifier."""
     print("Installing Claude Code Discord Notifier...")
 
     # Check source exists
@@ -145,11 +218,6 @@ def _main_impl() -> int:
 
     # Create directories
     hooks_dir.mkdir(parents=True, exist_ok=True)
-
-    # Ensure source script exists and is executable
-    if not source_script.exists():
-        print(f"Error: Source script not found at {source_script}")
-        return 1
 
     # Make source script executable
     source_script.chmod(0o755)
@@ -186,55 +254,50 @@ def _main_impl() -> int:
         settings["hooks"][event] = filter_hooks(hooks_list)
 
         # Add new hook using imported helper functions
-        # Use absolute path to source script
-        command = f"CLAUDE_HOOK_EVENT={event} python3 {source_script.absolute()}"
+        # Use absolute path to source script with uv for Python 3.13+
+        python_cmd = get_python_command(source_script.absolute())
+        command = f"CLAUDE_HOOK_EVENT={event} {python_cmd}"
         hook_config = create_hook_config(event, command, ".*")
 
         # Append the new config - now properly typed
         settings["hooks"][event].append(hook_config)  # type: ignore[arg-type]
 
     # Save settings
-    claude_dir.mkdir(exist_ok=True)
+    settings_file.parent.mkdir(exist_ok=True)
     atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
 
     print("✓ Updated settings.json")
 
-    # Create example config if it doesn't exist
-    env_example = hooks_dir / ".env.discord.example"
-    if not env_example.exists():
-        env_example.write_text("""# Discord Configuration
-# Option 1: Webhook (recommended)
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
+    # Create .env from template if it doesn't exist
+    env_file = Path.cwd() / ".env"
+    env_example = Path.cwd() / ".env.example"
 
-# Option 2: Bot Token
-# DISCORD_TOKEN=your_bot_token_here
-# DISCORD_CHANNEL_ID=your_channel_id_here
-
-# Optional: Enable debug logging
-# DISCORD_DEBUG=1
-
-# Optional: Thread support for session organization
-# DISCORD_USE_THREADS=1
-# DISCORD_CHANNEL_TYPE=text          # "text" or "forum"
-# DISCORD_THREAD_PREFIX=Session      # Custom thread name prefix
-
-# Optional: User mention for notifications
-# DISCORD_MENTION_USER_ID=123456789012345678  # Your Discord user ID
-
-# Optional: Event filtering (choose one approach)
-# Only send specific events (comma-separated list)
-# DISCORD_ENABLED_EVENTS=Stop,Notification
-# Skip specific events (comma-separated list)
-# DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
-# Valid events: PreToolUse, PostToolUse, Notification, Stop, SubagentStop
-""")
-        print(f"✓ Created example config at {env_example}")
+    if not env_file.exists() and env_example.exists():
+        # Copy .env.example to .env
+        env_file.write_text(env_example.read_text())
+        print("✓ Created .env from template")
+    elif not env_file.exists():
+        print("⚠️  Warning: No .env file found. Copy .env.example to .env and configure")
 
     print("\n✅ Installation complete!")
+
+    # Inform about Python version handling
+    if check_uv_available():
+        print("\n✓ Using uv to ensure Python 3.13+ for hook execution")
+    else:
+        print("\n⚠️  Warning: uv not found. Install uv to ensure Python 3.13+ is used:")
+        print("  curl -LsSf https://astral.sh/uv/install.sh | sh")
+        print("  Using system python3 - requires Python 3.13+ to be installed")
+
     print("\nNext steps:")
-    print(f"1. Copy {env_example} to {hooks_dir / '.env.discord'}")
-    print("2. Edit .env.discord with your Discord credentials")
-    print("3. Restart Claude Code")
+    if not env_file.exists():
+        print("1. Copy .env.example to .env")
+        print("2. Edit .env with your Discord credentials")
+        print("3. Restart Claude Code")
+    else:
+        print("1. Edit .env with your Discord credentials (if not already configured)")
+        print("2. Restart Claude Code")
+    print("\nNote: Environment variables take precedence over .env file.")
 
     return 0
 
