@@ -6,11 +6,15 @@ event type to formatter function mappings.
 """
 
 from collections.abc import Callable
-from typing import Any
+from typing import Union
 
 from src.core.constants import EventTypes
 from src.core.http_client import DiscordEmbed
 from src.formatters.event_formatters import (
+    NotificationEventData,
+    StopEventData,
+    SubagentStopEventData,
+    ToolEventData,
     format_default_impl,
     format_notification,
     format_post_tool_use,
@@ -18,6 +22,15 @@ from src.formatters.event_formatters import (
     format_stop,
     format_subagent_stop,
 )
+
+# Type alias for event data
+EventData = Union[
+    ToolEventData,
+    NotificationEventData,
+    StopEventData,
+    SubagentStopEventData,
+    dict[str, str | int | float | bool],
+]
 
 
 class FormatterRegistry:
@@ -38,7 +51,7 @@ class FormatterRegistry:
 
     def __init__(self) -> None:
         """Initialize the formatter registry with default formatters."""
-        self._formatters: dict[str, Callable[[dict[str, Any], str], DiscordEmbed]] = {
+        self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
             EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
             EventTypes.POST_TOOL_USE.value: format_post_tool_use,
             EventTypes.NOTIFICATION.value: format_notification,
@@ -46,7 +59,9 @@ class FormatterRegistry:
             EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
         }
 
-    def get_formatter(self, event_type: str) -> Callable[[dict[str, Any], str], DiscordEmbed]:
+    def get_formatter(
+        self, event_type: str
+    ) -> Callable[[EventData, str], DiscordEmbed]:
         """Get formatter for event type.
 
         Args:
@@ -69,7 +84,11 @@ class FormatterRegistry:
         # Return a lambda that captures the event_type for unknown events
         return lambda event_data, session_id: format_default_impl(event_type, event_data, session_id)
 
-    def register(self, event_type: str, formatter: Callable[[dict[str, Any], str], DiscordEmbed]) -> None:
+    def register(
+        self,
+        event_type: str,
+        formatter: Callable[[EventData, str], DiscordEmbed],
+    ) -> None:
         """Register a new formatter.
 
         Args:
@@ -78,7 +97,7 @@ class FormatterRegistry:
                       and returns a DiscordEmbed
 
         Example:
-            >>> def format_custom(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+            >>> def format_custom(event_data: dict[str, str | int | float | bool], session_id: str) -> DiscordEmbed:
             ...     return {"title": "Custom Event", "description": "..."}
             >>> registry.register("CustomEvent", format_custom)
         """

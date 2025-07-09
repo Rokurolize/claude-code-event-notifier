@@ -5,7 +5,7 @@ This module provides formatting functions for specific tools used by Claude Code
 including both pre-use and post-use formatting of tool inputs and outputs.
 """
 
-from typing import Any
+from typing import TypedDict
 
 from src.core.constants import ToolNames, TruncationLimits
 from src.formatters.base import (
@@ -17,12 +17,84 @@ from src.formatters.base import (
 )
 from src.utils.validation import is_list_tool
 
-# Type alias for tool response
-ToolResponse = dict[str, Any] | str | list[Any]
+
+# Type definitions for tool inputs and responses
+class BashToolInput(TypedDict, total=False):
+    """Input structure for Bash tool."""
+    command: str
+    description: str
+    timeout: int
+
+
+class FileOperationInput(TypedDict, total=False):
+    """Input structure for file operations."""
+    file_path: str
+    content: str
+    old_string: str
+    new_string: str
+    edits: list[dict[str, str]]
+    limit: int
+    offset: int
+
+
+class SearchToolInput(TypedDict, total=False):
+    """Input structure for search tools."""
+    pattern: str
+    path: str
+    glob: str
+    type: str
+    output_mode: str
+
+
+class TaskToolInput(TypedDict, total=False):
+    """Input structure for Task tool."""
+    instructions: str
+    parent: str
+
+
+class WebFetchInput(TypedDict, total=False):
+    """Input structure for WebFetch tool."""
+    url: str
+    prompt: str
+
+
+# Response type definitions
+class BashToolResponse(TypedDict, total=False):
+    """Response structure from Bash tool."""
+    stdout: str
+    stderr: str
+    exit_code: int
+    output: str
+
+
+class FileOperationResponse(TypedDict, total=False):
+    """Response structure from file operations."""
+    success: bool
+    message: str
+    content: str
+    lines_written: int
+
+
+# Type alias for generic tool input/response
+ToolInput = (
+    BashToolInput
+    | FileOperationInput
+    | SearchToolInput
+    | TaskToolInput
+    | WebFetchInput
+    | dict[str, str | int | float | bool]
+)
+ToolResponse = (
+    BashToolResponse
+    | FileOperationResponse
+    | str
+    | list[dict[str, str]]
+    | dict[str, str | int | float | bool]
+)
 
 
 # Pre-use formatters
-def format_bash_pre_use(tool_input: dict[str, Any]) -> list[str]:
+def format_bash_pre_use(tool_input: BashToolInput) -> list[str]:
     """Format Bash tool pre-use details.
 
     Args:
@@ -45,7 +117,7 @@ def format_bash_pre_use(tool_input: dict[str, Any]) -> list[str]:
     return desc_parts
 
 
-def format_file_operation_pre_use(tool_name: str, tool_input: dict[str, Any]) -> list[str]:
+def format_file_operation_pre_use(tool_name: str, tool_input: FileOperationInput) -> list[str]:
     """Format file operation tool pre-use details.
 
     Args:
@@ -96,7 +168,7 @@ def format_file_operation_pre_use(tool_name: str, tool_input: dict[str, Any]) ->
     return desc_parts
 
 
-def format_search_tool_pre_use(tool_name: str, tool_input: dict[str, Any]) -> list[str]:
+def format_search_tool_pre_use(tool_name: str, tool_input: SearchToolInput) -> list[str]:
     """Format search tool pre-use details.
 
     Args:
@@ -122,7 +194,7 @@ def format_search_tool_pre_use(tool_name: str, tool_input: dict[str, Any]) -> li
     return desc_parts
 
 
-def format_task_pre_use(tool_input: dict[str, Any]) -> list[str]:
+def format_task_pre_use(tool_input: TaskToolInput) -> list[str]:
     """Format Task tool pre-use details.
 
     Args:
@@ -146,7 +218,7 @@ def format_task_pre_use(tool_input: dict[str, Any]) -> list[str]:
     return desc_parts
 
 
-def format_web_fetch_pre_use(tool_input: dict[str, Any]) -> list[str]:
+def format_web_fetch_pre_use(tool_input: WebFetchInput) -> list[str]:
     """Format WebFetch tool pre-use details.
 
     Args:
@@ -170,7 +242,7 @@ def format_web_fetch_pre_use(tool_input: dict[str, Any]) -> list[str]:
     return desc_parts
 
 
-def format_unknown_tool_pre_use(tool_input: dict[str, Any]) -> list[str]:
+def format_unknown_tool_pre_use(tool_input: dict[str, str | int | float | bool]) -> list[str]:
     """Format unknown tool pre-use details.
 
     Args:
@@ -183,7 +255,7 @@ def format_unknown_tool_pre_use(tool_input: dict[str, Any]) -> list[str]:
 
 
 # Post-use formatters
-def format_bash_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
+def format_bash_post_use(tool_input: BashToolInput, tool_response: ToolResponse) -> list[str]:
     """Format Bash tool post-use results.
 
     Args:
@@ -218,7 +290,7 @@ def format_bash_post_use(tool_input: dict[str, Any], tool_response: ToolResponse
 
 
 def format_read_operation_post_use(
-    tool_name: str, tool_input: dict[str, Any], tool_response: ToolResponse
+    tool_name: str, tool_input: FileOperationInput, tool_response: ToolResponse
 ) -> list[str]:
     """Format read operation tool post-use results.
 
@@ -261,7 +333,7 @@ def format_read_operation_post_use(
     return desc_parts
 
 
-def format_write_operation_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
+def format_write_operation_post_use(tool_input: FileOperationInput, tool_response: ToolResponse) -> list[str]:
     """Format write operation tool post-use results.
 
     Args:
@@ -293,7 +365,7 @@ def format_write_operation_post_use(tool_input: dict[str, Any], tool_response: T
     return desc_parts
 
 
-def format_task_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
+def format_task_post_use(tool_input: TaskToolInput, tool_response: ToolResponse) -> list[str]:
     """Format Task tool post-use results.
 
     Args:
@@ -316,7 +388,7 @@ def format_task_post_use(tool_input: dict[str, Any], tool_response: ToolResponse
     return desc_parts
 
 
-def format_web_fetch_post_use(tool_input: dict[str, Any], tool_response: ToolResponse) -> list[str]:
+def format_web_fetch_post_use(tool_input: WebFetchInput, tool_response: ToolResponse) -> list[str]:
     """Format WebFetch tool post-use results.
 
     Args:

@@ -12,13 +12,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # Python 3.13+ features
-from typing import Any, Literal, TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 # ReadOnly - use typing_extensions for compatibility
 try:
     from typing import ReadOnly
 except ImportError:
-    from typing_extensions import ReadOnly
+    from typing import ReadOnly
 
 from .constants import (
     DEFAULT_THREAD_CLEANUP_DAYS,
@@ -234,7 +234,7 @@ class ConfigLoader:
     """Configuration loader with validation."""
 
     @staticmethod
-    def merge_config(base: Config, overrides: dict[str, Any]) -> Config:
+    def merge_config(base: Config, overrides: dict[str, object]) -> Config:
         """Merge configurations immutably using copy.replace().
 
         Args:
@@ -271,7 +271,7 @@ class ConfigLoader:
     @staticmethod
     def _apply_env_file(config: Config, env_vars: dict[str, str]) -> Config:
         """Apply configuration from environment file immutably."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
 
         # Simple string assignments
         simple_mappings = {
@@ -325,7 +325,7 @@ class ConfigLoader:
     @staticmethod
     def _apply_env_vars(config: Config) -> Config:
         """Apply configuration from environment variables immutably."""
-        updates: dict[str, Any] = {}
+        updates: dict[str, object] = {}
 
         # Simple string assignments
         simple_mappings = {

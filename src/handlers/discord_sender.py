@@ -7,7 +7,7 @@ various methods including webhooks, bot API, and thread management.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from src.core.constants import EventTypes
 from src.core.exceptions import DiscordAPIError
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from src.core.http_client import DiscordThreadMessage
 
 # Type alias for configuration
-Config = dict[str, Any]
+Config = dict[str, str | int | bool]
 
 
 @dataclass

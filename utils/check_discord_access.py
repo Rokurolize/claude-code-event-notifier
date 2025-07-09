@@ -45,10 +45,11 @@ def check_api_access(url: str, token: str) -> None:
             elif error_data.get("code") == 10004:
                 print("→ Unknown Guild: Guild does not exist")
 
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             print("Could not parse error response body")
 
-    except Exception as e:
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        # Network errors, OS errors, or value errors
         print(f"✗ Error: {type(e).__name__}: {e}")
 
 

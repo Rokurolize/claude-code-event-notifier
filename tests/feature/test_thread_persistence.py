@@ -12,6 +12,84 @@ from pathlib import Path
 from src.thread_storage import ThreadStorage
 
 
+def _test_store_thread(storage, session_id, thread_id, channel_id, thread_name):
+    """Test storing a thread."""
+    print(f"  📝 Storing thread: {session_id} -> {thread_id}")
+
+    success = storage.store_thread(
+        session_id=session_id,
+        thread_id=thread_id,
+        channel_id=channel_id,
+        thread_name=thread_name,
+        is_archived=False,
+    )
+
+    if success:
+        print("  ✅ Thread stored successfully")
+    else:
+        print("  ❌ Failed to store thread")
+    return success
+
+
+def _test_retrieve_thread(storage, session_id):
+    """Test retrieving a thread."""
+    print(f"  🔍 Retrieving thread for session: {session_id}")
+    record = storage.get_thread(session_id)
+
+    if record:
+        print(f"  ✅ Thread retrieved: {record.thread_id}")
+        print(f"     Thread name: {record.thread_name}")
+        print(f"     Created: {record.created_at}")
+        print(f"     Archived: {record.is_archived}")
+        return True
+    print("  ❌ Failed to retrieve thread")
+    return False
+
+
+def _test_search_by_name(storage, channel_id, thread_name, session_id):
+    """Test searching thread by name."""
+    print(f"  🔎 Searching for thread by name: {thread_name}")
+    found_thread = storage.find_thread_by_name(channel_id, thread_name)
+
+    if found_thread and found_thread.session_id == session_id:
+        print("  ✅ Thread found by name search")
+        return True
+    print("  ❌ Thread not found by name search")
+    return False
+
+
+def _test_update_thread_status(storage, session_id):
+    """Test updating thread status."""
+    print("  🔄 Testing thread status update...")
+    success = storage.update_thread_status(session_id, is_archived=True)
+
+    if success:
+        updated_record = storage.get_thread(session_id)
+        if updated_record and updated_record.is_archived:
+            print("  ✅ Thread status updated successfully")
+            return True
+        print("  ❌ Thread status update failed")
+        return False
+    print("  ❌ Failed to update thread status")
+    return False
+
+
+def _test_remove_thread(storage, session_id):
+    """Test removing a thread."""
+    print("  🗑️  Removing thread...")
+    success = storage.remove_thread(session_id)
+
+    if success:
+        removed_record = storage.get_thread(session_id)
+        if removed_record is None:
+            print("  ✅ Thread removed successfully")
+            return True
+        print("  ❌ Thread still exists after removal")
+        return False
+    print("  ❌ Failed to remove thread")
+    return False
+
+
 def test_basic_storage_operations():
     """Test basic ThreadStorage operations."""
     print("🧪 Testing basic ThreadStorage operations...")
@@ -27,44 +105,14 @@ def test_basic_storage_operations():
         channel_id = "123456789012345678"
         thread_name = "Session test-ses"
 
-        print(f"  📝 Storing thread: {session_id} -> {thread_id}")
-
-        # Store thread
-        success = storage.store_thread(
-            session_id=session_id,
-            thread_id=thread_id,
-            channel_id=channel_id,
-            thread_name=thread_name,
-            is_archived=False,
-        )
-
-        if success:
-            print("  ✅ Thread stored successfully")
-        else:
-            print("  ❌ Failed to store thread")
+        # Run tests
+        if not _test_store_thread(storage, session_id, thread_id, channel_id, thread_name):
             return False
 
-        # Retrieve thread
-        print(f"  🔍 Retrieving thread for session: {session_id}")
-        record = storage.get_thread(session_id)
-
-        if record:
-            print(f"  ✅ Thread retrieved: {record.thread_id}")
-            print(f"     Thread name: {record.thread_name}")
-            print(f"     Created: {record.created_at}")
-            print(f"     Archived: {record.is_archived}")
-        else:
-            print("  ❌ Failed to retrieve thread")
+        if not _test_retrieve_thread(storage, session_id):
             return False
 
-        # Test search by name
-        print(f"  🔎 Searching for thread by name: {thread_name}")
-        found_thread = storage.find_thread_by_name(channel_id, thread_name)
-
-        if found_thread and found_thread.session_id == session_id:
-            print("  ✅ Thread found by name search")
-        else:
-            print("  ❌ Thread not found by name search")
+        if not _test_search_by_name(storage, channel_id, thread_name, session_id):
             return False
 
         # Test statistics
@@ -73,34 +121,10 @@ def test_basic_storage_operations():
             f"  📊 Storage stats: {stats['total_threads']} threads, {stats['active_threads']} active"
         )
 
-        # Update thread status
-        print("  🔄 Testing thread status update...")
-        success = storage.update_thread_status(session_id, is_archived=True)
-
-        if success:
-            updated_record = storage.get_thread(session_id)
-            if updated_record and updated_record.is_archived:
-                print("  ✅ Thread status updated successfully")
-            else:
-                print("  ❌ Thread status update failed")
-                return False
-        else:
-            print("  ❌ Failed to update thread status")
+        if not _test_update_thread_status(storage, session_id):
             return False
 
-        # Remove thread
-        print("  🗑️  Removing thread...")
-        success = storage.remove_thread(session_id)
-
-        if success:
-            removed_record = storage.get_thread(session_id)
-            if removed_record is None:
-                print("  ✅ Thread removed successfully")
-            else:
-                print("  ❌ Thread still exists after removal")
-                return False
-        else:
-            print("  ❌ Failed to remove thread")
+        if not _test_remove_thread(storage, session_id):
             return False
 
     return True

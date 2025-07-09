@@ -10,7 +10,7 @@ import logging
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
 from .constants import DEFAULT_TIMEOUT, DISCORD_API_BASE, USER_AGENT
 from .exceptions import DiscordAPIError
@@ -25,6 +25,36 @@ class TimestampedField(BaseField):
     """Fields that include timestamps."""
 
     timestamp: str | None
+
+
+# Discord API response types
+class DiscordChannel(TypedDict, total=False):
+    """Discord channel response structure."""
+    id: str
+    type: int
+    name: str
+    parent_id: str | None
+    position: int
+    topic: str | None
+    nsfw: bool
+    last_message_id: str | None
+
+
+class DiscordThread(TypedDict, total=False):
+    """Discord thread response structure."""
+    id: str
+    type: int
+    name: str
+    parent_id: str
+    owner_id: str
+    message_count: int
+    member_count: int
+    archived: bool
+    auto_archive_duration: int
+    archive_timestamp: str
+    locked: bool
+    invitable: bool
+    create_timestamp: str | None
 
 
 class DiscordFooter(TypedDict):
@@ -147,7 +177,7 @@ class HTTPClient:
     def _make_request(
         self,
         url: str,
-        data: DiscordMessage | DiscordThreadMessage | dict[str, Any],
+        data: DiscordMessage | DiscordThreadMessage | dict[str, str | int | bool],
         headers: dict[str, str],
         api_name: str,
         success_check: int | Callable[[int], bool],
@@ -309,7 +339,7 @@ class HTTPClient:
             self.logger.exception("Text Thread Creation unexpected error: %s", type(e).__name__)
             raise DiscordAPIError(f"Text thread creation unexpected error: {e}") from e
 
-    def get_channel_info(self, channel_id: str, token: str) -> dict[str, Any] | None:
+    def get_channel_info(self, channel_id: str, token: str) -> DiscordChannel | None:
         """Get channel information via Discord bot API.
 
         Args:
@@ -336,7 +366,7 @@ class HTTPClient:
 
                 if 200 <= status < 300:
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("dict[str, Any]", response_data)
+                    return cast("DiscordChannel", response_data)
                 return None
 
         except urllib.error.HTTPError as e:
@@ -354,7 +384,7 @@ class HTTPClient:
             self.logger.exception("Get Channel Info unexpected error: %s", type(e).__name__)
             raise DiscordAPIError(f"Get channel info unexpected error: {e}") from e
 
-    def list_active_threads(self, channel_id: str, token: str) -> list[dict[str, Any]]:
+    def list_active_threads(self, channel_id: str, token: str) -> list[DiscordThread]:
         """List active threads in a channel via Discord bot API.
 
         Args:
@@ -397,7 +427,7 @@ class HTTPClient:
                     # Filter threads to only include those from our channel
                     all_threads = response_data.get("threads", [])
                     channel_threads = [t for t in all_threads if t.get("parent_id") == channel_id]
-                    return cast("list[dict[str, Any]]", channel_threads)
+                    return cast("list[DiscordThread]", channel_threads)
                 return []
 
         except urllib.error.HTTPError as e:
@@ -419,7 +449,7 @@ class HTTPClient:
             self.logger.exception("List Active Threads unexpected error: %s", type(e).__name__)
             raise DiscordAPIError(f"List active threads unexpected error: {e}") from e
 
-    def get_thread_details(self, thread_id: str, token: str) -> dict[str, Any] | None:
+    def get_thread_details(self, thread_id: str, token: str) -> DiscordThread | None:
         """Get details of a specific thread via Discord bot API.
 
         Args:
@@ -447,7 +477,7 @@ class HTTPClient:
 
                 if 200 <= status < 300:
                     response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("dict[str, Any]", response_data)
+                    return cast("DiscordThread", response_data)
                 return None
 
         except urllib.error.HTTPError as e:
@@ -573,7 +603,7 @@ class HTTPClient:
 
     def list_public_archived_threads(
         self, channel_id: str, token: str, before: str | None = None, limit: int = 100
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[DiscordThread], bool]:
         """List public archived threads in a channel.
 
         Args:
@@ -630,7 +660,7 @@ class HTTPClient:
 
     def list_private_archived_threads(
         self, channel_id: str, token: str, before: str | None = None, limit: int = 100
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[DiscordThread], bool]:
         """List private archived threads in a channel (requires MANAGE_THREADS permission).
 
         Args:
@@ -685,7 +715,7 @@ class HTTPClient:
             self.logger.exception("List Private Archived Threads unexpected error: %s", type(e).__name__)
             raise DiscordAPIError(f"List private archived threads unexpected error: {e}") from e
 
-    def search_threads_by_name(self, channel_id: str, thread_name: str, token: str) -> list[dict[str, Any]]:
+    def search_threads_by_name(self, channel_id: str, thread_name: str, token: str) -> list[DiscordThread]:
         """Search for threads by name in a channel (active and archived).
 
         Args:
@@ -699,7 +729,7 @@ class HTTPClient:
         Raises:
             DiscordAPIError: On API communication errors
         """
-        matching_threads: list[dict[str, Any]] = []
+        matching_threads: list[DiscordThread] = []
         search_name = thread_name.lower()
 
         # Search active threads

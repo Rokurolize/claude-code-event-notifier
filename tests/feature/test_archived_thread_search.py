@@ -23,7 +23,12 @@ from unittest.mock import MagicMock, Mock, patch
 src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from discord_notifier import DiscordAPIError, HTTPClient, find_existing_thread_by_name, get_or_create_thread  # noqa: E402
+from discord_notifier import (  # noqa: E402
+    DiscordAPIError,
+    HTTPClient,
+    find_existing_thread_by_name,
+    get_or_create_thread,
+)
 
 if TYPE_CHECKING:
     from discord_notifier import Config

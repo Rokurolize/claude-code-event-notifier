@@ -8,7 +8,7 @@ Note: This module contains some deprecated functions that are kept
 for backward compatibility. Use src.type_guards module for new code.
 """
 
-from typing import Any, TypeGuard
+from typing import TypeGuard
 
 from src.core.constants import EventType, EventTypes, ToolNames
 
@@ -131,7 +131,7 @@ def is_list_tool(tool_name: str) -> bool:
 
 
 # Type guard functions
-def is_tool_event_data(data: dict[str, Any]) -> TypeGuard[ToolEventDataBase]:
+def is_tool_event_data(data: dict[str, object]) -> TypeGuard[ToolEventDataBase]:
     """Check if event data is tool-related.
 
     Args:
@@ -144,7 +144,7 @@ def is_tool_event_data(data: dict[str, Any]) -> TypeGuard[ToolEventDataBase]:
 
 
 def is_notification_event_data(
-    data: dict[str, Any],
+    data: dict[str, object],
 ) -> TypeGuard[NotificationEventData]:
     """Check if event data is notification-related.
 
@@ -157,7 +157,7 @@ def is_notification_event_data(
     return "message" in data
 
 
-def is_stop_event_data(data: dict[str, Any]) -> TypeGuard[StopEventDataBase]:
+def is_stop_event_data(data: dict[str, object]) -> TypeGuard[StopEventDataBase]:
     """Check if event data is stop-related.
 
     Args:
@@ -169,7 +169,7 @@ def is_stop_event_data(data: dict[str, Any]) -> TypeGuard[StopEventDataBase]:
     return "hook_event_name" in data
 
 
-def is_bash_tool_input(tool_input: dict[str, Any]) -> TypeGuard[BashToolInput]:
+def is_bash_tool_input(tool_input: dict[str, object]) -> TypeGuard[BashToolInput]:
     """Check if tool input is for Bash tool.
 
     Args:
@@ -181,7 +181,7 @@ def is_bash_tool_input(tool_input: dict[str, Any]) -> TypeGuard[BashToolInput]:
     return "command" in tool_input
 
 
-def is_file_tool_input(tool_input: dict[str, Any]) -> TypeGuard[FileToolInputBase]:
+def is_file_tool_input(tool_input: dict[str, object]) -> TypeGuard[FileToolInputBase]:
     """Check if tool input is for file operations.
 
     Args:
@@ -193,7 +193,7 @@ def is_file_tool_input(tool_input: dict[str, Any]) -> TypeGuard[FileToolInputBas
     return "file_path" in tool_input
 
 
-def is_search_tool_input(tool_input: dict[str, Any]) -> TypeGuard[SearchToolInputBase]:
+def is_search_tool_input(tool_input: dict[str, object]) -> TypeGuard[SearchToolInputBase]:
     """Check if tool input is for search operations.
 
     Args:
@@ -210,7 +210,7 @@ class EventDataValidator:
     """Validator for EventData structures."""
 
     @staticmethod
-    def validate_base_event_data(data: dict[str, Any]) -> bool:
+    def validate_base_event_data(data: dict[str, object]) -> bool:
         """Validate base event data requirements.
 
         Args:
@@ -223,7 +223,7 @@ class EventDataValidator:
         return all(field in data for field in required_fields)
 
     @staticmethod
-    def validate_tool_event_data(data: dict[str, Any]) -> bool:
+    def validate_tool_event_data(data: dict[str, object]) -> bool:
         """Validate tool event data requirements.
 
         Args:
@@ -239,7 +239,7 @@ class EventDataValidator:
         return all(field in data for field in required_fields)
 
     @staticmethod
-    def validate_notification_event_data(data: dict[str, Any]) -> bool:
+    def validate_notification_event_data(data: dict[str, object]) -> bool:
         """Validate notification event data requirements.
 
         Args:
@@ -254,7 +254,7 @@ class EventDataValidator:
         return "message" in data
 
     @staticmethod
-    def validate_stop_event_data(data: dict[str, Any]) -> bool:
+    def validate_stop_event_data(data: dict[str, object]) -> bool:
         """Validate stop event data requirements.
 
         Args:
@@ -270,7 +270,7 @@ class ToolInputValidator:
     """Validator for ToolInput structures."""
 
     @staticmethod
-    def validate_bash_input(tool_input: dict[str, Any]) -> bool:
+    def validate_bash_input(tool_input: dict[str, object]) -> bool:
         """Validate Bash tool input.
 
         Args:
@@ -282,7 +282,7 @@ class ToolInputValidator:
         return "command" in tool_input and isinstance(tool_input["command"], str)
 
     @staticmethod
-    def validate_file_input(tool_input: dict[str, Any]) -> bool:
+    def validate_file_input(tool_input: dict[str, object]) -> bool:
         """Validate file tool input.
 
         Args:
@@ -294,7 +294,7 @@ class ToolInputValidator:
         return "file_path" in tool_input and isinstance(tool_input["file_path"], str)
 
     @staticmethod
-    def validate_search_input(tool_input: dict[str, Any]) -> bool:
+    def validate_search_input(tool_input: dict[str, object]) -> bool:
         """Validate search tool input.
 
         Args:
@@ -306,7 +306,7 @@ class ToolInputValidator:
         return "pattern" in tool_input and isinstance(tool_input["pattern"], str)
 
     @staticmethod
-    def validate_web_input(tool_input: dict[str, Any]) -> bool:
+    def validate_web_input(tool_input: dict[str, object]) -> bool:
         """Validate web tool input.
 
         Args:

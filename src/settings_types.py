@@ -7,7 +7,6 @@ Claude Code's hook system configuration.
 """
 
 from typing import (
-    Any,
     Literal,
     TypedDict,
 )
@@ -16,7 +15,7 @@ from typing import (
 try:
     from typing import ReadOnly
 except ImportError:
-    from typing_extensions import ReadOnly
+    from typing import ReadOnly
 
 # Python 3.13+ required - ReadOnly is now available for type safety
 
@@ -69,10 +68,10 @@ class ClaudeSettings(TypedDict, total=False):
     confirmBeforeClose: bool
 
     # Extension/plugin settings (if applicable)
-    extensions: dict[str, Any]
+    extensions: dict[str, str | int | bool | dict[str, str | int | bool]]
 
     # Custom user preferences
-    preferences: dict[str, Any]
+    preferences: dict[str, str | int | bool | list[str] | dict[str, str | int | bool]]
 
 
 # Helper type for partial settings updates
@@ -119,10 +118,10 @@ class SecureClaudeSettings(TypedDict, total=False):
     editorFontSize: int
 
     # Plugin settings with ReadOnly metadata
-    plugins: ReadOnly[dict[str, Any]]  # Plugin registry - read-only
+    plugins: ReadOnly[dict[str, str | int | bool | dict[str, str | int | bool]]]  # Plugin registry - read-only
 
     # User preferences - mutable
-    preferences: dict[str, Any]
+    preferences: dict[str, str | int | bool | list[str] | dict[str, str | int | bool]]
 
 
 class DiscordNotifierConfig(TypedDict, total=False):

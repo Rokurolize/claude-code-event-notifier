@@ -14,13 +14,13 @@ and static type narrowing for improved type safety.
 """
 
 import json
-from typing import Any, cast
+from typing import TypedDict, cast
 
 # TypeIs is available in Python 3.13+
 try:
     from typing import TypeIs
 except ImportError:
-    from typing_extensions import TypeIs
+    from typing import TypeIs
 
 # Import Discord notifier types from reorganized modules
 from src.core.constants import EventTypes as EventType
@@ -36,33 +36,145 @@ from src.settings_types import (
     ToolHookConfig,
 )
 
-# Define local type aliases for the type guards
-Config = dict[str, Any]
-ToolResponse = dict[str, Any] | str | list[Any]
-ToolInput = dict[str, Any]
-EventData = dict[str, Any]
 
-# Event data type aliases
-BaseEventData = dict[str, Any]
-PreToolUseEventData = dict[str, Any]
-PostToolUseEventData = dict[str, Any]
-NotificationEventData = dict[str, Any]
-StopEventData = dict[str, Any]
-SubagentStopEventData = dict[str, Any]
+# Define TypedDicts for event data structures
+class BaseEventData(TypedDict):
+    """Base structure for all events."""
+    session_id: str
+    transcript_path: str
+    hook_event_name: str
 
-# Tool input type aliases
-BashToolInput = dict[str, Any]
-FileToolInput = dict[str, Any]
-SearchToolInput = dict[str, Any]
-TaskToolInput = dict[str, Any]
-WebToolInput = dict[str, Any]
 
-# Tool response type aliases
-BashToolResponse = dict[str, Any]
-FileOperationResponse = dict[str, Any]
+class ToolEventDataBase(BaseEventData, total=False):
+    """Base structure for tool events."""
+    tool_name: str
+    tool_input: dict[str, str | int | float | bool | list[str] | dict[str, str]]
 
-# File operation type aliases
-FileEditOperation = dict[str, Any]
+
+class PreToolUseEventData(ToolEventDataBase):
+    """PreToolUse event data."""
+
+
+class PostToolUseEventData(ToolEventDataBase, total=False):
+    """PostToolUse event data."""
+    tool_response: str | dict[str, str | int | float | bool | list[str]] | list[dict[str, str]]
+    exit_code: int
+    duration_ms: int
+    error: str | None
+
+
+class NotificationEventData(BaseEventData, total=False):
+    """Notification event data."""
+    message: str
+    level: str
+    timestamp: str
+
+
+class StopEventData(BaseEventData, total=False):
+    """Stop event data."""
+    reason: str
+    duration_seconds: int
+    tools_used: int
+    errors_encountered: int
+
+
+class SubagentStopEventData(BaseEventData, total=False):
+    """Subagent stop event data."""
+    subagent_id: str
+    result: str
+    duration_seconds: int
+    tools_used: int
+
+
+# Tool input TypedDicts
+class BashToolInput(TypedDict, total=False):
+    """Bash tool input structure."""
+    command: str
+    description: str
+    timeout: int
+
+
+class FileToolInput(TypedDict, total=False):
+    """File tool input structure."""
+    file_path: str
+    content: str
+    old_string: str
+    new_string: str
+    edits: list[dict[str, str]]
+    limit: int
+    offset: int
+
+
+class SearchToolInput(TypedDict, total=False):
+    """Search tool input structure."""
+    pattern: str
+    path: str
+    glob: str
+    type: str
+    output_mode: str
+
+
+class TaskToolInput(TypedDict, total=False):
+    """Task tool input structure."""
+    instructions: str
+    parent: str
+
+
+class WebToolInput(TypedDict, total=False):
+    """Web tool input structure."""
+    url: str
+    prompt: str
+
+
+# Tool response TypedDicts
+class BashToolResponse(TypedDict, total=False):
+    """Bash tool response structure."""
+    stdout: str
+    stderr: str
+    exit_code: int
+    output: str
+
+
+class FileOperationResponse(TypedDict, total=False):
+    """File operation response structure."""
+    success: bool
+    message: str
+    content: str
+    lines_written: int
+
+
+class FileEditOperation(TypedDict):
+    """File edit operation structure."""
+    old_string: str
+    new_string: str
+    replace_all: bool | None
+
+
+# Type aliases for unions
+Config = dict[str, str | int | bool]
+ToolResponse = (
+    BashToolResponse
+    | FileOperationResponse
+    | str
+    | list[dict[str, str]]
+    | dict[str, str | int | float | bool]
+)
+ToolInput = (
+    BashToolInput
+    | FileToolInput
+    | SearchToolInput
+    | TaskToolInput
+    | WebToolInput
+    | dict[str, str | int | float | bool]
+)
+EventData = (
+    BaseEventData
+    | PreToolUseEventData
+    | PostToolUseEventData
+    | NotificationEventData
+    | StopEventData
+    | SubagentStopEventData
+)
 
 # =============================================================================
 # Basic Type Guards
@@ -89,12 +201,12 @@ def is_number_or_none(value: object) -> TypeIs[int | float | None]:
     return value is None or isinstance(value, (int, float))
 
 
-def is_dict_with_str_keys(value: object) -> TypeIs[dict[str, Any]]:
+def is_dict_with_str_keys(value: object) -> TypeIs[dict[str, object]]:
     """Check if value is a dictionary with string keys."""
     return isinstance(value, dict) and all(isinstance(key, str) for key in value)
 
 
-def is_list_of_dicts(value: object) -> TypeIs[list[dict[str, Any]]]:
+def is_list_of_dicts(value: object) -> TypeIs[list[dict[str, object]]]:
     """Check if value is a list of dictionaries."""
     return isinstance(value, list) and all(isinstance(item, dict) for item in value)
 
@@ -203,7 +315,7 @@ def is_hooks_dict(value: object) -> TypeIs[HooksDict]:
     return True
 
 
-def _validate_hook_configs_for_event_type(hook_configs: list[Any], event_type: str) -> bool:
+def _validate_hook_configs_for_event_type(hook_configs: list[object], event_type: str) -> bool:
     """Validate hook configurations for a specific event type."""
     for hook_config in hook_configs:
         if not is_hook_config(hook_config):
@@ -248,7 +360,7 @@ def is_discord_embed(value: object) -> TypeIs[DiscordEmbed]:
     return _validate_discord_embed_fields(value)
 
 
-def _validate_discord_embed_fields(value: dict[str, Any]) -> bool:
+def _validate_discord_embed_fields(value: dict[str, object]) -> bool:
     """Validate Discord embed fields."""
     # Check optional fields
     field_checks = [
@@ -751,7 +863,7 @@ def validate_and_narrow_event_data(value: object, event_type: str) -> EventData:
             raise ValueError(f"Invalid SubagentStop event data: {value}")
         return cast("SubagentStopEventData", value)
     # For unknown event types, return as generic dict
-    return cast("dict[str, Any]", value)
+    return cast("dict[str, str | int | float | bool]", value)
 
 
 def validate_and_narrow_tool_input(value: object, tool_name: str) -> ToolInput:
@@ -780,7 +892,7 @@ def validate_and_narrow_tool_input(value: object, tool_name: str) -> ToolInput:
             raise ValueError(f"Invalid WebFetch tool input: {value}")
         return cast("WebToolInput", value)
     # For unknown tool types, return as generic dict
-    return cast("dict[str, Any]", value)
+    return cast("dict[str, str | int | float | bool]", value)
 
 
 # =============================================================================
@@ -852,7 +964,7 @@ def validate_complete_discord_message(message_data: object) -> DiscordMessage:
 # =============================================================================
 
 # Registry of all type guards for runtime discovery
-TYPE_GUARDS: dict[str, Any] = {
+TYPE_GUARDS: dict[str, type | object] = {
     # Basic types
     "non_empty_string": is_non_empty_string,
     "string_or_none": is_string_or_none,

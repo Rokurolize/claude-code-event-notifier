@@ -14,7 +14,7 @@ from unittest.mock import mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
-import src.discord_notifier as discord_notifier
+from src import discord_notifier
 
 
 class TestConfigTypeDefinitions(unittest.TestCase):
@@ -105,43 +105,45 @@ class TestConfigLoaderTypeSafety(unittest.TestCase):
 
     def test_load_returns_correct_type(self) -> None:
         """Test that ConfigLoader.load() returns a properly typed Config."""
-        with patch("pathlib.Path.exists", return_value=False):
-            with patch.dict(os.environ, {"DISCORD_WEBHOOK_URL": "test_webhook"}):
-                config = discord_notifier.ConfigLoader.load()
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch.dict(os.environ, {"DISCORD_WEBHOOK_URL": "test_webhook"}),
+        ):
+            config = discord_notifier.ConfigLoader.load()
 
-                # Verify return type structure
-                self.assertIsInstance(config, dict)
+            # Verify return type structure
+            self.assertIsInstance(config, dict)
 
-                # Check all required keys are present
-                expected_keys = {
-                    "webhook_url",
-                    "bot_token",
-                    "channel_id",
-                    "debug",
-                    "use_threads",
-                    "channel_type",
-                    "thread_prefix",
-                    "thread_storage_path",
-                    "thread_cleanup_days",
-                    "mention_user_id",
-                    "enabled_events",
-                    "disabled_events",
-                }
-                self.assertEqual(set(config.keys()), expected_keys)
+            # Check all required keys are present
+            expected_keys = {
+                "webhook_url",
+                "bot_token",
+                "channel_id",
+                "debug",
+                "use_threads",
+                "channel_type",
+                "thread_prefix",
+                "thread_storage_path",
+                "thread_cleanup_days",
+                "mention_user_id",
+                "enabled_events",
+                "disabled_events",
+            }
+            self.assertEqual(set(config.keys()), expected_keys)
 
-                # Check types of values
-                self.assertIsInstance(config["webhook_url"], (str, type(None)))
-                self.assertIsInstance(config["bot_token"], (str, type(None)))
-                self.assertIsInstance(config["channel_id"], (str, type(None)))
-                self.assertIsInstance(config["debug"], bool)
-                self.assertIsInstance(config["use_threads"], bool)
-                self.assertIsInstance(config["channel_type"], str)
-                self.assertIsInstance(config["thread_prefix"], str)
-                self.assertIsInstance(config["thread_storage_path"], (str, type(None)))
-                self.assertIsInstance(config["thread_cleanup_days"], int)
-                self.assertIsInstance(config["mention_user_id"], (str, type(None)))
-                self.assertIsInstance(config["enabled_events"], (list, type(None)))
-                self.assertIsInstance(config["disabled_events"], (list, type(None)))
+            # Check types of values
+            self.assertIsInstance(config["webhook_url"], (str, type(None)))
+            self.assertIsInstance(config["bot_token"], (str, type(None)))
+            self.assertIsInstance(config["channel_id"], (str, type(None)))
+            self.assertIsInstance(config["debug"], bool)
+            self.assertIsInstance(config["use_threads"], bool)
+            self.assertIsInstance(config["channel_type"], str)
+            self.assertIsInstance(config["thread_prefix"], str)
+            self.assertIsInstance(config["thread_storage_path"], (str, type(None)))
+            self.assertIsInstance(config["thread_cleanup_days"], int)
+            self.assertIsInstance(config["mention_user_id"], (str, type(None)))
+            self.assertIsInstance(config["enabled_events"], (list, type(None)))
+            self.assertIsInstance(config["disabled_events"], (list, type(None)))
 
     def test_type_casting_safety(self) -> None:
         """Test that type casting is safely handled in ConfigLoader."""
@@ -151,32 +153,36 @@ DISCORD_DEBUG=1
 DISCORD_USE_THREADS=1
 """
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=file_content)):
-                config = discord_notifier.ConfigLoader.load()
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=file_content)),
+        ):
+            config = discord_notifier.ConfigLoader.load()
 
-                # Test that channel_type is properly cast to Literal type
-                self.assertEqual(config["channel_type"], "forum")
-                self.assertIn(config["channel_type"], ["text", "forum"])
+            # Test that channel_type is properly cast to Literal type
+            self.assertEqual(config["channel_type"], "forum")
+            self.assertIn(config["channel_type"], ["text", "forum"])
 
-                # Test boolean casting
-                self.assertTrue(config["debug"])
-                self.assertTrue(config["use_threads"])
+            # Test boolean casting
+            self.assertTrue(config["debug"])
+            self.assertTrue(config["use_threads"])
 
-                # Test string preservation
-                self.assertEqual(config["thread_prefix"], "CustomPrefix")
+            # Test string preservation
+            self.assertEqual(config["thread_prefix"], "CustomPrefix")
 
     def test_invalid_channel_type_handling(self) -> None:
         """Test handling of invalid channel types."""
         file_content = """DISCORD_CHANNEL_TYPE=invalid_type
 """
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=file_content)):
-                config = discord_notifier.ConfigLoader.load()
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=file_content)),
+        ):
+            config = discord_notifier.ConfigLoader.load()
 
-                # Should fall back to default "text" for invalid values
-                self.assertEqual(config["channel_type"], "text")
+            # Should fall back to default "text" for invalid values
+            self.assertEqual(config["channel_type"], "text")
 
     def test_environment_variable_type_coercion(self) -> None:
         """Test that environment variables are properly type-coerced."""
@@ -189,21 +195,23 @@ DISCORD_USE_THREADS=1
             "DISCORD_MENTION_USER_ID": "123456789012345678",
         }
 
-        with patch("pathlib.Path.exists", return_value=False):
-            with patch.dict(os.environ, env_vars):
-                config = discord_notifier.ConfigLoader.load()
+        with (
+            patch("pathlib.Path.exists", return_value=False),
+            patch.dict(os.environ, env_vars),
+        ):
+            config = discord_notifier.ConfigLoader.load()
 
-                # Test string values
-                self.assertEqual(config["webhook_url"], "https://example.com/webhook")
-                self.assertEqual(config["thread_prefix"], "TestSession")
-                self.assertEqual(config["mention_user_id"], "123456789012345678")
+            # Test string values
+            self.assertEqual(config["webhook_url"], "https://example.com/webhook")
+            self.assertEqual(config["thread_prefix"], "TestSession")
+            self.assertEqual(config["mention_user_id"], "123456789012345678")
 
-                # Test boolean coercion
-                self.assertTrue(config["debug"])
-                self.assertTrue(config["use_threads"])
+            # Test boolean coercion
+            self.assertTrue(config["debug"])
+            self.assertTrue(config["use_threads"])
 
-                # Test literal type coercion
-                self.assertEqual(config["channel_type"], "forum")
+            # Test literal type coercion
+            self.assertEqual(config["channel_type"], "forum")
 
     def test_none_value_handling(self) -> None:
         """Test proper handling of None values in configuration."""
@@ -429,31 +437,35 @@ DISCORD_THREAD_PREFIX=CustomSession
 DISCORD_MENTION_USER_ID=987654321012345678
 """
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=file_content)):
-                env_vars = discord_notifier.parse_env_file(Path("test"))
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=file_content)),
+        ):
+            env_vars = discord_notifier.parse_env_file(Path("test"))
 
-                # Test that all parsed values are strings
-                for key, value in env_vars.items():
-                    self.assertIsInstance(key, str)
-                    self.assertIsInstance(value, str)
+            # Test that all parsed values are strings
+            for key, value in env_vars.items():
+                self.assertIsInstance(key, str)
+                self.assertIsInstance(value, str)
 
-                # Test specific values
-                self.assertEqual(env_vars["DISCORD_WEBHOOK_URL"], "https://example.com/webhook")
-                self.assertEqual(env_vars["DISCORD_TOKEN"], "bot_token_123")
-                self.assertEqual(env_vars["DISCORD_CHANNEL_ID"], "123456789")
-                self.assertEqual(env_vars["DISCORD_DEBUG"], "1")
-                self.assertEqual(env_vars["DISCORD_USE_THREADS"], "1")
-                self.assertEqual(env_vars["DISCORD_CHANNEL_TYPE"], "forum")
-                self.assertEqual(env_vars["DISCORD_THREAD_PREFIX"], "CustomSession")
-                self.assertEqual(env_vars["DISCORD_MENTION_USER_ID"], "987654321012345678")
+            # Test specific values
+            self.assertEqual(env_vars["DISCORD_WEBHOOK_URL"], "https://example.com/webhook")
+            self.assertEqual(env_vars["DISCORD_TOKEN"], "bot_token_123")
+            self.assertEqual(env_vars["DISCORD_CHANNEL_ID"], "123456789")
+            self.assertEqual(env_vars["DISCORD_DEBUG"], "1")
+            self.assertEqual(env_vars["DISCORD_USE_THREADS"], "1")
+            self.assertEqual(env_vars["DISCORD_CHANNEL_TYPE"], "forum")
+            self.assertEqual(env_vars["DISCORD_THREAD_PREFIX"], "CustomSession")
+            self.assertEqual(env_vars["DISCORD_MENTION_USER_ID"], "987654321012345678")
 
     def test_env_var_error_handling(self) -> None:
         """Test type-safe error handling in environment variable parsing."""
         # Test that parse_env_file raises ConfigurationError for invalid files
-        with patch("builtins.open", side_effect=OSError("File not found")):
-            with self.assertRaises(discord_notifier.ConfigurationError):
-                discord_notifier.parse_env_file(Path("nonexistent"))
+        with (
+            patch("builtins.open", side_effect=OSError("File not found")),
+            self.assertRaises(discord_notifier.ConfigurationError),
+        ):
+            discord_notifier.parse_env_file(Path("nonexistent"))
 
         # Test that the error is properly typed
         try:
@@ -484,28 +496,30 @@ DISCORD_MENTION_USER_ID=123456789012345678
             "DISCORD_DEBUG": "0",  # Should override file
         }
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=file_content)):
-                with patch.dict(os.environ, env_vars):
-                    config = discord_notifier.ConfigLoader.load()
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=file_content)),
+            patch.dict(os.environ, env_vars),
+        ):
+            config = discord_notifier.ConfigLoader.load()
 
-                    # Test that final config maintains proper types
-                    self.assertIsInstance(config, dict)
+            # Test that final config maintains proper types
+            self.assertIsInstance(config, dict)
 
-                    # Test precedence: env vars override file
-                    self.assertEqual(config["webhook_url"], "https://example.com/webhook")
-                    self.assertEqual(config["bot_token"], "override_token")
-                    self.assertEqual(config["channel_id"], "override_channel")
-                    self.assertFalse(config["debug"])  # env var "0" should override file "1"
+            # Test precedence: env vars override file
+            self.assertEqual(config["webhook_url"], "https://example.com/webhook")
+            self.assertEqual(config["bot_token"], "override_token")
+            self.assertEqual(config["channel_id"], "override_channel")
+            self.assertFalse(config["debug"])  # env var "0" should override file "1"
 
-                    # Test file values when no env override
-                    self.assertTrue(config["use_threads"])
-                    self.assertEqual(config["channel_type"], "forum")
-                    self.assertEqual(config["thread_prefix"], "IntegrationTest")
-                    self.assertEqual(config["mention_user_id"], "123456789012345678")
+            # Test file values when no env override
+            self.assertTrue(config["use_threads"])
+            self.assertEqual(config["channel_type"], "forum")
+            self.assertEqual(config["thread_prefix"], "IntegrationTest")
+            self.assertEqual(config["mention_user_id"], "123456789012345678")
 
-                    # Test validation passes
-                    self.assertTrue(discord_notifier.ConfigValidator.validate_all(config))
+            # Test validation passes
+            self.assertTrue(discord_notifier.ConfigValidator.validate_all(config))
 
     def test_configuration_error_propagation(self) -> None:
         """Test that configuration errors are properly typed and propagated."""

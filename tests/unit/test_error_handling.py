@@ -10,6 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
@@ -23,29 +25,29 @@ class TestResultType(unittest.TestCase):
     def test_result_ok(self) -> None:
         """Test successful result creation."""
         result = Result.ok("success")
-        self.assertTrue(result.is_ok())
-        self.assertFalse(result.is_err())
-        self.assertEqual(result.unwrap(), "success")
-        self.assertEqual(result.unwrap_or("default"), "success")
+        assert result.is_ok()
+        assert not result.is_err()
+        assert result.unwrap() == "success"
+        assert result.unwrap_or("default") == "success"
 
     def test_result_err(self) -> None:
         """Test error result creation."""
         error = ValueError("test error")
         result = Result.err(error)
-        self.assertFalse(result.is_ok())
-        self.assertTrue(result.is_err())
-        self.assertEqual(result.error, error)
-        self.assertEqual(result.unwrap_or("default"), "default")
+        assert not result.is_ok()
+        assert result.is_err()
+        assert result.error == error
+        assert result.unwrap_or("default") == "default"
 
     def test_result_unwrap_error(self) -> None:
         """Test unwrap() raises exception on error result."""
         error = ValueError("test error")
         result = Result.err(error)
 
-        with self.assertRaises(ValueError) as context:
+        with pytest.raises(ValueError) as exc_info:
             result.unwrap()
 
-        self.assertIn("Called unwrap() on error result", str(context.exception))
+        assert "Called unwrap() on error result" in str(exc_info.value)
 
 
 class TestEnhancedErrorHandler(unittest.TestCase):
@@ -59,24 +61,24 @@ class TestEnhancedErrorHandler(unittest.TestCase):
         """Test successful JSON loading."""
         result = self.handler.safe_json_load('{"key": "value"}')
 
-        self.assertTrue(result.is_ok())
-        self.assertEqual(result.unwrap(), {"key": "value"})
+        assert result.is_ok()
+        assert result.unwrap() == {"key": "value"}
 
     def test_safe_json_load_invalid_json(self) -> None:
         """Test JSON loading with invalid JSON."""
         result = self.handler.safe_json_load('{"key": value}')
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, json.JSONDecodeError)
+        assert result.is_err()
+        assert isinstance(result.error, json.JSONDecodeError)
         self.logger.exception.assert_called_once()
 
     def test_safe_json_load_non_dict(self) -> None:
         """Test JSON loading with non-dict result."""
         result = self.handler.safe_json_load('["array", "not", "dict"]')
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, json.JSONDecodeError)
-        self.assertIn("Expected dict", str(result.error))
+        assert result.is_err()
+        assert isinstance(result.error, json.JSONDecodeError)
+        assert "Expected dict" in str(result.error)
 
     def test_safe_config_load_success(self) -> None:
         """Test successful config loading."""
@@ -87,18 +89,18 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_config_load(config_data)
 
-        self.assertTrue(result.is_ok())
+        assert result.is_ok()
         config = result.unwrap()
-        self.assertEqual(config["webhook_url"], "https://discord.com/api/webhooks/123/abc")
-        self.assertTrue(config["debug"])
+        assert config["webhook_url"] == "https://discord.com/api/webhooks/123/abc"
+        assert config["debug"]
 
     def test_safe_config_load_invalid_type(self) -> None:
         """Test config loading with invalid type."""
         result = self.handler.safe_config_load("not a dict")
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, TypeError)
-        self.assertIn("Config must be dict", str(result.error))
+        assert result.is_err()
+        assert isinstance(result.error, TypeError)
+        assert "Config must be dict" in str(result.error)
 
     def test_safe_config_load_missing_credentials(self) -> None:
         """Test config loading with missing credentials."""
@@ -106,9 +108,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_config_load(config_data)
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, ConfigurationError)
-        self.assertIn("Must provide either webhook_url or bot_token", str(result.error))
+        assert result.is_err()
+        assert isinstance(result.error, ConfigurationError)
+        assert "Must provide either webhook_url or bot_token" in str(result.error)
 
     def test_safe_config_load_bot_credentials(self) -> None:
         """Test config loading with bot credentials."""
@@ -120,10 +122,10 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_config_load(config_data)
 
-        self.assertTrue(result.is_ok())
+        assert result.is_ok()
         config = result.unwrap()
-        self.assertEqual(config["bot_token"], "bot_token_123")
-        self.assertEqual(config["channel_id"], "channel_123")
+        assert config["bot_token"] == "bot_token_123"
+        assert config["channel_id"] == "channel_123"
 
     @patch("urllib.request.urlopen")
     def test_safe_network_request_success(self, mock_urlopen) -> None:
@@ -136,8 +138,8 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
-        self.assertTrue(result.is_ok())
-        self.assertTrue(result.unwrap())
+        assert result.is_ok()
+        assert result.unwrap()
 
     @patch("urllib.request.urlopen")
     def test_safe_network_request_http_error(self, mock_urlopen) -> None:
@@ -148,9 +150,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, urllib.error.HTTPError)
-        self.assertEqual(result.error.code, 404)
+        assert result.is_err()
+        assert isinstance(result.error, urllib.error.HTTPError)
+        assert result.error.code == 404
 
     @patch("urllib.request.urlopen")
     def test_safe_network_request_url_error(self, mock_urlopen) -> None:
@@ -161,9 +163,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_network_request("https://example.com", b'{"test": "data"}')
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, urllib.error.URLError)
-        self.assertEqual(str(result.error.reason), "Connection failed")
+        assert result.is_err()
+        assert isinstance(result.error, urllib.error.URLError)
+        assert str(result.error.reason) == "Connection failed"
 
     def test_safe_discord_send_invalid_message(self) -> None:
         """Test Discord send with invalid message type."""
@@ -180,9 +182,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_discord_send("not a dict", config)
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, DiscordAPIError)
-        self.assertIn("Message must be dict", str(result.error))
+        assert result.is_err()
+        assert isinstance(result.error, DiscordAPIError)
+        assert "Message must be dict" in str(result.error)
 
     def test_safe_discord_send_missing_embeds(self) -> None:
         """Test Discord send with missing embeds."""
@@ -199,9 +201,9 @@ class TestEnhancedErrorHandler(unittest.TestCase):
 
         result = self.handler.safe_discord_send({"content": "test"}, config)
 
-        self.assertTrue(result.is_err())
-        self.assertIsInstance(result.error, DiscordAPIError)
-        self.assertIn("Message must contain embeds", str(result.error))
+        assert result.is_err()
+        assert isinstance(result.error, DiscordAPIError)
+        assert "Message must contain embeds" in str(result.error)
 
 
 class TestSafeFileOperation(unittest.TestCase):
@@ -214,12 +216,12 @@ class TestSafeFileOperation(unittest.TestCase):
         try:
             with safe_file_operation(test_file) as temp_path:
                 temp_path.write_text("Test content")
-                self.assertTrue(temp_path.exists())
-                self.assertEqual(temp_path.read_text(), "Test content")
+                assert temp_path.exists()
+                assert temp_path.read_text() == "Test content"
 
             # File should be moved to final location
-            self.assertTrue(test_file.exists())
-            self.assertEqual(test_file.read_text(), "Test content")
+            assert test_file.exists()
+            assert test_file.read_text() == "Test content"
         finally:
             # Cleanup
             if test_file.exists():
@@ -230,16 +232,16 @@ class TestSafeFileOperation(unittest.TestCase):
         test_file = Path("test_safe_file_error.txt")
 
         try:
-            with self.assertRaises(ValueError):
+            with pytest.raises(ValueError):
                 with safe_file_operation(test_file) as temp_path:
                     temp_path.write_text("Test content")
                     # Simulate error during operation
                     raise ValueError("Simulated error")
 
             # Temp file should be cleaned up
-            self.assertFalse(temp_path.exists())
+            assert not temp_path.exists()
             # Final file should not exist
-            self.assertFalse(test_file.exists())
+            assert not test_file.exists()
         finally:
             # Extra cleanup in case test fails
             if test_file.exists():
@@ -255,8 +257,8 @@ class TestTypeAnnotationImprovement(unittest.TestCase):
             raise ValueError("test error")
         except ValueError as e:
             # e should be typed as ValueError
-            self.assertIsInstance(e, ValueError)
-            self.assertEqual(str(e), "test error")
+            assert isinstance(e, ValueError)
+            assert str(e) == "test error"
 
     def test_union_exception_typing(self) -> None:
         """Test handling of Union exception types."""
@@ -273,18 +275,18 @@ class TestTypeAnnotationImprovement(unittest.TestCase):
             risky_operation("value")
         except (ValueError, TypeError) as e:
             # e is typed as Union[ValueError, TypeError]
-            self.assertIsInstance(e, (ValueError, TypeError))
+            assert isinstance(e, (ValueError, TypeError))
             if isinstance(e, ValueError):
-                self.assertEqual(str(e), "Value error")
+                assert str(e) == "Value error"
 
         # Test TypeError case
         try:
             risky_operation("type")
         except (ValueError, TypeError) as e:
             # e is typed as Union[ValueError, TypeError]
-            self.assertIsInstance(e, (ValueError, TypeError))
+            assert isinstance(e, (ValueError, TypeError))
             if isinstance(e, TypeError):
-                self.assertEqual(str(e), "Type error")
+                assert str(e) == "Type error"
 
 
 if __name__ == "__main__":

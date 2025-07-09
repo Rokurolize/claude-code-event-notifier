@@ -11,13 +11,27 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 from src.core.exceptions import DiscordAPIError, ThreadManagementError, ThreadStorageError
 from src.core.http_client import HTTPClient
 
+
+# Type definitions
+class ThreadDetails(TypedDict, total=False):
+    """Discord thread details."""
+    id: str
+    name: str
+    parent_id: str
+    archived: bool
+    locked: bool
+    auto_archive_duration: int
+    message_count: int
+    member_count: int
+
+
 # Type alias for configuration
-Config = dict[str, Any]
+Config = dict[str, str | int | bool]
 
 # Global thread cache - maps session_id to thread_id
 SESSION_THREAD_CACHE: dict[str, str] = {}  # session_id -> thread_id mapping
@@ -44,7 +58,7 @@ except ImportError:
 
 def validate_thread_exists(
     thread_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-) -> dict[str, Any] | None:
+) -> ThreadDetails | None:
     """Validate that a thread still exists and get its current status.
 
     This function checks if a Discord thread is still accessible and returns
@@ -95,7 +109,7 @@ def find_existing_thread_by_name(
     config: Config,
     http_client: HTTPClient,
     logger: logging.Logger,
-) -> dict[str, Any] | None:
+) -> ThreadDetails | None:
     """Find an existing thread by name in a channel.
 
     Searches for threads matching the given name pattern in both active
@@ -148,7 +162,7 @@ def find_existing_thread_by_name(
 
 
 def ensure_thread_is_usable(
-    thread_details: dict[str, Any],
+    thread_details: ThreadDetails,
     config: Config,
     http_client: HTTPClient,
     logger: logging.Logger,

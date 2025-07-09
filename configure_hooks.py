@@ -49,8 +49,8 @@ def atomic_write(filepath: str | Path, content: str) -> None:
 
         # Atomic rename
         Path(temp_path).rename(filepath)
-    except Exception:
-        # Clean up temp file on error - catch all exceptions to ensure cleanup
+    except OSError:
+        # Clean up temp file on error - catch filesystem-related exceptions
         with contextlib.suppress(OSError):
             Path(temp_path).unlink()
         raise

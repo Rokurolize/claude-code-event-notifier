@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thread Storage Management for Discord Notifier
+"""Thread Storage Management for Discord Notifier.
 
 This module provides persistent storage for Discord thread mappings to prevent
 duplicate thread creation across process restarts. Uses SQLite for lightweight,
@@ -11,12 +11,31 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple, TypedDict
 
 try:
     from src.type_guards import is_valid_snowflake
 except ImportError:
     from type_guards import is_valid_snowflake
+
+
+class ThreadStats(TypedDict):
+    """Storage statistics structure."""
+
+    total_threads: int
+    archived_threads: int
+    active_threads: int
+    oldest_thread: str | None
+    most_recent_use: str | None
+    db_path: str
+    cleanup_days: int
+
+
+class ThreadStatsError(TypedDict):
+    """Storage statistics error structure."""
+
+    error: str
+    db_path: str
 
 
 class ThreadRecord(NamedTuple):
@@ -87,25 +106,25 @@ class ThreadStorage:
 
                 # Create indexes for efficient lookups
                 conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_thread_id 
+                    CREATE INDEX IF NOT EXISTS idx_thread_id
                     ON thread_mappings(thread_id)
                 """)
 
                 conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_channel_id 
+                    CREATE INDEX IF NOT EXISTS idx_channel_id
                     ON thread_mappings(channel_id)
                 """)
 
                 conn.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_last_used 
+                    CREATE INDEX IF NOT EXISTS idx_last_used
                     ON thread_mappings(last_used)
                 """)
 
                 conn.commit()
-                self._logger.debug(f"Thread storage database initialized: {self.db_path}")
+                self._logger.debug("Thread storage database initialized: %s", self.db_path)
 
         except sqlite3.Error as e:
-            raise ThreadStorageError(f"Failed to initialize database: {e}")
+            raise ThreadStorageError(f"Failed to initialize database: {e}") from e
 
     def store_thread(
         self,
@@ -137,11 +156,11 @@ class ThreadStorage:
 
         with self._lock:
             try:
-                now = datetime.now()
+                now = datetime.now(datetime.UTC)
                 with sqlite3.connect(str(self.db_path)) as conn:
                     conn.execute(
                         """
-                        INSERT OR REPLACE INTO thread_mappings 
+                        INSERT OR REPLACE INTO thread_mappings
                         (session_id, thread_id, channel_id, thread_name, created_at, last_used, is_archived)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
@@ -157,11 +176,11 @@ class ThreadStorage:
                     )
 
                     conn.commit()
-                    self._logger.debug(f"Stored thread mapping: {session_id} -> {thread_id}")
+                    self._logger.debug("Stored thread mapping: %s -> %s", session_id, thread_id)
                     return True
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to store thread mapping: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to store thread mapping")
                 return False
 
     def get_thread(self, session_id: str) -> ThreadRecord | None:
@@ -182,9 +201,9 @@ class ThreadStorage:
                     conn.row_factory = sqlite3.Row
                     cursor = conn.execute(
                         """
-                        SELECT session_id, thread_id, channel_id, thread_name, 
+                        SELECT session_id, thread_id, channel_id, thread_name,
                                created_at, last_used, is_archived
-                        FROM thread_mappings 
+                        FROM thread_mappings
                         WHERE session_id = ?
                     """,
                         (session_id,),
@@ -193,10 +212,10 @@ class ThreadStorage:
                     row = cursor.fetchone()
                     if row:
                         # Update last_used timestamp
-                        now = datetime.now()
+                        now = datetime.now(datetime.UTC)
                         conn.execute(
                             """
-                            UPDATE thread_mappings 
+                            UPDATE thread_mappings
                             SET last_used = ?
                             WHERE session_id = ?
                         """,
@@ -213,11 +232,10 @@ class ThreadStorage:
                             last_used=now,
                             is_archived=bool(row["is_archived"]),
                         )
-
                     return None
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to retrieve thread mapping: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to retrieve thread mapping")
                 return None
 
     def update_thread_status(self, session_id: str, is_archived: bool) -> bool:
@@ -238,23 +256,23 @@ class ThreadStorage:
                 with sqlite3.connect(str(self.db_path)) as conn:
                     cursor = conn.execute(
                         """
-                        UPDATE thread_mappings 
+                        UPDATE thread_mappings
                         SET is_archived = ?, last_used = ?
                         WHERE session_id = ?
                     """,
-                        (is_archived, datetime.now(), session_id),
+                        (is_archived, datetime.now(datetime.UTC), session_id),
                     )
 
                     conn.commit()
                     updated = cursor.rowcount > 0
 
                     if updated:
-                        self._logger.debug(f"Updated thread status: {session_id} -> archived={is_archived}")
+                        self._logger.debug("Updated thread status: %s -> archived=%s", session_id, is_archived)
 
                     return updated
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to update thread status: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to update thread status")
                 return False
 
     def remove_thread(self, session_id: str) -> bool:
@@ -274,7 +292,7 @@ class ThreadStorage:
                 with sqlite3.connect(str(self.db_path)) as conn:
                     cursor = conn.execute(
                         """
-                        DELETE FROM thread_mappings 
+                        DELETE FROM thread_mappings
                         WHERE session_id = ?
                     """,
                         (session_id,),
@@ -284,12 +302,12 @@ class ThreadStorage:
                     removed = cursor.rowcount > 0
 
                     if removed:
-                        self._logger.debug(f"Removed thread mapping: {session_id}")
+                        self._logger.debug("Removed thread mapping: %s", session_id)
 
                     return removed
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to remove thread mapping: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to remove thread mapping")
                 return False
 
     def find_threads_by_channel(self, channel_id: str) -> list[ThreadRecord]:
@@ -310,9 +328,9 @@ class ThreadStorage:
                     conn.row_factory = sqlite3.Row
                     cursor = conn.execute(
                         """
-                        SELECT session_id, thread_id, channel_id, thread_name, 
+                        SELECT session_id, thread_id, channel_id, thread_name,
                                created_at, last_used, is_archived
-                        FROM thread_mappings 
+                        FROM thread_mappings
                         WHERE channel_id = ?
                         ORDER BY last_used DESC
                     """,
@@ -332,8 +350,8 @@ class ThreadStorage:
                         for row in cursor.fetchall()
                     ]
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to find threads by channel: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to find threads by channel")
                 return []
 
     def find_thread_by_name(self, channel_id: str, thread_name: str) -> ThreadRecord | None:
@@ -358,9 +376,9 @@ class ThreadStorage:
                     conn.row_factory = sqlite3.Row
                     cursor = conn.execute(
                         """
-                        SELECT session_id, thread_id, channel_id, thread_name, 
+                        SELECT session_id, thread_id, channel_id, thread_name,
                                created_at, last_used, is_archived
-                        FROM thread_mappings 
+                        FROM thread_mappings
                         WHERE channel_id = ? AND thread_name = ?
                         ORDER BY last_used DESC
                         LIMIT 1
@@ -382,8 +400,8 @@ class ThreadStorage:
 
                     return None
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to find thread by name: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to find thread by name")
                 return None
 
     def cleanup_stale_threads(self) -> int:
@@ -392,14 +410,14 @@ class ThreadStorage:
         Returns:
             Number of records removed
         """
-        cutoff_date = datetime.now() - timedelta(days=self.cleanup_days)
+        cutoff_date = datetime.now(datetime.UTC) - timedelta(days=self.cleanup_days)
 
         with self._lock:
             try:
                 with sqlite3.connect(str(self.db_path)) as conn:
                     cursor = conn.execute(
                         """
-                        DELETE FROM thread_mappings 
+                        DELETE FROM thread_mappings
                         WHERE last_used < ?
                     """,
                         (cutoff_date,),
@@ -409,15 +427,15 @@ class ThreadStorage:
                     removed_count = cursor.rowcount
 
                     if removed_count > 0:
-                        self._logger.info(f"Cleaned up {removed_count} stale thread mappings")
+                        self._logger.info("Cleaned up %s stale thread mappings", removed_count)
 
                     return removed_count
 
-            except sqlite3.Error as e:
-                self._logger.error(f"Failed to cleanup stale threads: {e}")
+            except sqlite3.Error:
+                self._logger.exception("Failed to cleanup stale threads")
                 return 0
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self) -> ThreadStats | ThreadStatsError:
         """Get storage statistics.
 
         Returns:
@@ -427,7 +445,7 @@ class ThreadStorage:
             try:
                 with sqlite3.connect(str(self.db_path)) as conn:
                     cursor = conn.execute("""
-                        SELECT 
+                        SELECT
                             COUNT(*) as total_threads,
                             COUNT(CASE WHEN is_archived = 1 THEN 1 END) as archived_threads,
                             COUNT(CASE WHEN is_archived = 0 THEN 1 END) as active_threads,
@@ -438,21 +456,29 @@ class ThreadStorage:
 
                     row = cursor.fetchone()
                     if row:
-                        return {
-                            "total_threads": row[0],
-                            "archived_threads": row[1],
-                            "active_threads": row[2],
-                            "oldest_thread": row[3],
-                            "most_recent_use": row[4],
-                            "db_path": str(self.db_path),
-                            "cleanup_days": self.cleanup_days,
-                        }
+                        return ThreadStats(
+                            total_threads=row[0],
+                            archived_threads=row[1],
+                            active_threads=row[2],
+                            oldest_thread=row[3],
+                            most_recent_use=row[4],
+                            db_path=str(self.db_path),
+                            cleanup_days=self.cleanup_days,
+                        )
 
-                    return {"total_threads": 0, "db_path": str(self.db_path)}
+                    return ThreadStats(
+                        total_threads=0,
+                        archived_threads=0,
+                        active_threads=0,
+                        oldest_thread=None,
+                        most_recent_use=None,
+                        db_path=str(self.db_path),
+                        cleanup_days=self.cleanup_days,
+                    )
 
             except sqlite3.Error as e:
-                self._logger.error(f"Failed to get storage stats: {e}")
-                return {"error": str(e), "db_path": str(self.db_path)}
+                self._logger.exception("Failed to get storage stats")
+                return ThreadStatsError(error=str(e), db_path=str(self.db_path))
 
     def close(self) -> None:
         """Close the storage and perform cleanup."""
@@ -461,5 +487,6 @@ class ThreadStorage:
                 # Run cleanup on close
                 self.cleanup_stale_threads()
                 self._logger.debug("Thread storage closed")
-            except Exception as e:
-                self._logger.error(f"Error during storage cleanup: {e}")
+            except (sqlite3.Error, OSError):
+                # Catch specific exceptions that might occur during cleanup
+                self._logger.exception("Error during storage cleanup")

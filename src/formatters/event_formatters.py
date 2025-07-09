@@ -7,7 +7,7 @@ creating Discord embeds with appropriate formatting for each event.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, TypedDict, Union, cast
 
 from src.core.constants import (
     EVENT_COLORS,
@@ -41,14 +41,60 @@ from src.utils.validation import (
     is_valid_event_type,
 )
 
+if TYPE_CHECKING:
+    from .tool_formatters import BashToolInput, FileOperationInput, SearchToolInput, TaskToolInput, WebFetchInput
+    from .tool_formatters import ToolResponse as ToolFormatterResponse
+
+
+# Type definitions for event data structures
+class ToolEventData(TypedDict, total=False):
+    """Common structure for tool-related events."""
+
+    tool_name: str
+    tool_input: dict[str, str | int | float | bool | list[str] | dict[str, str]]
+    tool_response: str | dict[str, str | int | float | bool | list[str]] | list[dict[str, str]]
+    exit_code: int
+    duration_ms: int
+    error: str | None
+
+
+class NotificationEventData(TypedDict, total=False):
+    """Structure for notification events."""
+
+    message: str
+    level: str
+    timestamp: str
+
+
+class StopEventData(TypedDict, total=False):
+    """Structure for stop events."""
+
+    reason: str
+    duration_seconds: int
+    tools_used: int
+    errors_encountered: int
+
+
+class SubagentStopEventData(TypedDict, total=False):
+    """Structure for subagent stop events."""
+
+    subagent_id: str
+    result: str
+    duration_seconds: int
+    tools_used: int
+
+
 # Type alias for configuration
-Config = dict[str, Any]
+Config = dict[str, str | int | bool]
 
 # Type alias for tool response
-ToolResponse = dict[str, Any] | str | list[Any]
+ToolResponse = str | dict[str, str | int | float | bool | list[str]] | list[dict[str, str]]
+
+# Union type for all event data
+EventData = Union[ToolEventData, NotificationEventData, StopEventData, SubagentStopEventData]
 
 
-def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEmbed:
     """Format PreToolUse event with detailed information.
 
     Args:
@@ -62,25 +108,37 @@ def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordE
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
+    # Initialize embed with all required fields
+    embed: DiscordEmbed = {
+        "title": f"About to execute: {emoji} {tool_name}",
+        "description": None,
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
     # Build detailed description
     desc_parts: list[str] = []
     add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
+    # Import types locally to avoid circular imports
+
     if is_bash_tool(tool_name):
-        desc_parts.extend(format_bash_pre_use(tool_input))
+        desc_parts.extend(format_bash_pre_use(cast("BashToolInput", tool_input)))
     elif is_file_tool(tool_name):
-        desc_parts.extend(format_file_operation_pre_use(tool_name, tool_input))
+        desc_parts.extend(format_file_operation_pre_use(tool_name, cast("FileOperationInput", tool_input)))
     elif is_search_tool(tool_name):
-        desc_parts.extend(format_search_tool_pre_use(tool_name, tool_input))
+        desc_parts.extend(format_search_tool_pre_use(tool_name, cast("SearchToolInput", tool_input)))
     elif tool_name == "Task":
-        desc_parts.extend(format_task_pre_use(tool_input))
+        desc_parts.extend(format_task_pre_use(cast("TaskToolInput", tool_input)))
     elif tool_name == "WebFetch":
-        desc_parts.extend(format_web_fetch_pre_use(tool_input))
+        desc_parts.extend(format_web_fetch_pre_use(cast("WebFetchInput", tool_input)))
     else:
-        desc_parts.extend(format_unknown_tool_pre_use(tool_input))
+        # For unknown tools, pass a simplified dict
+        simple_input = {k: v for k, v in tool_input.items() if isinstance(v, (str, int, float, bool))}
+        desc_parts.extend(format_unknown_tool_pre_use(simple_input))
 
     # Add timestamp
     timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -90,7 +148,7 @@ def format_pre_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordE
     return embed
 
 
-def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEmbed:
     """Format PostToolUse event with execution results.
 
     Args:
@@ -105,25 +163,61 @@ def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> Discord
     tool_response = event_data.get("tool_response", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"Completed: {emoji} {tool_name}"}
+    # Initialize embed with all required fields
+    embed: DiscordEmbed = {
+        "title": f"Completed: {emoji} {tool_name}",
+        "description": None,
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
     # Build detailed description
     desc_parts: list[str] = []
     add_field(desc_parts, "Session", session_id, code=True)
 
     # Dispatch to tool-specific formatter
+    # Import types locally to avoid circular imports
+
     if is_bash_tool(tool_name):
-        desc_parts.extend(format_bash_post_use(tool_input, tool_response))
+        desc_parts.extend(
+            format_bash_post_use(
+                cast("BashToolInput", tool_input),
+                cast("ToolFormatterResponse", tool_response),
+            )
+        )
     elif tool_name == "Read" or is_list_tool(tool_name):
-        desc_parts.extend(format_read_operation_post_use(tool_name, tool_input, tool_response))
+        desc_parts.extend(
+            format_read_operation_post_use(
+                tool_name,
+                cast("FileOperationInput", tool_input),
+                cast("ToolFormatterResponse", tool_response),
+            )
+        )
     elif is_file_tool(tool_name):
-        desc_parts.extend(format_write_operation_post_use(tool_input, tool_response))
+        desc_parts.extend(
+            format_write_operation_post_use(
+                cast("FileOperationInput", tool_input),
+                cast("ToolFormatterResponse", tool_response),
+            )
+        )
     elif tool_name == "Task":
-        desc_parts.extend(format_task_post_use(tool_input, tool_response))
+        desc_parts.extend(
+            format_task_post_use(
+                cast("TaskToolInput", tool_input),
+                cast("ToolFormatterResponse", tool_response),
+            )
+        )
     elif tool_name == "WebFetch":
-        desc_parts.extend(format_web_fetch_post_use(tool_input, tool_response))
+        desc_parts.extend(
+            format_web_fetch_post_use(
+                cast("WebFetchInput", tool_input),
+                cast("ToolFormatterResponse", tool_response),
+            )
+        )
     else:
-        desc_parts.extend(format_unknown_tool_post_use(tool_response))
+        desc_parts.extend(format_unknown_tool_post_use(cast("ToolFormatterResponse", tool_response)))
 
     # Add execution time
     timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
@@ -133,7 +227,7 @@ def format_post_tool_use(event_data: dict[str, Any], session_id: str) -> Discord
     return embed
 
 
-def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_notification(event_data: NotificationEventData, session_id: str) -> DiscordEmbed:
     """Format Notification event with full details.
 
     Args:
@@ -165,10 +259,17 @@ def format_notification(event_data: dict[str, Any], session_id: str) -> DiscordE
                 # For complex types, show as JSON
                 desc_parts.append(format_json_field(value, key.title(), TruncationLimits.PROMPT_PREVIEW))
 
-    return {"title": "📢 Notification", "description": "\n".join(desc_parts)}
+    return {
+        "title": "📢 Notification",
+        "description": "\n".join(desc_parts),
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
 
-def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
     """Format Stop event with session details.
 
     Args:
@@ -194,10 +295,17 @@ def format_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
             label = key.replace("_", " ").title()
             add_field(desc_parts, label, str(event_data[key]))
 
-    return {"title": "🏁 Session Ended", "description": "\n".join(desc_parts)}
+    return {
+        "title": "🏁 Session Ended",
+        "description": "\n".join(desc_parts),
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
 
-def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> DiscordEmbed:
     """Format SubagentStop event with task results.
 
     Args:
@@ -212,30 +320,39 @@ def format_subagent_stop(event_data: dict[str, Any], session_id: str) -> Discord
     add_field(desc_parts, "Session", session_id, code=True)
     add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
 
-    # Add task description if available
-    task_desc = event_data.get("task_description", "")
-    if task_desc:
-        add_field(desc_parts, "Task", task_desc)
+    # Add subagent details
+    if "subagent_id" in event_data:
+        subagent_id = event_data.get("subagent_id", "unknown")
+        add_field(desc_parts, "Subagent ID", subagent_id)
 
-    # Add result summary if available
-    result = event_data.get("result", "")
-    if result:
-        if isinstance(result, str):
-            result_summary = truncate_string(result, TruncationLimits.JSON_PREVIEW)
-            desc_parts.append(f"**Result:**\n{result_summary}")
-        else:
-            desc_parts.append(format_json_field(result, "Result", TruncationLimits.JSON_PREVIEW))
+    # Add result
+    if "result" in event_data:
+        result = event_data.get("result", "")
+        result_summary = truncate_string(str(result), TruncationLimits.JSON_PREVIEW)
+        desc_parts.append(f"**Result:**\n{result_summary}")
 
-    # Add execution stats if available
-    for key in ["execution_time", "tools_used", "status"]:
-        if key in event_data:
-            label = key.replace("_", " ").title()
-            add_field(desc_parts, label, str(event_data[key]))
+    # Add metrics if available
+    if "duration_seconds" in event_data:
+        duration = event_data.get("duration_seconds", 0)
+        add_field(desc_parts, "Duration", f"{duration} seconds")
 
-    return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
+    if "tools_used" in event_data:
+        tools = event_data.get("tools_used", 0)
+        add_field(desc_parts, "Tools Used", str(tools))
+
+    return {
+        "title": "🤖 Subagent Completed",
+        "description": "\n".join(desc_parts),
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
 
-def format_default_impl(event_type: str, event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_default_impl(
+    event_type: str, event_data: dict[str, str | int | float | bool], session_id: str
+) -> DiscordEmbed:
     """Format unknown event types.
 
     Args:
@@ -255,10 +372,17 @@ def format_default_impl(event_type: str, event_data: dict[str, Any], session_id:
         desc_parts.append("\n**Event Data:**")
         desc_parts.append(format_json_field(event_data, "", TruncationLimits.JSON_PREVIEW))
 
-    return {"title": f"⚡ {event_type}", "description": "\n".join(desc_parts)}
+    return {
+        "title": f"⚡ {event_type}",
+        "description": "\n".join(desc_parts),
+        "color": None,
+        "timestamp": None,
+        "footer": None,
+        "fields": None
+    }
 
 
-def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
+def format_default(event_data: dict[str, str | int | float | bool], session_id: str) -> DiscordEmbed:
     """Wrapper for format_default_impl that matches the formatter signature.
 
     Args:
@@ -273,8 +397,8 @@ def format_default(event_data: dict[str, Any], session_id: str) -> DiscordEmbed:
 
 def format_event(
     event_type: str,
-    event_data: dict[str, Any],
-    formatter_func: Callable[[dict[str, Any], str], DiscordEmbed],
+    event_data: EventData,
+    formatter_func: Callable[[EventData, str], DiscordEmbed],
     config: Config,
 ) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits.
