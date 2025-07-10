@@ -8,7 +8,7 @@ the Discord notification system.
 import json
 from pathlib import Path
 
-from src.core.constants import TRUNCATION_SUFFIX, TruncationLimits
+from src.core.constants import TRUNCATION_SUFFIX, DiscordLimits, TruncationLimits
 
 
 def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
@@ -192,3 +192,73 @@ def format_json_field(value: object, label: str, limit: int = TruncationLimits.J
     truncated = truncate_string(value_str, limit)
     suffix = get_truncation_suffix(len(value_str), limit)
     return f"**{label}:**\n```json\n{truncated}{suffix}\n```"
+
+
+def split_long_text(text: str, label: str, max_length: int = DiscordLimits.MAX_FIELD_VALUE_LENGTH) -> list[str]:
+    r"""Split long text into multiple parts for Discord fields.
+
+    Splits text that exceeds Discord's field value limit into multiple parts,
+    each with a numbered label for sequential display.
+
+    Args:
+        text: The text to potentially split
+        label: Base label for the parts (e.g., "Prompt")
+        max_length: Maximum length per part (default: Discord field limit)
+
+    Returns:
+        list[str]: List of formatted parts, each as "**Label (Part N):**\\ntext"
+
+    Algorithm:
+        - If text fits within limit, returns single part
+        - Otherwise splits into chunks with part numbers
+        - Preserves word boundaries when possible
+        - Each part includes label with part number
+
+    Example:
+        >>> long_text = "A" * 2000
+        >>> parts = split_long_text(long_text, "Content")
+        >>> len(parts)
+        2
+        >>> parts[0].startswith("**Content (Part 1):**")
+        True
+    """
+    if len(text) <= max_length - len(f"**{label}:**\n"):
+        return [f"**{label}:**\n{text}"]
+
+    parts: list[str] = []
+    remaining = text
+    part_num = 1
+
+    # Reserve space for label and formatting
+    overhead = 30  # Space for "**Label (Part N):**\n"
+    chunk_size = max_length - overhead
+
+    while remaining:
+        if len(remaining) <= chunk_size:
+            # Last chunk
+            parts.append(f"**{label} (Part {part_num}):**\n{remaining}")
+            break
+        # Find a good split point (prefer newline or space)
+        split_point = chunk_size
+
+        # Look for newline first
+        newline_pos = remaining[:chunk_size].rfind("\n")
+        if newline_pos > chunk_size * 0.8:  # If newline is reasonably close
+            split_point = newline_pos + 1
+        else:
+            # Look for space
+            space_pos = remaining[:chunk_size].rfind(" ")
+            if space_pos > chunk_size * 0.8:
+                split_point = space_pos + 1
+
+        chunk = remaining[:split_point]
+        parts.append(f"**{label} (Part {part_num}):**\n{chunk}")
+        remaining = remaining[split_point:]
+        part_num += 1
+
+        # Safety check to prevent infinite loops
+        if part_num > 50:
+            parts.append(f"**{label} (Part {part_num}):**\n[Content too long, truncated...]")
+            break
+
+    return parts

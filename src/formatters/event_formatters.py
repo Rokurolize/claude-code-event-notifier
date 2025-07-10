@@ -18,7 +18,8 @@ from src.core.constants import (
     TruncationLimits,
 )
 from src.core.http_client import DiscordEmbed, DiscordMessage
-from src.formatters.base import add_field, format_json_field, truncate_string
+from src.formatters.base import add_field, format_json_field, split_long_text, truncate_string
+from src.formatters.embed_utils import create_embed_with_fields
 from src.formatters.tool_formatters import (
     format_bash_post_use,
     format_bash_pre_use,
@@ -144,23 +145,15 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
         if transcript_path and isinstance(transcript_path, str):
             full_prompt = get_full_task_prompt(transcript_path, full_session_id)
             if full_prompt:
-                # Replace the truncated prompt with full prompt
+                # Replace the truncated prompt with full prompt using split_long_text
                 for i, part in enumerate(task_parts):
                     if part.startswith("**Prompt:**"):
-                        # Check Discord field length limit
-                        if len(full_prompt) > DiscordLimits.MAX_FIELD_VALUE_LENGTH:
-                            # Split into multiple parts
-                            max_len = DiscordLimits.MAX_FIELD_VALUE_LENGTH - 20
-                            task_parts[i] = "**Prompt (Part 1):**\n" + full_prompt[:max_len] + "..."
-                            remaining = full_prompt[DiscordLimits.MAX_FIELD_VALUE_LENGTH - 20:]
-                            part_num = 2
-                            while remaining:
-                                part_text = remaining[:DiscordLimits.MAX_FIELD_VALUE_LENGTH - 30]
-                                task_parts.insert(i + part_num - 1, f"**Prompt (Part {part_num}):**\n{part_text}")
-                                remaining = remaining[DiscordLimits.MAX_FIELD_VALUE_LENGTH - 30:]
-                                part_num += 1
-                        else:
-                            task_parts[i] = f"**Prompt:**\n{full_prompt}"
+                        # Remove the old truncated prompt
+                        task_parts.pop(i)
+                        # Insert split parts at the same position
+                        prompt_parts = split_long_text(full_prompt, "Prompt")
+                        for j, prompt_part in enumerate(prompt_parts):
+                            task_parts.insert(i + j, prompt_part)
                         break
 
         desc_parts.extend(task_parts)
@@ -347,6 +340,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         Discord embed with formatted subagent stop event
     """
     desc_parts: list[str] = []
+    fields_content: list[tuple[str, str]] = []
 
     # Get full session ID for transcript lookup
     full_session_id = event_data.get("session_id", "")
@@ -377,28 +371,27 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     # Try to get subagent messages from transcript
     transcript_path = event_data.get("transcript_path")
     if transcript_path and isinstance(transcript_path, str):
-        subagent_msgs = get_subagent_messages(transcript_path, full_session_id, limit=20)
+        subagent_msgs = get_subagent_messages(transcript_path, full_session_id, limit=50)  # Increased limit
         if subagent_msgs:
-            desc_parts.append("\n**Subagent Message History:**")
-
-            # Format messages
-            for i, msg in enumerate(subagent_msgs[:10]):  # Limit to first 10 messages
+            # Add messages as separate fields for better readability
+            for i, msg in enumerate(subagent_msgs):
                 content = msg.get("content", "")
                 if content:
-                    truncated_content = truncate_string(content, 200)
-                    desc_parts.append(f"\n**Message {i+1}:**\n{truncated_content}")
+                    # Each message becomes a field
+                    field_name = f"Message {i+1}"
+                    fields_content.append((field_name, content))
 
-            if len(subagent_msgs) > 10:
-                desc_parts.append(f"\n*... and {len(subagent_msgs) - 10} more messages*")
+    # Create embed with fields
+    description = "\n".join(desc_parts)
 
-    return {
-        "title": "🤖 Subagent Completed",
-        "description": "\n".join(desc_parts),
-        "color": None,
-        "timestamp": None,
-        "footer": None,
-        "fields": None
-    }
+    return create_embed_with_fields(
+        title="🤖 Subagent Completed",
+        description=description,
+        fields_content=fields_content,
+        color=None,
+        timestamp=None,
+        footer_text=None
+    )
 
 
 def format_default_impl(
