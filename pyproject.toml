@@ -57,8 +57,8 @@ skip_version_check = true
 fast_exit = true
 
 # Python 3.14 specific features
-enable_incomplete_feature = ["NewGenericSyntax"]  # Support for new generic syntax
-enable_recursive_aliases = true  # Better recursive type alias support
+# enable_incomplete_feature = ["NewGenericSyntax"]  # Already enabled by default in mypy 1.16
+# enable_recursive_aliases = true  # Not available in mypy 1.16
 
 # Module-specific overrides for JSON handling
 [[tool.mypy.overrides]]
@@ -94,6 +94,8 @@ module = "src.settings_types"
 disallow_any_explicit = false  # Configuration types may use Any for flexibility
 disallow_any_expr = false  # Settings configuration flexibility
 warn_return_any = false  # Settings return types may contain Any
+# no_any_unimported = false  # Not available in mypy 1.16
+ignore_missing_imports = true  # Ignore missing typing_extensions stubs
 
 # External library stubs
 [[tool.mypy.overrides]]
@@ -302,14 +304,14 @@ where = ["src"]
 [project.optional-dependencies]
 dev = [
     # Type checking - latest for Python 3.14+ support
-    "mypy>=1.17.0",
+    "mypy>=1.16.1",
     
     # Linting and formatting - latest with all rule categories
-    "ruff>=0.10.0,<=0.12.3",
+    "ruff>=0.12.2",
     
     # Testing framework - latest stable with modern features
-    "pytest>=8.0.0,<=8.4.1",
-    "pytest-cov>=5.0.0,<=6.2.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
     
     # Additional development tools for quality assurance
     "pytest-xdist>=3.6.0",  # Parallel test execution
