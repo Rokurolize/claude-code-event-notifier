@@ -57,7 +57,7 @@ class TruncationLimits:
     COMMAND_PREVIEW: int = 100
     COMMAND_FULL: int = 500
     STRING_PREVIEW: int = 100
-    PROMPT_PREVIEW: int = 200
+    PROMPT_PREVIEW: int = 2000
     OUTPUT_PREVIEW: int = 500
     ERROR_PREVIEW: int = 300
     RESULT_PREVIEW: int = 300

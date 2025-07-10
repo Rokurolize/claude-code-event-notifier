@@ -18,7 +18,8 @@ from typing import Literal, TypedDict, cast
 try:
     from typing import ReadOnly
 except ImportError:
-    from typing import ReadOnly
+    # ReadOnly not available in Python 3.12, define a simple substitute
+    ReadOnly = type  # type: ignore
 
 from .constants import (
     DEFAULT_THREAD_CLEANUP_DAYS,

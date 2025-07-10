@@ -10,10 +10,14 @@ import logging
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from typing import TypedDict, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, TypedDict, Union, cast
 
 from .constants import DEFAULT_TIMEOUT, DISCORD_API_BASE, USER_AGENT
 from .exceptions import DiscordAPIError
+
+if TYPE_CHECKING:
+    from src.utils.astolfo_logger import AstolfoLogger
 
 
 # Type definitions for Discord API structures
@@ -121,11 +125,11 @@ class HTTPClient:
     All methods include proper error handling and retry logic.
     """
 
-    def __init__(self, logger: logging.Logger, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, logger: Union[logging.Logger, "AstolfoLogger"], timeout: int = DEFAULT_TIMEOUT):
         """Initialize HTTP client.
 
         Args:
-            logger: Logger instance for debugging
+            logger: Logger instance for debugging (standard or AstolfoLogger)
             timeout: Request timeout in seconds
         """
         self.logger = logger
@@ -197,14 +201,40 @@ class HTTPClient:
         Raises:
             DiscordAPIError: On API communication errors
         """
+        # Check if using AstolfoLogger
+        from src.utils.astolfo_logger import AstolfoLogger
+        
+        # Start timing if using AstolfoLogger
+        start_time = datetime.now(UTC)
+        
         try:
             json_data = json.dumps(data).encode("utf-8")
+            
+            # Log request if using AstolfoLogger
+            if isinstance(self.logger, AstolfoLogger):
+                self.logger.log_api_request("POST", url, headers, data)
+            
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
                 status = response.status
-                self.logger.debug("%s response: %s", api_name, status)
-
+                
+                # Calculate duration
+                duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
+                
+                # Log response
+                if isinstance(self.logger, AstolfoLogger):
+                    # Try to read response body for debugging (if small)
+                    try:
+                        response_body = response.read().decode('utf-8')
+                        response_data = json.loads(response_body) if response_body else None
+                    except:
+                        response_data = None
+                    
+                    self.logger.log_api_response(url, status, response_data, duration_ms)
+                else:
+                    self.logger.debug("%s response: %s", api_name, status)
+                
                 if callable(success_check):
                     return bool(success_check(status))
                 return bool(status == success_check)
