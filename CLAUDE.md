@@ -104,7 +104,7 @@ src/formatters/
 
 Configuration follows a precedence hierarchy:
 1. Environment variables (highest priority)
-2. `.env.discord` file in `~/.claude/hooks/`
+2. `.env` file in project root
 3. Default values (lowest priority)
 
 Key configuration options:

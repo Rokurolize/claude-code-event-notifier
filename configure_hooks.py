@@ -283,7 +283,7 @@ def _handle_install_command(hooks_dir: Path, settings_file: Path, source_script:
     settings_file.parent.mkdir(exist_ok=True)
     atomic_write(settings_file, json.dumps(settings, indent=2) + "\n")
 
-    print("✓ Updated settings.json")
+    print(f"✓ Updated {settings_file}")
 
     # Create .env from template if it doesn't exist
     env_file = Path.cwd() / ".env"
