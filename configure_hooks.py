@@ -4,7 +4,10 @@
 This script sets up the integration between Claude Code's hook system
 and Discord notifications by modifying Claude Code's settings.json.
 
-Usage: python3 configure_hooks.py [--remove]
+Usage: 
+    uv run --no-sync --python 3.13 python configure_hooks.py [--remove]
+    # Or if you have Python 3.13+:
+    python3.13 configure_hooks.py [--remove]
 """
 
 import argparse
@@ -140,13 +143,27 @@ def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
 
 
 def get_python_command(script_path: Path) -> str:
-    """Get the appropriate Python command, preferring uv with Python 3.13+."""
+    """Get the appropriate Python command, requiring Python 3.13+."""
     if check_uv_available():
         # Use uv to ensure Python 3.13+ is used
         return f"uv run --no-sync --python 3.13 python {script_path}"
-    # Fall back to system python3
-    print("⚠️  Warning: uv not found, using system python3. Python 3.13+ required.")
-    return f"python3 {script_path}"
+    
+    # Check if python3.13 is available
+    try:
+        result = subprocess.run(["python3.13", "--version"], capture_output=True, text=True, check=True)
+        if result.returncode == 0:
+            print("✓ Using python3.13")
+            return f"python3.13 {script_path}"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    
+    # Fatal error - Python 3.13+ is required
+    print("❌ Error: Python 3.13+ is required but not found!")
+    print("   This project uses Python 3.13 features (TypeIs, ReadOnly).")
+    print("   Please install Python 3.13+ or use uv:")
+    print("   - Install uv: https://github.com/astral-sh/uv")
+    print("   - Or install Python 3.13+: https://www.python.org/downloads/")
+    sys.exit(1)
 
 
 def _main_impl() -> int:

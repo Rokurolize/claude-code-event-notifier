@@ -33,6 +33,7 @@ from src.formatters.tool_formatters import (
     format_web_fetch_pre_use,
     format_write_operation_post_use,
 )
+from src.utils.transcript_reader import get_full_task_prompt, get_subagent_messages
 from src.utils.validation import (
     is_bash_tool,
     is_file_tool,
@@ -99,7 +100,7 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
 
     Args:
         event_data: Event data containing tool information
-        session_id: Session identifier
+        session_id: Session identifier (truncated for display)
 
     Returns:
         Discord embed with formatted pre-tool-use information
@@ -107,6 +108,9 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+
+    # Get full session ID for transcript lookup
+    full_session_id = event_data.get("session_id", "")
 
     # Initialize embed with all required fields
     embed: DiscordEmbed = {
@@ -132,7 +136,34 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     elif is_search_tool(tool_name):
         desc_parts.extend(format_search_tool_pre_use(tool_name, cast("SearchToolInput", tool_input)))
     elif tool_name == "Task":
-        desc_parts.extend(format_task_pre_use(cast("TaskToolInput", tool_input)))
+        # For Task tool, try to get full prompt from transcript
+        task_parts = format_task_pre_use(cast("TaskToolInput", tool_input))
+
+        # Try to get full prompt from transcript if available
+        transcript_path = event_data.get("transcript_path")
+        if transcript_path and isinstance(transcript_path, str):
+            full_prompt = get_full_task_prompt(transcript_path, full_session_id)
+            if full_prompt:
+                # Replace the truncated prompt with full prompt
+                for i, part in enumerate(task_parts):
+                    if part.startswith("**Prompt:**"):
+                        # Check Discord field length limit
+                        if len(full_prompt) > DiscordLimits.MAX_FIELD_VALUE_LENGTH:
+                            # Split into multiple parts
+                            max_len = DiscordLimits.MAX_FIELD_VALUE_LENGTH - 20
+                            task_parts[i] = "**Prompt (Part 1):**\n" + full_prompt[:max_len] + "..."
+                            remaining = full_prompt[DiscordLimits.MAX_FIELD_VALUE_LENGTH - 20:]
+                            part_num = 2
+                            while remaining:
+                                part_text = remaining[:DiscordLimits.MAX_FIELD_VALUE_LENGTH - 30]
+                                task_parts.insert(i + part_num - 1, f"**Prompt (Part {part_num}):**\n{part_text}")
+                                remaining = remaining[DiscordLimits.MAX_FIELD_VALUE_LENGTH - 30:]
+                                part_num += 1
+                        else:
+                            task_parts[i] = f"**Prompt:**\n{full_prompt}"
+                        break
+
+        desc_parts.extend(task_parts)
     elif tool_name == "WebFetch":
         desc_parts.extend(format_web_fetch_pre_use(cast("WebFetchInput", tool_input)))
     else:
@@ -306,16 +337,19 @@ def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
 
 
 def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> DiscordEmbed:
-    """Format SubagentStop event with task results.
+    """Format SubagentStop event with task results and message history.
 
     Args:
         event_data: Event data containing subagent stop information
-        session_id: Session identifier
+        session_id: Session identifier (truncated for display)
 
     Returns:
         Discord embed with formatted subagent stop event
     """
     desc_parts: list[str] = []
+
+    # Get full session ID for transcript lookup
+    full_session_id = event_data.get("session_id", "")
 
     add_field(desc_parts, "Session", session_id, code=True)
     add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
@@ -339,6 +373,23 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     if "tools_used" in event_data:
         tools = event_data.get("tools_used", 0)
         add_field(desc_parts, "Tools Used", str(tools))
+
+    # Try to get subagent messages from transcript
+    transcript_path = event_data.get("transcript_path")
+    if transcript_path and isinstance(transcript_path, str):
+        subagent_msgs = get_subagent_messages(transcript_path, full_session_id, limit=20)
+        if subagent_msgs:
+            desc_parts.append("\n**Subagent Message History:**")
+
+            # Format messages
+            for i, msg in enumerate(subagent_msgs[:10]):  # Limit to first 10 messages
+                content = msg.get("content", "")
+                if content:
+                    truncated_content = truncate_string(content, 200)
+                    desc_parts.append(f"\n**Message {i+1}:**\n{truncated_content}")
+
+            if len(subagent_msgs) > 10:
+                desc_parts.append(f"\n*... and {len(subagent_msgs) - 10} more messages*")
 
     return {
         "title": "🤖 Subagent Completed",
