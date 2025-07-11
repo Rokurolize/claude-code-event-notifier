@@ -432,6 +432,13 @@ from src.type_defs.tools import (
     ToolInput, ToolResponseBase, BashToolResponse,
     FileOperationResponse, SearchResponse, ToolResponse
 )
+# Import event types from new module
+from src.type_defs.events import (
+    BaseEventData, ToolEventDataBase, PreToolUseEventData,
+    PostToolUseEventData, NotificationEventData,
+    StopEventDataBase, StopEventData, SubagentStopEventData,
+    EventData
+)
 
 # ==============================================================================
 # TYPE DEFINITIONS: HIERARCHICAL TYPEDDICT STRUCTURE
@@ -444,75 +451,6 @@ from src.type_defs.tools import (
 
 
 
-# ------------------------------------------------------------------------------
-# 6. EVENT DATA HIERARCHY
-# ------------------------------------------------------------------------------
-
-
-class BaseEventData(SessionAware, TimestampedField):
-    """Base event data structure."""
-
-    transcript_path: NotRequired[str]
-    hook_event_name: str
-
-
-class ToolEventDataBase(BaseEventData):
-    """Base tool event data structure."""
-
-    tool_name: str
-    tool_input: ToolInput
-
-
-class PreToolUseEventData(ToolEventDataBase):
-    """PreToolUse event data structure."""
-
-
-class PostToolUseEventData(ToolEventDataBase):
-    """PostToolUse event data structure."""
-
-    tool_response: ToolResponse
-
-
-class NotificationEventData(BaseEventData):
-    """Notification event data structure."""
-
-    message: str
-    title: NotRequired[str]
-    level: NotRequired[Literal["info", "warning", "error"]]
-
-
-class StopEventDataBase(BaseEventData):
-    """Base stop event data structure."""
-
-    stop_hook_active: NotRequired[bool]
-
-
-class StopEventData(StopEventDataBase):
-    """Stop event data structure."""
-
-    duration: NotRequired[float]
-    tools_used: NotRequired[int]
-    messages_exchanged: NotRequired[int]
-
-
-class SubagentStopEventData(StopEventData):
-    """SubagentStop event data structure."""
-
-    task_description: NotRequired[str]
-    result: NotRequired[str | dict[str, str | int | float | bool]]
-    execution_time: NotRequired[float]
-    status: NotRequired[str]
-
-
-# Union type for all event data
-EventData = (
-    PreToolUseEventData
-    | PostToolUseEventData
-    | NotificationEventData
-    | StopEventData
-    | SubagentStopEventData
-    | dict[str, str | int | float | bool]
-)
 
 # ------------------------------------------------------------------------------
 # 7. ENHANCED TYPE SAFETY FEATURES

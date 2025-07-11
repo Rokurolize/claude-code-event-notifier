@@ -84,6 +84,23 @@ class TestTypeImports(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import tool types: {e}")
     
+    def test_event_types_importable(self):
+        """Event関連型をtype_defs.eventsからインポートできることを確認"""
+        try:
+            from src.type_defs.events import (
+                BaseEventData, ToolEventDataBase, PreToolUseEventData,
+                PostToolUseEventData, NotificationEventData,
+                StopEventDataBase, StopEventData, SubagentStopEventData,
+                EventData
+            )
+            # 代表的な型が存在することを確認
+            self.assertTrue(hasattr(BaseEventData, '__annotations__'))
+            self.assertTrue(hasattr(ToolEventDataBase, '__annotations__'))
+            self.assertTrue(hasattr(StopEventData, '__annotations__'))
+            self.assertTrue(hasattr(SubagentStopEventData, '__annotations__'))
+        except ImportError as e:
+            self.fail(f"Failed to import event types: {e}")
+    
     def test_discord_notifier_can_use_base_types(self):
         """discord_notifier.pyが新しい型定義を使用できることを確認"""
         # First, modify discord_notifier.py to import from new location
