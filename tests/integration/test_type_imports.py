@@ -30,6 +30,23 @@ class TestTypeImports(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import base types: {e}")
     
+    def test_discord_types_importable(self):
+        """Discord関連型をtype_defs.discordからインポートできることを確認"""
+        try:
+            from src.type_defs.discord import (
+                DiscordFooter, DiscordFieldBase, DiscordField,
+                DiscordEmbedBase, DiscordEmbed, DiscordMessageBase,
+                DiscordMessage, DiscordChannel, DiscordThread,
+                DiscordThreadMessage
+            )
+            # 型が存在することを確認
+            self.assertTrue(hasattr(DiscordFooter, '__annotations__'))
+            self.assertTrue(hasattr(DiscordField, '__annotations__'))
+            self.assertTrue(hasattr(DiscordEmbed, '__annotations__'))
+            self.assertTrue(hasattr(DiscordThread, '__annotations__'))
+        except ImportError as e:
+            self.fail(f"Failed to import Discord types: {e}")
+    
     def test_discord_notifier_can_use_base_types(self):
         """discord_notifier.pyが新しい型定義を使用できることを確認"""
         # First, modify discord_notifier.py to import from new location
