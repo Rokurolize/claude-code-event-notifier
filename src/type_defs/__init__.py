@@ -1,0 +1,1 @@
+"""Type definitions package for Discord Notifier."""
