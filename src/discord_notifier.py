@@ -285,6 +285,19 @@ except ImportError:
         # Discord utils not available - will be defined later
         DISCORD_UTILS_AVAILABLE = False
 
+# Import FormatterRegistry
+try:
+    from src.formatters.registry import FormatterRegistry
+    FORMATTER_REGISTRY_AVAILABLE = True
+except ImportError:
+    try:
+        # When run as a script
+        from formatters.registry import FormatterRegistry
+        FORMATTER_REGISTRY_AVAILABLE = True
+    except ImportError:
+        # FormatterRegistry not available - will be defined later
+        FORMATTER_REGISTRY_AVAILABLE = False
+
 # Import tool formatters
 try:
     from src.formatters.tool_formatters import (
@@ -1623,7 +1636,7 @@ def format_subagent_stop(event_data: EventData, session_id: str) -> DiscordEmbed
     return {"title": "🤖 Subagent Completed", "description": "\n".join(desc_parts)}
 
 
-def format_default_impl(event_type: str, event_data: EventData, session_id: str) -> DiscordEmbed:
+def format_default_event(event_type: str, event_data: EventData, session_id: str) -> DiscordEmbed:
     """Format unknown event types."""
     desc_parts: list[str] = []
     desc_parts.append(f"**Session:** `{session_id}`")
@@ -1638,33 +1651,34 @@ def format_default_impl(event_type: str, event_data: EventData, session_id: str)
 
 
 def format_default(event_data: EventData, session_id: str) -> DiscordEmbed:
-    """Wrapper for format_default_impl that matches the formatter signature."""
-    return format_default_impl("Unknown", event_data, session_id)
+    """Wrapper for format_default_event that matches the formatter signature."""
+    return format_default_event("Unknown", event_data, session_id)
 
 
-# Event formatter registry
-class FormatterRegistry:
-    """Registry for event formatters."""
+# Conditionally define FormatterRegistry if not imported
+if not FORMATTER_REGISTRY_AVAILABLE:
+    class FormatterRegistry:
+        """Registry for event formatters."""
 
-    def __init__(self) -> None:
-        self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
-            EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
-            EventTypes.POST_TOOL_USE.value: format_post_tool_use,
-            EventTypes.NOTIFICATION.value: format_notification,
-            EventTypes.STOP.value: format_stop,
-            EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
-        }
+        def __init__(self) -> None:
+            self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
+                EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
+                EventTypes.POST_TOOL_USE.value: format_post_tool_use,
+                EventTypes.NOTIFICATION.value: format_notification,
+                EventTypes.STOP.value: format_stop,
+                EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
+            }
 
-    def get_formatter(self, event_type: str) -> Callable[[EventData, str], DiscordEmbed]:
-        """Get formatter for event type."""
-        if event_type in self._formatters:
-            return self._formatters[event_type]
-        # Return a lambda that captures the event_type for unknown events
-        return lambda event_data, session_id: format_default_impl(event_type, event_data, session_id)
+        def get_formatter(self, event_type: str) -> Callable[[EventData, str], DiscordEmbed]:
+            """Get formatter for event type."""
+            if event_type in self._formatters:
+                return self._formatters[event_type]
+            # Return a lambda that captures the event_type for unknown events
+            return lambda event_data, session_id: format_default_event(event_type, event_data, session_id)
 
-    def register(self, event_type: str, formatter: Callable[[EventData, str], DiscordEmbed]) -> None:
-        """Register a new formatter."""
-        self._formatters[event_type] = formatter
+        def register(self, event_type: str, formatter: Callable[[EventData, str], DiscordEmbed]) -> None:
+            """Register a new formatter."""
+            self._formatters[event_type] = formatter
 
 
 def format_event(
