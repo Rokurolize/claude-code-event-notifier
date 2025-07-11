@@ -2549,30 +2549,36 @@ def format_pre_tool_use(event_data: EventData, session_id: str) -> DiscordEmbed:
 
 
 # Post-use formatters
-def format_bash_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
-    """Format Bash tool post-use results."""
-    desc_parts: list[str] = []
+if TOOL_FORMATTERS_AVAILABLE:
+    def format_bash_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
+        """Format using tool_formatters implementation."""
+        # Note: tool_formatters version takes both parameters
+        return tool_format_bash_post_use(tool_input, tool_response)  # type: ignore[arg-type]
+else:
+    def format_bash_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
+        """Format Bash tool post-use results."""
+        desc_parts: list[str] = []
 
-    command: str = truncate_string(tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW)
-    add_field(desc_parts, "Command", command, code=True)
+        command: str = truncate_string(tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW)
+        add_field(desc_parts, "Command", command, code=True)
 
-    if isinstance(tool_response, dict):
-        stdout = str(tool_response.get("stdout", "")).strip()
-        stderr = str(tool_response.get("stderr", "")).strip()
-        interrupted = tool_response.get("interrupted", False)
+        if isinstance(tool_response, dict):
+            stdout = str(tool_response.get("stdout", "")).strip()
+            stderr = str(tool_response.get("stderr", "")).strip()
+            interrupted = tool_response.get("interrupted", False)
 
-        if stdout:
-            truncated_stdout = truncate_string(stdout, TruncationLimits.OUTPUT_PREVIEW)
-            desc_parts.append(f"**Output:**\n```\n{truncated_stdout}\n```")
+            if stdout:
+                truncated_stdout = truncate_string(stdout, TruncationLimits.OUTPUT_PREVIEW)
+                desc_parts.append(f"**Output:**\n```\n{truncated_stdout}\n```")
 
-        if stderr:
-            truncated_stderr = truncate_string(stderr, TruncationLimits.ERROR_PREVIEW)
-            desc_parts.append(f"**Error:**\n```\n{truncated_stderr}\n```")
+            if stderr:
+                truncated_stderr = truncate_string(stderr, TruncationLimits.ERROR_PREVIEW)
+                desc_parts.append(f"**Error:**\n```\n{truncated_stderr}\n```")
 
-        if interrupted:
-            desc_parts.append("**Status:** ⚠️ Interrupted")
+            if interrupted:
+                desc_parts.append("**Status:** ⚠️ Interrupted")
 
-    return desc_parts
+        return desc_parts
 
 
 def format_read_operation_post_use(tool_name: str, tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
@@ -2608,28 +2614,35 @@ def format_read_operation_post_use(tool_name: str, tool_input: ToolInput, tool_r
     return desc_parts
 
 
-def format_write_operation_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
-    """Format write operation tool post-use results."""
-    desc_parts: list[str] = []
+if TOOL_FORMATTERS_AVAILABLE:
+    def format_write_operation_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
+        """Format using tool_formatters implementation."""
+        # Note: tool_formatters expects tool_name as first parameter
+        # We pass empty string since we don't have it here
+        return tool_format_write_operation_post_use("", tool_input, tool_response)  # type: ignore[arg-type]
+else:
+    def format_write_operation_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
+        """Format write operation tool post-use results."""
+        desc_parts: list[str] = []
 
-    file_path = format_file_path(tool_input.get("file_path", ""))
-    add_field(desc_parts, "File", file_path, code=True)
+        file_path = format_file_path(tool_input.get("file_path", ""))
+        add_field(desc_parts, "File", file_path, code=True)
 
-    if isinstance(tool_response, dict):
-        if tool_response.get("success"):
-            desc_parts.append("**Status:** ✅ Success")
-        elif "error" in tool_response:
-            # Type assertion: if "error" exists, we can safely access it
-            error_value = tool_response.get("error")
-            if error_value:
-                add_field(desc_parts, "Error", str(error_value))
-    elif isinstance(tool_response, str) and "error" in tool_response.lower():
-        error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
-        add_field(desc_parts, "Error", error_msg)
-    else:
-        desc_parts.append("**Status:** ✅ Completed")
+        if isinstance(tool_response, dict):
+            if tool_response.get("success"):
+                desc_parts.append("**Status:** ✅ Success")
+            elif "error" in tool_response:
+                # Type assertion: if "error" exists, we can safely access it
+                error_value = tool_response.get("error")
+                if error_value:
+                    add_field(desc_parts, "Error", str(error_value))
+        elif isinstance(tool_response, str) and "error" in tool_response.lower():
+            error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
+            add_field(desc_parts, "Error", error_msg)
+        else:
+            desc_parts.append("**Status:** ✅ Completed")
 
-    return desc_parts
+        return desc_parts
 
 
 def format_task_post_use(tool_input: ToolInput, tool_response: ToolResponse) -> list[str]:
@@ -2664,17 +2677,23 @@ def format_web_fetch_post_use(tool_input: ToolInput, tool_response: ToolResponse
     return desc_parts
 
 
-def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
-    """Format unknown tool post-use results."""
-    desc_parts: list[str] = []
+if TOOL_FORMATTERS_AVAILABLE:
+    def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
+        """Format using tool_formatters implementation."""
+        # Note: tool_formatters expects tool_name as first parameter
+        return tool_format_unknown_tool_post_use("", tool_response)  # type: ignore[arg-type]
+else:
+    def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
+        """Format unknown tool post-use results."""
+        desc_parts: list[str] = []
 
-    if isinstance(tool_response, dict):
-        desc_parts.append(format_json_field(tool_response, "Response", TruncationLimits.RESULT_PREVIEW))
-    elif isinstance(tool_response, str):
-        response_str = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
-        add_field(desc_parts, "Response", response_str)
+        if isinstance(tool_response, dict):
+            desc_parts.append(format_json_field(tool_response, "Response", TruncationLimits.RESULT_PREVIEW))
+        elif isinstance(tool_response, str):
+            response_str = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
+            add_field(desc_parts, "Response", response_str)
 
-    return desc_parts
+        return desc_parts
 
 
 def format_post_tool_use(event_data: EventData, session_id: str) -> DiscordEmbed:
