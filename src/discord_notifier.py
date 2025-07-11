@@ -287,12 +287,12 @@ except ImportError:
 
 # Import FormatterRegistry
 try:
-    from src.formatters.registry import FormatterRegistry
+    from src.handlers.event_registry import FormatterRegistry
     FORMATTER_REGISTRY_AVAILABLE = True
 except ImportError:
     try:
         # When run as a script
-        from formatters.registry import FormatterRegistry
+        from handlers.event_registry import FormatterRegistry
         FORMATTER_REGISTRY_AVAILABLE = True
     except ImportError:
         # FormatterRegistry not available - will be defined later
@@ -527,248 +527,13 @@ ToolName = Literal[
 
 # Utility functions
 # Define truncate_string only if both formatters.base and utils_helpers import failed
-if not FORMATTERS_BASE_AVAILABLE and not UTILS_HELPERS_AVAILABLE:
-    def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
-        """Truncate string to maximum length with suffix.
-
-        Safely truncates text to fit within Discord's character limits while
-        preserving readability by adding a truncation indicator.
-
-        Args:
-            text: The string to potentially truncate
-            max_length: Maximum allowed length including suffix
-            suffix: String to append when truncation occurs (default: "...")
-
-        Returns:
-            str: Original string if within limit, or truncated string with suffix
-
-        Behavior:
-            - If text is within limit, returns unchanged
-            - If truncation needed, reserves space for suffix
-            - Ensures result never exceeds max_length
-
-        Example:
-            >>> truncate_string("Hello world!", 10)
-            'Hello w...'
-            >>> truncate_string("Short", 10)
-            'Short'
-            >>> truncate_string("Long text here", 8, ">>")
-            'Long t>>'
-        """
-        if len(text) <= max_length:
-            return text
-        return text[: max_length - len(suffix)] + suffix
-
-
 # Define format_file_path only if formatters.base and utils_helpers import failed
-if not FORMATTERS_BASE_AVAILABLE and not UTILS_HELPERS_AVAILABLE:
-    def format_file_path(file_path: str) -> str:
-        """Format file path to be relative if possible.
-
-        Converts absolute file paths to relative paths when possible to improve
-        readability in Discord messages. Falls back to filename only if relative
-        path conversion fails.
-
-        Args:
-            file_path: Absolute or relative file path to format
-
-        Returns:
-            str: Formatted path string, empty string if input is empty
-
-        Formatting Logic:
-            1. If empty path, return empty string
-            2. Try to convert to relative path from current working directory
-            3. If relative conversion fails, return just the filename
-            4. If all else fails, return the original path
-
-        Example:
-            >>> # Assuming cwd is /home/user/project
-            >>> format_file_path("/home/user/project/src/main.py")
-            'src/main.py'
-            >>> format_file_path("/etc/passwd")
-            'passwd'
-            >>> format_file_path("")
-            ''
-
-        Error Handling:
-            - ValueError: Path is not relative to current directory
-            - OSError: File system access issues
-            - Both errors result in filename-only fallback
-        """
-        if not file_path:
-            return ""
-
-        path = Path(file_path)
-        try:
-            return str(path.relative_to(Path.cwd()))
-        except (ValueError, OSError):
-            return path.name
-
-
 # parse_env_file and parse_event_list are now imported from discord_utils module
 
 # Define should_process_event only if discord_utils import failed
-if not DISCORD_UTILS_AVAILABLE:
-    def should_process_event(event_type: str, config: Config) -> bool:
-        """Determine if an event should be processed based on filtering configuration.
-
-        Implements event filtering logic with the following precedence:
-        1. If enabled_events is configured, only process events in that list
-        2. If disabled_events is configured, skip events in that list
-        3. If both are configured, enabled_events takes precedence
-        4. If neither is configured, process all events (default behavior)
-
-        Args:
-            event_type: The event type to check (e.g., "Stop", "Notification")
-            config: Configuration containing filtering settings
-
-        Returns:
-            bool: True if the event should be processed, False otherwise
-
-        Examples:
-            >>> config = {"enabled_events": ["Stop", "Notification"], "disabled_events": None}
-            >>> should_process_event("Stop", config)
-            True
-            >>> should_process_event("PreToolUse", config)
-            False
-            >>>
-            >>> config = {"enabled_events": None, "disabled_events": ["PreToolUse"]}
-            >>> should_process_event("PreToolUse", config)
-            False
-            >>> should_process_event("Stop", config)
-            True
-        """
-        enabled_events = config.get("enabled_events")
-        disabled_events = config.get("disabled_events")
-
-        # If enabled_events is configured, only process events in that list
-        if enabled_events:
-            return event_type in enabled_events
-
-        # If disabled_events is configured, skip events in that list
-        if disabled_events:
-            return event_type not in disabled_events
-
-        # Default: process all events
-        return True
-
-
 # Define get_truncation_suffix only if formatters.base import failed
-if not FORMATTERS_BASE_AVAILABLE:
-    def get_truncation_suffix(original_length: int, limit: int) -> str:
-        """Get truncation suffix if text was truncated.
-
-        Returns a formatted truncation indicator if the original text length
-        exceeded the specified limit. Used to indicate when content has been
-        shortened for display.
-
-        Args:
-            original_length: Length of the original text before truncation
-            limit: Maximum length limit that was applied
-
-        Returns:
-            str: Formatted truncation suffix with space, or empty string if no truncation
-
-        Usage:
-            This function is used in formatting functions to indicate when
-            content has been truncated for Discord display limits.
-
-        Example:
-            >>> get_truncation_suffix(150, 100)
-            ' ...'
-            >>> get_truncation_suffix(50, 100)
-            ''
-            >>> # Used in formatting:
-            >>> original = "Very long text here"
-            >>> truncated = truncate_string(original, 10)
-            >>> suffix = get_truncation_suffix(len(original), 10)
-            >>> display_text = f"{truncated}{suffix}"
-        """
-        return f" {TRUNCATION_SUFFIX}" if original_length > limit else ""
-
-
 # Define add_field only if formatters.base import failed
-if not FORMATTERS_BASE_AVAILABLE:
-    def add_field(desc_parts: list[str], label: str, value: str, code: bool = False) -> None:
-        """Add a field to description parts.
-
-        Adds a formatted field to a list of description parts, with optional
-        code formatting for technical content like file paths and commands.
-
-        Args:
-            desc_parts: List to append the formatted field to
-            label: Field label/name (will be bolded)
-            value: Field value/content
-            code: Whether to format value as inline code (default: False)
-
-        Returns:
-            None: Modifies desc_parts list in place
-
-        Formatting:
-            - Label is always bolded with **label**
-            - Value is either plain text or inline code with backticks
-            - Code formatting is used for technical content (paths, commands)
-
-        Example:
-            >>> parts = []
-            >>> add_field(parts, "Status", "Success")
-            >>> add_field(parts, "Command", "git status", code=True)
-            >>> parts
-            ['**Status:** Success', '**Command:** `git status`']
-
-        Usage:
-            Primarily used in event formatting functions to build Discord
-            embed descriptions with consistent field formatting.
-        """
-        if code:
-            desc_parts.append(f"**{label}:** `{value}`")
-        else:
-            desc_parts.append(f"**{label}:** {value}")
-
-
 # Define format_json_field only if formatters.base import failed
-if not FORMATTERS_BASE_AVAILABLE:
-    def format_json_field(value: object, label: str, limit: int = TruncationLimits.JSON_PREVIEW) -> str:
-        r"""Format a JSON value as a field.
-
-        Formats complex data structures as JSON code blocks for Discord display.
-        Handles truncation for large JSON objects while preserving readability.
-
-        Args:
-            value: JSON-serializable value to format
-            label: Field label for the JSON block
-            limit: Maximum character limit for JSON content
-
-        Returns:
-            str: Formatted JSON field with markdown code block
-
-        Formatting:
-            - JSON is formatted with 2-space indentation
-            - Displayed in a ```json code block for syntax highlighting
-            - Truncated if exceeds limit, with truncation indicator
-            - Label is bolded and appears before the code block
-
-        Example:
-            >>> data = {"status": "success", "count": 42}
-            >>> format_json_field(data, "Response", 100)
-            '**Response:**\n```json\n{\n  "status": "success",\n  "count": 42\n}\n```'
-
-        Usage:
-            Used to display complex event data, tool inputs, and responses
-            in a readable format within Discord embeds.
-
-        Error Handling:
-            - json.dumps() may raise TypeError for non-serializable objects
-            - Non-serializable objects should be converted to strings first
-        """
-        value_str = json.dumps(value, indent=2)
-        truncated = truncate_string(value_str, limit)
-        suffix = get_truncation_suffix(len(value_str), limit)
-        return f"**{label}:**\n```json\n{truncated}{suffix}\n```"
-
-
-
-
 # Formatter base class
 class EventFormatter(Protocol):
     """Protocol for event formatters."""
@@ -779,53 +544,6 @@ class EventFormatter(Protocol):
 
 
 # Conditionally define thread management functions if not imported
-if not THREAD_MANAGER_AVAILABLE:
-    # Thread validation and management
-    def validate_thread_exists(
-        thread_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-    ) -> DiscordThread | None:
-        """Validate that a thread still exists and get its current status."""
-        raise NotImplementedError("Thread manager functions not available")
-    
-    def find_existing_thread_by_name(
-        channel_id: str,
-        thread_name: str,
-        config: Config,
-        http_client: HTTPClient,
-        logger: logging.Logger,
-    ) -> DiscordThread | None:
-        """Find an existing thread by name in a channel."""
-        raise NotImplementedError("Thread manager functions not available")
-    
-    def ensure_thread_is_usable(
-        thread_details: DiscordThread,
-        config: Config,
-        http_client: HTTPClient,
-        logger: logging.Logger,
-    ) -> bool:
-        """Ensure a thread is usable by unarchiving if needed."""
-        raise NotImplementedError("Thread manager functions not available")
-    
-    def get_or_create_thread(
-        session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
-    ) -> str | None:
-        """Get existing thread ID or create new thread for session."""
-        raise NotImplementedError("Thread manager functions not available")
-    
-    def _check_thread_state(thread_details: DiscordThread) -> tuple[bool, bool]:
-        """Check if thread is archived or locked."""
-        raise NotImplementedError("Thread manager functions not available")
-    
-    def _try_unarchive_thread(
-        thread_id: str,
-        bot_token: str,
-        http_client: HTTPClient,
-        logger: logging.Logger,
-    ) -> bool:
-        """Try to unarchive a thread with error handling."""
-        raise NotImplementedError("Thread manager functions not available")
-
-
 # ConfigLoader is now imported from core.config_loader module
 
 
@@ -866,56 +584,6 @@ def setup_logging(debug: bool) -> logging.Logger:
 
 
 # Tool-specific formatters - these are adapters for the imported tool formatters
-def format_bash_pre_use(tool_input: ToolInput) -> list[str]:
-    """Format Bash tool pre-use details."""
-    return tool_format_bash_pre_use(tool_input)  # type: ignore[arg-type]
-
-def format_file_operation_pre_use(tool_name: str, tool_input: ToolInput) -> list[str]:
-    """Format using tool_formatters implementation."""
-    return tool_format_file_operation_pre_use(tool_name, tool_input)  # type: ignore[arg-type]
-
-def format_search_tool_pre_use(tool_name: str, tool_input: ToolInput) -> list[str]:
-    """Format using tool_formatters implementation."""
-    return tool_format_search_tool_pre_use(tool_name, tool_input)  # type: ignore[arg-type]
-
-def format_task_pre_use(tool_input: ToolInput) -> list[str]:
-    """Format using tool_formatters implementation."""
-    return tool_format_task_pre_use(tool_input)  # type: ignore[arg-type]
-
-def format_web_fetch_pre_use(tool_input: ToolInput) -> list[str]:
-    """Format using tool_formatters implementation."""
-    return tool_format_web_fetch_pre_use(tool_input)  # type: ignore[arg-type]
-
-def format_unknown_tool_pre_use(tool_input: ToolInput) -> list[str]:
-    """Format using tool_formatters implementation."""
-    # Note: tool_formatters version expects tool_name parameter
-    # but we don't have it here, so we pass empty string
-    return tool_format_unknown_tool_pre_use("", tool_input)  # type: ignore[arg-type]
-
-# Conditionally define FormatterRegistry if not imported
-if not FORMATTER_REGISTRY_AVAILABLE:
-    class FormatterRegistry:
-        """Registry for event formatters."""
-
-        def __init__(self) -> None:
-            self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
-                EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
-                EventTypes.POST_TOOL_USE.value: format_post_tool_use,
-                EventTypes.NOTIFICATION.value: format_notification,
-                EventTypes.STOP.value: format_stop,
-                EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
-            }
-
-        def get_formatter(self, event_type: str) -> Callable[[EventData, str], DiscordEmbed]:
-            """Get formatter for event type."""
-            if event_type in self._formatters:
-                return self._formatters[event_type]
-            # Return a lambda that captures the event_type for unknown events
-            return lambda event_data, session_id: format_default_event(event_type, event_data, session_id)
-
-        def register(self, event_type: str, formatter: Callable[[EventData, str], DiscordEmbed]) -> None:
-            """Register a new formatter."""
-            self._formatters[event_type] = formatter
 
 
 def format_event(
@@ -970,61 +638,6 @@ def format_event(
 
 
 # Conditionally define message sender functions if not imported
-if not MESSAGE_SENDER_AVAILABLE:
-    def send_to_discord(
-        message: DiscordMessage,
-        config: Config,
-        logger: logging.Logger,
-        http_client: HTTPClient,
-        session_id: str = "",
-        event_type: str = "",
-    ) -> bool:
-        """Send message to Discord via webhook or bot API."""
-        raise NotImplementedError("Message sender functions not available")
-    
-    def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
-        """Split a message if its embed description exceeds Discord limits."""
-        raise NotImplementedError("Message sender functions not available")
-    
-    def _send_single_message(
-        message: DiscordMessage,
-        config: Config,
-        logger: logging.Logger,
-        http_client: HTTPClient,
-        session_id: str = "",
-        event_type: str = "",
-    ) -> bool:
-        """Send a single message to Discord."""
-        raise NotImplementedError("Message sender functions not available")
-    
-    def _send_stop_or_notification_event(
-        message: DiscordMessage,
-        config: Config,
-        logger: logging.Logger,
-        http_client: HTTPClient,
-        session_id: str,
-        event_type: str,
-    ) -> bool:
-        """Handle special Stop/Notification event sending."""
-        raise NotImplementedError("Message sender functions not available")
-    
-    def _send_to_thread(
-        message: DiscordMessage,
-        config: Config,
-        logger: logging.Logger,
-        http_client: HTTPClient,
-        session_id: str = "",
-    ) -> bool | None:
-        """Try to send message to a thread."""
-        raise NotImplementedError("Message sender functions not available")
-    
-    def _send_to_regular_channel(
-        message: DiscordMessage, config: Config, http_client: HTTPClient
-    ) -> bool:
-        """Send message to regular Discord channel."""
-        raise NotImplementedError("Message sender functions not available")
-
-
 # Global session loggers for persistence
 if SESSION_LOGGER_AVAILABLE:
     _session_loggers: dict[str, SessionLogger] = {}

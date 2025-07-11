@@ -8,7 +8,7 @@ event type to formatter function mappings.
 from collections.abc import Callable
 from typing import Union
 
-from src.core.constants import EventTypes
+from src.constants import EventTypes
 from src.core.http_client import DiscordEmbed
 from src.formatters.event_formatters import (
     NotificationEventData,

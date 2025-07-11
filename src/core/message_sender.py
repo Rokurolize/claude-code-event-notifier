@@ -25,8 +25,10 @@ except ImportError:
 # Try to import constants
 try:
     from src.constants import EventTypes, DiscordLimits
+    from src.core.constants import DISCORD_API_BASE
 except ImportError:
     from discord_notifier import EventTypes, DiscordLimits  # type: ignore
+    DISCORD_API_BASE = "https://discord.com/api/v10"
 
 # Try to import thread manager
 try:
@@ -222,7 +224,7 @@ def _send_stop_or_notification_event(
                 config["webhook_url"], embeds_only_message, thread_id
             )
         elif config["bot_token"] and thread_id:
-            thread_success = http_client.send_bot_message(
+            thread_success = http_client.post_bot_api(
                 config["bot_token"], thread_id, embeds_only_message
             )
     else:
@@ -233,11 +235,11 @@ def _send_stop_or_notification_event(
     if message.get("content"):  # Only if there's a mention
         mention_only_message: DiscordMessage = {"content": message["content"]}
         if config["webhook_url"]:
-            main_channel_success = http_client.send_webhook_message(
+            main_channel_success = http_client.post_webhook(
                 config["webhook_url"], mention_only_message
             )
         elif config["bot_token"] and config["channel_id"]:
-            main_channel_success = http_client.send_bot_message(
+            main_channel_success = http_client.post_bot_api(
                 config["bot_token"], config["channel_id"], mention_only_message
             )
 
@@ -290,7 +292,7 @@ def _send_to_thread(
 
     # Try bot API
     if config["bot_token"]:
-        if http_client.send_bot_message(config["bot_token"], thread_id, message):
+        if http_client.post_bot_api(f"{DISCORD_API_BASE}/channels/{thread_id}/messages", message, config["bot_token"]):
             return True
         logger.warning("Failed to send to thread %s via bot API", thread_id)
         return False
@@ -312,11 +314,11 @@ def _send_to_regular_channel(
         bool: True if message was successfully sent
     """
     if config["webhook_url"]:
-        return http_client.send_webhook_message(config["webhook_url"], message)
+        return http_client.post_webhook(config["webhook_url"], message)
 
     if config["bot_token"] and config["channel_id"]:
-        return http_client.send_bot_message(
-            config["bot_token"], config["channel_id"], message
+        return http_client.post_bot_api(
+            f"{DISCORD_API_BASE}/channels/{config['channel_id']}/messages", message, config["bot_token"]
         )
 
     return False
