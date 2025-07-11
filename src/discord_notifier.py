@@ -58,8 +58,14 @@ Version:
     2.0.0 - Enhanced with comprehensive type system and thread support
 """
 
-# Add parent directory to Python path when run as a script
+# Python version check - must be first before any imports that might fail
 import sys
+if sys.version_info < (3, 13):
+    print(f"ERROR: This project requires Python 3.13 or higher. You are using Python {sys.version}", file=sys.stderr)
+    print("Please run with: uv run --no-sync --python 3.13 python src/discord_notifier.py", file=sys.stderr)
+    sys.exit(1)
+
+# Add parent directory to Python path when run as a script
 from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -172,6 +178,31 @@ try:
 except ImportError as e:
     print(f"Failed to import SessionLogger: {e}")
     SESSION_LOGGER_AVAILABLE = False
+
+# Import formatting utilities from base module
+try:
+    from src.formatters.base import (
+        truncate_string,
+        format_file_path,
+        get_truncation_suffix,
+        add_field,
+        format_json_field,
+    )
+    FORMATTERS_BASE_AVAILABLE = True
+except ImportError:
+    try:
+        # When run as a script
+        from formatters.base import (
+            truncate_string,
+            format_file_path,
+            get_truncation_suffix,
+            add_field,
+            format_json_field,
+        )
+        FORMATTERS_BASE_AVAILABLE = True
+    except ImportError:
+        # Formatters base not available - use local definitions
+        FORMATTERS_BASE_AVAILABLE = False
 
 
 # Custom exceptions
@@ -1314,79 +1345,83 @@ def is_list_tool(tool_name: str) -> bool:
 
 
 # Utility functions
-def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
-    """Truncate string to maximum length with suffix.
+# Define truncate_string only if formatters.base import failed
+if not FORMATTERS_BASE_AVAILABLE:
+    def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:
+        """Truncate string to maximum length with suffix.
 
-    Safely truncates text to fit within Discord's character limits while
-    preserving readability by adding a truncation indicator.
+        Safely truncates text to fit within Discord's character limits while
+        preserving readability by adding a truncation indicator.
 
-    Args:
-        text: The string to potentially truncate
-        max_length: Maximum allowed length including suffix
-        suffix: String to append when truncation occurs (default: "...")
+        Args:
+            text: The string to potentially truncate
+            max_length: Maximum allowed length including suffix
+            suffix: String to append when truncation occurs (default: "...")
 
-    Returns:
-        str: Original string if within limit, or truncated string with suffix
+        Returns:
+            str: Original string if within limit, or truncated string with suffix
 
-    Behavior:
-        - If text is within limit, returns unchanged
-        - If truncation needed, reserves space for suffix
-        - Ensures result never exceeds max_length
+        Behavior:
+            - If text is within limit, returns unchanged
+            - If truncation needed, reserves space for suffix
+            - Ensures result never exceeds max_length
 
-    Example:
-        >>> truncate_string("Hello world!", 10)
-        'Hello w...'
-        >>> truncate_string("Short", 10)
-        'Short'
-        >>> truncate_string("Long text here", 8, ">>")
-        'Long t>>'
-    """
-    if len(text) <= max_length:
-        return text
-    return text[: max_length - len(suffix)] + suffix
+        Example:
+            >>> truncate_string("Hello world!", 10)
+            'Hello w...'
+            >>> truncate_string("Short", 10)
+            'Short'
+            >>> truncate_string("Long text here", 8, ">>")
+            'Long t>>'
+        """
+        if len(text) <= max_length:
+            return text
+        return text[: max_length - len(suffix)] + suffix
 
 
-def format_file_path(file_path: str) -> str:
-    """Format file path to be relative if possible.
+# Define format_file_path only if formatters.base import failed
+if not FORMATTERS_BASE_AVAILABLE:
+    def format_file_path(file_path: str) -> str:
+        """Format file path to be relative if possible.
 
-    Converts absolute file paths to relative paths when possible to improve
-    readability in Discord messages. Falls back to filename only if relative
-    path conversion fails.
+        Converts absolute file paths to relative paths when possible to improve
+        readability in Discord messages. Falls back to filename only if relative
+        path conversion fails.
 
-    Args:
-        file_path: Absolute or relative file path to format
+        Args:
+            file_path: Absolute or relative file path to format
 
-    Returns:
-        str: Formatted path string, empty string if input is empty
+        Returns:
+            str: Formatted path string, empty string if input is empty
 
-    Formatting Logic:
-        1. If empty path, return empty string
-        2. Try to convert to relative path from current working directory
-        3. If relative conversion fails, return just the filename
-        4. If all else fails, return the original path
+        Formatting Logic:
+            1. If empty path, return empty string
+            2. Try to convert to relative path from current working directory
+            3. If relative conversion fails, return just the filename
+            4. If all else fails, return the original path
 
-    Example:
-        >>> # Assuming cwd is /home/user/project
-        >>> format_file_path("/home/user/project/src/main.py")
-        'src/main.py'
-        >>> format_file_path("/etc/passwd")
-        'passwd'
-        >>> format_file_path("")
-        ''
+        Example:
+            >>> # Assuming cwd is /home/user/project
+            >>> format_file_path("/home/user/project/src/main.py")
+            'src/main.py'
+            >>> format_file_path("/etc/passwd")
+            'passwd'
+            >>> format_file_path("")
+            ''
 
-    Error Handling:
-        - ValueError: Path is not relative to current directory
-        - OSError: File system access issues
-        - Both errors result in filename-only fallback
-    """
-    if not file_path:
-        return ""
+        Error Handling:
+            - ValueError: Path is not relative to current directory
+            - OSError: File system access issues
+            - Both errors result in filename-only fallback
+        """
+        if not file_path:
+            return ""
 
-    path = Path(file_path)
-    try:
-        return str(path.relative_to(Path.cwd()))
-    except (ValueError, OSError):
-        return path.name
+        path = Path(file_path)
+        try:
+            return str(path.relative_to(Path.cwd()))
+        except (ValueError, OSError):
+            return path.name
 
 
 def parse_env_file(file_path: Path) -> dict[str, str]:
@@ -1531,112 +1566,118 @@ def should_process_event(event_type: str, config: Config) -> bool:
     return True
 
 
-def get_truncation_suffix(original_length: int, limit: int) -> str:
-    """Get truncation suffix if text was truncated.
+# Define get_truncation_suffix only if formatters.base import failed
+if not FORMATTERS_BASE_AVAILABLE:
+    def get_truncation_suffix(original_length: int, limit: int) -> str:
+        """Get truncation suffix if text was truncated.
 
-    Returns a formatted truncation indicator if the original text length
-    exceeded the specified limit. Used to indicate when content has been
-    shortened for display.
+        Returns a formatted truncation indicator if the original text length
+        exceeded the specified limit. Used to indicate when content has been
+        shortened for display.
 
-    Args:
-        original_length: Length of the original text before truncation
-        limit: Maximum length limit that was applied
+        Args:
+            original_length: Length of the original text before truncation
+            limit: Maximum length limit that was applied
 
-    Returns:
-        str: Formatted truncation suffix with space, or empty string if no truncation
+        Returns:
+            str: Formatted truncation suffix with space, or empty string if no truncation
 
-    Usage:
-        This function is used in formatting functions to indicate when
-        content has been truncated for Discord display limits.
+        Usage:
+            This function is used in formatting functions to indicate when
+            content has been truncated for Discord display limits.
 
-    Example:
-        >>> get_truncation_suffix(150, 100)
-        ' ...'
-        >>> get_truncation_suffix(50, 100)
-        ''
-        >>> # Used in formatting:
-        >>> original = "Very long text here"
-        >>> truncated = truncate_string(original, 10)
-        >>> suffix = get_truncation_suffix(len(original), 10)
-        >>> display_text = f"{truncated}{suffix}"
-    """
-    return f" {TRUNCATION_SUFFIX}" if original_length > limit else ""
-
-
-def add_field(desc_parts: list[str], label: str, value: str, code: bool = False) -> None:
-    """Add a field to description parts.
-
-    Adds a formatted field to a list of description parts, with optional
-    code formatting for technical content like file paths and commands.
-
-    Args:
-        desc_parts: List to append the formatted field to
-        label: Field label/name (will be bolded)
-        value: Field value/content
-        code: Whether to format value as inline code (default: False)
-
-    Returns:
-        None: Modifies desc_parts list in place
-
-    Formatting:
-        - Label is always bolded with **label**
-        - Value is either plain text or inline code with backticks
-        - Code formatting is used for technical content (paths, commands)
-
-    Example:
-        >>> parts = []
-        >>> add_field(parts, "Status", "Success")
-        >>> add_field(parts, "Command", "git status", code=True)
-        >>> parts
-        ['**Status:** Success', '**Command:** `git status`']
-
-    Usage:
-        Primarily used in event formatting functions to build Discord
-        embed descriptions with consistent field formatting.
-    """
-    if code:
-        desc_parts.append(f"**{label}:** `{value}`")
-    else:
-        desc_parts.append(f"**{label}:** {value}")
+        Example:
+            >>> get_truncation_suffix(150, 100)
+            ' ...'
+            >>> get_truncation_suffix(50, 100)
+            ''
+            >>> # Used in formatting:
+            >>> original = "Very long text here"
+            >>> truncated = truncate_string(original, 10)
+            >>> suffix = get_truncation_suffix(len(original), 10)
+            >>> display_text = f"{truncated}{suffix}"
+        """
+        return f" {TRUNCATION_SUFFIX}" if original_length > limit else ""
 
 
-def format_json_field(value: object, label: str, limit: int = TruncationLimits.JSON_PREVIEW) -> str:
-    r"""Format a JSON value as a field.
+# Define add_field only if formatters.base import failed
+if not FORMATTERS_BASE_AVAILABLE:
+    def add_field(desc_parts: list[str], label: str, value: str, code: bool = False) -> None:
+        """Add a field to description parts.
 
-    Formats complex data structures as JSON code blocks for Discord display.
-    Handles truncation for large JSON objects while preserving readability.
+        Adds a formatted field to a list of description parts, with optional
+        code formatting for technical content like file paths and commands.
 
-    Args:
-        value: JSON-serializable value to format
-        label: Field label for the JSON block
-        limit: Maximum character limit for JSON content
+        Args:
+            desc_parts: List to append the formatted field to
+            label: Field label/name (will be bolded)
+            value: Field value/content
+            code: Whether to format value as inline code (default: False)
 
-    Returns:
-        str: Formatted JSON field with markdown code block
+        Returns:
+            None: Modifies desc_parts list in place
 
-    Formatting:
-        - JSON is formatted with 2-space indentation
-        - Displayed in a ```json code block for syntax highlighting
-        - Truncated if exceeds limit, with truncation indicator
-        - Label is bolded and appears before the code block
+        Formatting:
+            - Label is always bolded with **label**
+            - Value is either plain text or inline code with backticks
+            - Code formatting is used for technical content (paths, commands)
 
-    Example:
-        >>> data = {"status": "success", "count": 42}
-        >>> format_json_field(data, "Response", 100)
-        '**Response:**\n```json\n{\n  "status": "success",\n  "count": 42\n}\n```'
+        Example:
+            >>> parts = []
+            >>> add_field(parts, "Status", "Success")
+            >>> add_field(parts, "Command", "git status", code=True)
+            >>> parts
+            ['**Status:** Success', '**Command:** `git status`']
 
-    Usage:
-        Used to display complex event data, tool inputs, and responses
-        in a readable format within Discord embeds.
+        Usage:
+            Primarily used in event formatting functions to build Discord
+            embed descriptions with consistent field formatting.
+        """
+        if code:
+            desc_parts.append(f"**{label}:** `{value}`")
+        else:
+            desc_parts.append(f"**{label}:** {value}")
 
-    Error Handling:
-        - json.dumps() may raise TypeError for non-serializable objects
-        - Non-serializable objects should be converted to strings first
-    """
-    value_str = json.dumps(value, indent=2)
-    truncated = truncate_string(value_str, limit)
-    suffix = get_truncation_suffix(len(value_str), limit)
-    return f"**{label}:**\n```json\n{truncated}{suffix}\n```"
+
+# Define format_json_field only if formatters.base import failed
+if not FORMATTERS_BASE_AVAILABLE:
+    def format_json_field(value: object, label: str, limit: int = TruncationLimits.JSON_PREVIEW) -> str:
+        r"""Format a JSON value as a field.
+
+        Formats complex data structures as JSON code blocks for Discord display.
+        Handles truncation for large JSON objects while preserving readability.
+
+        Args:
+            value: JSON-serializable value to format
+            label: Field label for the JSON block
+            limit: Maximum character limit for JSON content
+
+        Returns:
+            str: Formatted JSON field with markdown code block
+
+        Formatting:
+            - JSON is formatted with 2-space indentation
+            - Displayed in a ```json code block for syntax highlighting
+            - Truncated if exceeds limit, with truncation indicator
+            - Label is bolded and appears before the code block
+
+        Example:
+            >>> data = {"status": "success", "count": 42}
+            >>> format_json_field(data, "Response", 100)
+            '**Response:**\n```json\n{\n  "status": "success",\n  "count": 42\n}\n```'
+
+        Usage:
+            Used to display complex event data, tool inputs, and responses
+            in a readable format within Discord embeds.
+
+        Error Handling:
+            - json.dumps() may raise TypeError for non-serializable objects
+            - Non-serializable objects should be converted to strings first
+        """
+        value_str = json.dumps(value, indent=2)
+        truncated = truncate_string(value_str, limit)
+        suffix = get_truncation_suffix(len(value_str), limit)
+        return f"**{label}:**\n```json\n{truncated}{suffix}\n```"
 
 
 
@@ -2239,9 +2280,12 @@ def setup_logging(debug: bool) -> logging.Logger:
     """Set up logging with optional debug mode."""
     if ASTOLFO_LOGGER_AVAILABLE:
         # Use AstolfoLogger for structured logging
+        print(f"[DEBUG] Using AstolfoLogger (ASTOLFO_LOGGER_AVAILABLE={ASTOLFO_LOGGER_AVAILABLE})", file=sys.stderr)
+        print(f"[DEBUG] Debug level will be: {os.environ.get('DISCORD_DEBUG_LEVEL', '1')}", file=sys.stderr)
         return setup_astolfo_logger(__name__)
     else:
         # Fallback to standard logging
+        print(f"[DEBUG] Using standard logger (ASTOLFO_LOGGER_AVAILABLE={ASTOLFO_LOGGER_AVAILABLE})", file=sys.stderr)
         logger = logging.getLogger(__name__)
 
         if debug:
@@ -2405,7 +2449,18 @@ def format_pre_tool_use(event_data: EventData, session_id: str) -> DiscordEmbed:
     elif is_search_tool(tool_name):
         desc_parts.extend(format_search_tool_pre_use(tool_name, tool_input))
     elif tool_name == ToolNames.TASK.value:
-        desc_parts.extend(format_task_pre_use(tool_input))
+        # For Task tool, handle prompt specially to use full description space
+        task_desc = tool_input.get("description", "")
+        task_prompt = tool_input.get("prompt", "")
+        
+        if task_desc:
+            add_field(desc_parts, "Task", task_desc)
+            
+        # Add prompt to description if it exists (without truncation)
+        if task_prompt:
+            # Separate the prompt with a clear header
+            desc_parts.append("\n**Prompt:**")
+            desc_parts.append(task_prompt)
     elif tool_name == ToolNames.WEB_FETCH.value:
         desc_parts.extend(format_web_fetch_pre_use(tool_input))
     else:
@@ -2909,6 +2964,132 @@ def send_to_discord(
     - Send embed-only message to thread
     - Send mention-only message to main channel
     - Archive thread for Stop events
+    """
+    # Split message if needed (for long content)
+    messages = _split_embed_if_needed(message)
+    
+    # If multiple messages, send them sequentially
+    if len(messages) > 1:
+        logger.info("Splitting long message into %d parts", len(messages))
+        all_success = True
+        for i, msg in enumerate(messages):
+            # Add small delay between messages to avoid rate limiting
+            if i > 0:
+                time.sleep(0.5)
+            
+            # Send each part using the regular logic
+            success = _send_single_message(msg, config, logger, http_client, session_id, event_type)
+            if not success:
+                all_success = False
+                logger.error("Failed to send message part %d", i + 1)
+        return all_success
+    
+    # Single message, use regular logic
+    return _send_single_message(message, config, logger, http_client, session_id, event_type)
+
+
+def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
+    """Split a message if its embed description exceeds Discord limits.
+    
+    Args:
+        message: Original Discord message with embeds
+        
+    Returns:
+        List of messages, split if necessary
+    """
+    if not message.get("embeds") or not message["embeds"]:
+        return [message]
+    
+    embed = message["embeds"][0]
+    description = embed.get("description", "")
+    
+    # If within limits, return as-is
+    if len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
+        return [message]
+    
+    # Split the description
+    messages: list[DiscordMessage] = []
+    remaining_desc = description
+    part_num = 1
+    
+    while remaining_desc:
+        # Calculate how much we can fit
+        chunk_size = DiscordLimits.MAX_DESCRIPTION_LENGTH
+        
+        # For continuation messages, reserve space for part indicator
+        if part_num > 1:
+            chunk_size -= 50  # Space for "... (continued from previous message)"
+            
+        # Find a good break point (prefer newline, then space)
+        if len(remaining_desc) > chunk_size:
+            # Look for newline near the end
+            newline_pos = remaining_desc.rfind('\n', chunk_size - 200, chunk_size)
+            if newline_pos > 0:
+                chunk_size = newline_pos + 1
+            else:
+                # Look for space
+                space_pos = remaining_desc.rfind(' ', chunk_size - 100, chunk_size)
+                if space_pos > 0:
+                    chunk_size = space_pos + 1
+        
+        # Extract chunk
+        chunk = remaining_desc[:chunk_size]
+        remaining_desc = remaining_desc[chunk_size:]
+        
+        # Create new message with modified embed
+        new_embed = embed.copy()
+        
+        if part_num == 1:
+            # First part keeps original title
+            new_embed["description"] = chunk
+            if remaining_desc:
+                new_embed["description"] += "\n\n... (continued in next message)"
+        else:
+            # Subsequent parts get modified title and description
+            original_title = embed.get("title", "Continued")
+            new_embed["title"] = f"{original_title} (Part {part_num})"
+            new_embed["description"] = "... (continued from previous message)\n\n" + chunk
+            if remaining_desc:
+                new_embed["description"] += "\n\n... (continued in next message)"
+            
+            # Remove fields from continuation messages to save space
+            new_embed["fields"] = None
+        
+        # Remove footer from all but the last part
+        if remaining_desc:
+            new_embed["footer"] = None
+            new_embed["timestamp"] = None
+        
+        new_message: DiscordMessage = {
+            "embeds": [new_embed],
+            "content": message.get("content")
+        }
+        messages.append(new_message)
+        part_num += 1
+    
+    return messages
+
+
+def _send_single_message(
+    message: DiscordMessage,
+    config: Config,
+    logger: logging.Logger,
+    http_client: HTTPClient,
+    session_id: str = "",
+    event_type: str = "",
+) -> bool:
+    """Send a single message to Discord (internal helper).
+    
+    Args:
+        message: Discord message to send
+        config: Configuration
+        logger: Logger instance
+        http_client: HTTP client for Discord API
+        session_id: Optional session ID for thread management
+        event_type: Optional event type for special handling
+        
+    Returns:
+        bool: True if message was successfully sent
     """
     # Special handling for Stop and Notification events
     if event_type in [EventTypes.STOP.value, EventTypes.NOTIFICATION.value] and config["use_threads"] and session_id:
