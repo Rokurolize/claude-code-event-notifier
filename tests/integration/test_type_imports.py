@@ -64,6 +64,26 @@ class TestTypeImports(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import config types: {e}")
     
+    def test_tool_types_importable(self):
+        """Tool関連型をtype_defs.toolsからインポートできることを確認"""
+        try:
+            from src.type_defs.tools import (
+                ToolInputBase, BashToolInput, FileEditOperation,
+                FileToolInputBase, ReadToolInput, WriteToolInput,
+                EditToolInput, MultiEditToolInput, ListToolInput,
+                SearchToolInputBase, GlobToolInput, GrepToolInput,
+                TaskToolInput, WebToolInput, FileToolInput, SearchToolInput,
+                ToolInput, ToolResponseBase, BashToolResponse,
+                FileOperationResponse, SearchResponse, ToolResponse
+            )
+            # 代表的な型が存在することを確認
+            self.assertTrue(hasattr(ToolInputBase, '__annotations__'))
+            self.assertTrue(hasattr(BashToolInput, '__annotations__'))
+            self.assertTrue(hasattr(ToolResponseBase, '__annotations__'))
+            self.assertTrue(hasattr(BashToolResponse, '__annotations__'))
+        except ImportError as e:
+            self.fail(f"Failed to import tool types: {e}")
+    
     def test_discord_notifier_can_use_base_types(self):
         """discord_notifier.pyが新しい型定義を使用できることを確認"""
         # First, modify discord_notifier.py to import from new location
