@@ -416,6 +416,12 @@ from src.type_defs.discord import (
     DiscordMessage, DiscordChannel, DiscordThread,
     DiscordThreadMessage
 )
+# Import config types from new module
+from src.type_defs.config import (
+    DiscordCredentials, ThreadConfiguration,
+    NotificationConfiguration, EventFilterConfiguration,
+    Config
+)
 
 # ==============================================================================
 # TYPE DEFINITIONS: HIERARCHICAL TYPEDDICT STRUCTURE
@@ -424,50 +430,6 @@ from src.type_defs.discord import (
 
 
 
-# ------------------------------------------------------------------------------
-# 3. CONFIGURATION HIERARCHY
-# ------------------------------------------------------------------------------
-
-
-class DiscordCredentials(TypedDict):
-    """Discord authentication credentials."""
-
-    webhook_url: str | None
-    bot_token: str | None
-    channel_id: str | None
-
-
-class ThreadConfiguration(TypedDict):
-    """Thread-specific configuration."""
-
-    use_threads: bool
-    channel_type: Literal["text", "forum"]
-    thread_prefix: str
-    thread_storage_path: str | None
-    thread_cleanup_days: int
-
-
-class NotificationConfiguration(TypedDict):
-    """Notification-specific configuration."""
-
-    mention_user_id: str | None
-    debug: bool
-
-
-class EventFilterConfiguration(TypedDict):
-    """Event filtering configuration."""
-
-    enabled_events: list[str] | None
-    disabled_events: list[str] | None
-
-
-class Config(
-    DiscordCredentials,
-    ThreadConfiguration,
-    NotificationConfiguration,
-    EventFilterConfiguration,
-):
-    """Complete configuration combining all aspects."""
 
 
 # ------------------------------------------------------------------------------

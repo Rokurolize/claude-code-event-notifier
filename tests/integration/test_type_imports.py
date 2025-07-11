@@ -47,6 +47,23 @@ class TestTypeImports(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import Discord types: {e}")
     
+    def test_config_types_importable(self):
+        """Config関連型をtype_defs.configからインポートできることを確認"""
+        try:
+            from src.type_defs.config import (
+                DiscordCredentials, ThreadConfiguration,
+                NotificationConfiguration, EventFilterConfiguration,
+                Config
+            )
+            # 型が存在することを確認
+            self.assertTrue(hasattr(DiscordCredentials, '__annotations__'))
+            self.assertTrue(hasattr(ThreadConfiguration, '__annotations__'))
+            self.assertTrue(hasattr(NotificationConfiguration, '__annotations__'))
+            self.assertTrue(hasattr(EventFilterConfiguration, '__annotations__'))
+            self.assertTrue(hasattr(Config, '__annotations__'))
+        except ImportError as e:
+            self.fail(f"Failed to import config types: {e}")
+    
     def test_discord_notifier_can_use_base_types(self):
         """discord_notifier.pyが新しい型定義を使用できることを確認"""
         # First, modify discord_notifier.py to import from new location
