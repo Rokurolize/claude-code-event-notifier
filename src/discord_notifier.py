@@ -93,333 +93,85 @@ from typing import (
     cast,
 )
 
-# Try to import ThreadStorage - handle both module and script execution
-try:
-    # When run as a module
-    from src.thread_storage import ThreadStorage
+from src.thread_storage import ThreadStorage
 
-    THREAD_STORAGE_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script - try absolute import
-        from thread_storage import ThreadStorage
+from src.utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
 
-        THREAD_STORAGE_AVAILABLE = True
-    except ImportError:
-        # ThreadStorage not available
-        THREAD_STORAGE_AVAILABLE = False
+from src.core.http_client import HTTPClient
 
-# Try to import AstolfoLogger
-try:
-    # When run as a module
-    from src.utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
+from src.utils.session_logger import SessionLogger
 
-    ASTOLFO_LOGGER_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
+from src.formatters.base import (
+    truncate_string,
+    format_file_path,
+    get_truncation_suffix,
+    add_field,
+    format_json_field,
+)
 
-        ASTOLFO_LOGGER_AVAILABLE = True
-    except ImportError:
-        # AstolfoLogger not available
-        ASTOLFO_LOGGER_AVAILABLE = False
-        AstolfoLogger = None  # Define as None when not available
+from src.validators import (
+    ConfigValidator, EventDataValidator, ToolInputValidator,
+    is_tool_event_data, is_notification_event_data, is_stop_event_data,
+    is_bash_tool_input, is_file_tool_input, is_search_tool_input,
+    is_valid_event_type, is_bash_tool, is_file_tool, is_search_tool,
+    is_list_tool, validate_thread_exists,
+)
 
-        class ThreadStorage:  # type: ignore[no-redef]
-            """Dummy ThreadStorage class when imports fail."""
+from src.utils_helpers import (
+    truncate_string as utils_truncate_string,
+    format_file_path as utils_format_file_path,
+    ensure_thread_is_usable,
+    SESSION_THREAD_CACHE,
+)
 
-            def __init__(self, *args: object, **kwargs: object) -> None:
-                """Initialize dummy ThreadStorage that always raises ImportError."""
-                _ = args, kwargs  # Mark as used
-                raise ImportError("ThreadStorage module not available")
+from src.core.config_loader import ConfigLoader
 
-            def get_thread(self, session_id: str) -> None:
-                """Get thread - always raises ImportError."""
-                _ = session_id  # Mark as used
-                raise ImportError("ThreadStorage module not available")
+from src.utils.discord_utils import (
+    parse_env_file, parse_event_list, should_process_event
+)
 
-            def store_thread(self, **kwargs: object) -> None:
-                """Store thread - always raises ImportError."""
-                _ = kwargs  # Mark as used
-                raise ImportError("ThreadStorage module not available")
+from src.handlers.event_registry import FormatterRegistry
 
-            def remove_thread(self, session_id: str) -> None:
-                """Remove thread - always raises ImportError."""
-                _ = session_id  # Mark as used
-                raise ImportError("ThreadStorage module not available")
+from src.core.thread_manager import (
+    validate_thread_exists,
+    find_existing_thread_by_name,
+    ensure_thread_is_usable,
+    get_or_create_thread,
+    _check_thread_state,
+    _try_unarchive_thread,
+)
 
-# Try to import HTTPClient
-try:
-    # When run as a module
-    from src.core.http_client import HTTPClient
-    
-    HTTP_CLIENT_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from core.http_client import HTTPClient
-        
-        HTTP_CLIENT_AVAILABLE = True
-    except ImportError:
-        # HTTPClient not available - this should not happen!
-        HTTP_CLIENT_AVAILABLE = False
-        raise ImportError("HTTPClient is required but could not be imported")
+from src.core.message_sender import (
+    send_to_discord,
+    _split_embed_if_needed,
+    _send_single_message,
+    _send_stop_or_notification_event,
+    _send_to_thread,
+    _send_to_regular_channel,
+)
 
-# Import SessionLogger for event persistence
-try:
-    # Add parent directory to path for imports
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    
-    from src.utils.session_logger import SessionLogger
-    SESSION_LOGGER_AVAILABLE = True
-except ImportError as e:
-    print(f"Failed to import SessionLogger: {e}")
-    SESSION_LOGGER_AVAILABLE = False
+from src.formatters.tool_formatters import (
+    format_bash_pre_use as tool_format_bash_pre_use,
+    format_file_operation_pre_use as tool_format_file_operation_pre_use,
+    format_search_tool_pre_use as tool_format_search_tool_pre_use,
+    format_task_pre_use as tool_format_task_pre_use,
+    format_web_fetch_pre_use as tool_format_web_fetch_pre_use,
+    format_unknown_tool_pre_use as tool_format_unknown_tool_pre_use,
+    format_bash_post_use as tool_format_bash_post_use,
+    format_read_operation_post_use as tool_format_read_operation_post_use,
+    format_write_operation_post_use as tool_format_write_operation_post_use,
+    format_task_post_use as tool_format_task_post_use,
+    format_web_fetch_post_use as tool_format_web_fetch_post_use,
+    format_unknown_tool_post_use as tool_format_unknown_tool_post_use,
+)
 
-# Import formatting utilities from base module
-try:
-    from src.formatters.base import (
-        truncate_string,
-        format_file_path,
-        get_truncation_suffix,
-        add_field,
-        format_json_field,
-    )
-    FORMATTERS_BASE_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from formatters.base import (
-            truncate_string,
-            format_file_path,
-            get_truncation_suffix,
-            add_field,
-            format_json_field,
-        )
-        FORMATTERS_BASE_AVAILABLE = True
-    except ImportError:
-        # Formatters base not available - use local definitions
-        FORMATTERS_BASE_AVAILABLE = False
-
-# Import validators
-try:
-    from src.validators import (
-        # Validator classes
-        ConfigValidator, EventDataValidator, ToolInputValidator,
-        # Type guards
-        is_tool_event_data, is_notification_event_data, is_stop_event_data,
-        is_bash_tool_input, is_file_tool_input, is_search_tool_input,
-        is_valid_event_type, is_bash_tool, is_file_tool, is_search_tool,
-        is_list_tool, validate_thread_exists,
-    )
-    VALIDATORS_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from validators import (
-            ConfigValidator, EventDataValidator, ToolInputValidator,
-            is_tool_event_data, is_notification_event_data, is_stop_event_data,
-            is_bash_tool_input, is_file_tool_input, is_search_tool_input,
-            is_valid_event_type, is_bash_tool, is_file_tool, is_search_tool,
-            is_list_tool, validate_thread_exists,
-        )
-        VALIDATORS_AVAILABLE = True
-    except ImportError:
-        # Validators not available - use local definitions
-        VALIDATORS_AVAILABLE = False
-
-# Import utils helpers
-try:
-    from src.utils_helpers import (
-        truncate_string as utils_truncate_string,
-        format_file_path as utils_format_file_path,
-        ensure_thread_is_usable,
-        SESSION_THREAD_CACHE,
-    )
-    UTILS_HELPERS_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from utils_helpers import (
-            truncate_string as utils_truncate_string,
-            format_file_path as utils_format_file_path,
-            ensure_thread_is_usable,
-            SESSION_THREAD_CACHE,
-        )
-        UTILS_HELPERS_AVAILABLE = True
-    except ImportError:
-        # Utils helpers not available - use local definitions
-        UTILS_HELPERS_AVAILABLE = False
-        SESSION_THREAD_CACHE = {}  # Initialize empty cache
-
-# Import ConfigLoader
-try:
-    from src.core.config_loader import ConfigLoader
-    CONFIG_LOADER_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from core.config_loader import ConfigLoader
-        CONFIG_LOADER_AVAILABLE = True
-    except ImportError:
-        # ConfigLoader not available - will be defined later
-        CONFIG_LOADER_AVAILABLE = False
-
-# Import discord utils
-try:
-    from src.utils.discord_utils import (
-        parse_env_file, parse_event_list, should_process_event
-    )
-    DISCORD_UTILS_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from utils.discord_utils import (
-            parse_env_file, parse_event_list, should_process_event
-        )
-        DISCORD_UTILS_AVAILABLE = True
-    except ImportError:
-        # Discord utils not available - will be defined later
-        DISCORD_UTILS_AVAILABLE = False
-
-# Import FormatterRegistry
-try:
-    from src.handlers.event_registry import FormatterRegistry
-    FORMATTER_REGISTRY_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from handlers.event_registry import FormatterRegistry
-        FORMATTER_REGISTRY_AVAILABLE = True
-    except ImportError:
-        # FormatterRegistry not available - will be defined later
-        FORMATTER_REGISTRY_AVAILABLE = False
-
-# Import thread management functions
-try:
-    from src.core.thread_manager import (
-        validate_thread_exists,
-        find_existing_thread_by_name,
-        ensure_thread_is_usable,
-        get_or_create_thread,
-        _check_thread_state,
-        _try_unarchive_thread,
-    )
-    THREAD_MANAGER_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from core.thread_manager import (
-            validate_thread_exists,
-            find_existing_thread_by_name,
-            ensure_thread_is_usable,
-            get_or_create_thread,
-            _check_thread_state,
-            _try_unarchive_thread,
-        )
-        THREAD_MANAGER_AVAILABLE = True
-    except ImportError:
-        # Thread manager not available - will be defined later
-        THREAD_MANAGER_AVAILABLE = False
-
-# Import message sender functions
-try:
-    from src.core.message_sender import (
-        send_to_discord,
-        _split_embed_if_needed,
-        _send_single_message,
-        _send_stop_or_notification_event,
-        _send_to_thread,
-        _send_to_regular_channel,
-    )
-    MESSAGE_SENDER_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from core.message_sender import (
-            send_to_discord,
-            _split_embed_if_needed,
-            _send_single_message,
-            _send_stop_or_notification_event,
-            _send_to_thread,
-            _send_to_regular_channel,
-        )
-        MESSAGE_SENDER_AVAILABLE = True
-    except ImportError:
-        # Message sender not available - will be defined later
-        MESSAGE_SENDER_AVAILABLE = False
-
-# Import tool formatters
-try:
-    from src.formatters.tool_formatters import (
-        format_bash_pre_use as tool_format_bash_pre_use,
-        format_file_operation_pre_use as tool_format_file_operation_pre_use,
-        format_search_tool_pre_use as tool_format_search_tool_pre_use,
-        format_task_pre_use as tool_format_task_pre_use,
-        format_web_fetch_pre_use as tool_format_web_fetch_pre_use,
-        format_unknown_tool_pre_use as tool_format_unknown_tool_pre_use,
-        format_bash_post_use as tool_format_bash_post_use,
-        format_read_operation_post_use as tool_format_read_operation_post_use,
-        format_write_operation_post_use as tool_format_write_operation_post_use,
-        format_task_post_use as tool_format_task_post_use,
-        format_web_fetch_post_use as tool_format_web_fetch_post_use,
-        format_unknown_tool_post_use as tool_format_unknown_tool_post_use,
-    )
-    TOOL_FORMATTERS_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from formatters.tool_formatters import (
-            format_bash_pre_use as tool_format_bash_pre_use,
-            format_file_operation_pre_use as tool_format_file_operation_pre_use,
-            format_search_tool_pre_use as tool_format_search_tool_pre_use,
-            format_task_pre_use as tool_format_task_pre_use,
-            format_web_fetch_pre_use as tool_format_web_fetch_pre_use,
-            format_unknown_tool_pre_use as tool_format_unknown_tool_pre_use,
-            format_bash_post_use as tool_format_bash_post_use,
-            format_read_operation_post_use as tool_format_read_operation_post_use,
-            format_write_operation_post_use as tool_format_write_operation_post_use,
-            format_task_post_use as tool_format_task_post_use,
-            format_web_fetch_post_use as tool_format_web_fetch_post_use,
-            format_unknown_tool_post_use as tool_format_unknown_tool_post_use,
-        )
-        TOOL_FORMATTERS_AVAILABLE = True
-    except ImportError:
-        # Tool formatters not available
-        TOOL_FORMATTERS_AVAILABLE = False
-
-# Import event formatters
-try:
-    from src.formatters.event_formatters import (
-        format_pre_tool_use,
-        format_post_tool_use,
-        format_notification,
-        format_stop,
-        format_subagent_stop,
-        format_default_event,
-        format_event,
-    )
-    EVENT_FORMATTERS_AVAILABLE = True
-except ImportError:
-    try:
-        # When run as a script
-        from formatters.event_formatters import (
-            format_pre_tool_use,
-            format_post_tool_use,
-            format_notification,
-            format_stop,
-            format_subagent_stop,
-            format_default_event,
-            format_event,
-        )
-        EVENT_FORMATTERS_AVAILABLE = True
-    except ImportError:
-        # Event formatters not available - will be defined later
-        EVENT_FORMATTERS_AVAILABLE = False
-
+from src.formatters.event_formatters import (
+    format_pre_tool_use,
+    format_post_tool_use,
+    format_notification,
+    format_stop,
+    format_subagent_stop,
+)
 
 # Import custom exceptions
 from src.exceptions import (
@@ -438,7 +190,6 @@ from src.constants import (
     USER_AGENT, DEFAULT_TIMEOUT, TRUNCATION_SUFFIX,
     THREAD_CACHE_EXPIRY, CONFIG_FILE_NAME
 )
-
 
 # Import base types from new module
 from src.type_defs.base import BaseField, TimestampedField, SessionAware, PathAware
@@ -473,34 +224,6 @@ from src.type_defs.events import (
     EventData
 )
 
-# ==============================================================================
-# TYPE DEFINITIONS: HIERARCHICAL TYPEDDICT STRUCTURE
-# ==============================================================================
-
-
-
-
-
-
-
-
-
-# ------------------------------------------------------------------------------
-# 7. ENHANCED TYPE SAFETY FEATURES
-# ------------------------------------------------------------------------------
-
-
-# Type guard functions are now imported from validators module
-
-
-# Validators are now imported from validators module
-
-
-
-
-# ==============================================================================
-# END OF TYPE DEFINITIONS
-# ==============================================================================
 
 # Type aliases for better code clarity
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
@@ -517,23 +240,6 @@ ToolName = Literal[
     "WebFetch",
 ]
 
-
-
-# Thread management is now imported from utils_helpers module
-
-
-# Type guards are now imported from validators module
-
-
-# Utility functions
-# Define truncate_string only if both formatters.base and utils_helpers import failed
-# Define format_file_path only if formatters.base and utils_helpers import failed
-# parse_env_file and parse_event_list are now imported from discord_utils module
-
-# Define should_process_event only if discord_utils import failed
-# Define get_truncation_suffix only if formatters.base import failed
-# Define add_field only if formatters.base import failed
-# Define format_json_field only if formatters.base import failed
 # Formatter base class
 class EventFormatter(Protocol):
     """Protocol for event formatters."""
@@ -542,49 +248,11 @@ class EventFormatter(Protocol):
         """Format event data into Discord embed."""
         ...
 
-
-# Conditionally define thread management functions if not imported
-# ConfigLoader is now imported from core.config_loader module
-
-
 def setup_logging(debug: bool) -> logging.Logger:
     """Set up logging with optional debug mode."""
-    if ASTOLFO_LOGGER_AVAILABLE:
-        # Use AstolfoLogger for structured logging
-        print(f"[DEBUG] Using AstolfoLogger (ASTOLFO_LOGGER_AVAILABLE={ASTOLFO_LOGGER_AVAILABLE})", file=sys.stderr)
-        print(f"[DEBUG] Debug level will be: {os.environ.get('DISCORD_DEBUG_LEVEL', '1')}", file=sys.stderr)
-        return setup_astolfo_logger(__name__)
-    else:
-        # Fallback to standard logging
-        print(f"[DEBUG] Using standard logger (ASTOLFO_LOGGER_AVAILABLE={ASTOLFO_LOGGER_AVAILABLE})", file=sys.stderr)
-        logger = logging.getLogger(__name__)
-
-        if debug:
-            log_dir = Path.home() / ".claude" / "hooks" / "logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            log_file = log_dir / f"discord_notifier_{datetime.now(UTC).strftime('%Y-%m-%d')}.log"
-
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format="%(asctime)s - %(levelname)s - %(message)s",
-                handlers=[
-                    logging.FileHandler(log_file, mode="a"),
-                    logging.StreamHandler(sys.stderr),
-                ],
-            )
-        else:
-            # Only log errors to stderr in non-debug mode
-            logging.basicConfig(
-                level=logging.ERROR,
-                format="%(levelname)s: %(message)s",
-                handlers=[logging.StreamHandler(sys.stderr)],
-            )
-
-        return logger
-
-
-# Tool-specific formatters - these are adapters for the imported tool formatters
-
+    print(f"[DEBUG] Using AstolfoLogger", file=sys.stderr)
+    print(f"[DEBUG] Debug level will be: {os.environ.get('DISCORD_DEBUG_LEVEL', '1')}", file=sys.stderr)
+    return setup_astolfo_logger(__name__)
 
 def format_event(
     event_type: str,
@@ -636,14 +304,8 @@ def format_event(
 
     return message
 
-
-# Conditionally define message sender functions if not imported
 # Global session loggers for persistence
-if SESSION_LOGGER_AVAILABLE:
-    _session_loggers: dict[str, SessionLogger] = {}
-else:
-    _session_loggers: dict[str, Any] = {}
-
+_session_loggers: dict[str, SessionLogger] = {}
 
 def main() -> None:
     """Main entry point - read event from stdin and send to Discord."""
@@ -690,8 +352,8 @@ def main() -> None:
         
         # Session logging integration (non-blocking)
         session_logging_enabled = os.getenv("DISCORD_ENABLE_SESSION_LOGGING", "0")
-        logger.debug(f"SESSION_LOGGER_AVAILABLE = {SESSION_LOGGER_AVAILABLE}, DISCORD_ENABLE_SESSION_LOGGING = {session_logging_enabled}")
-        if SESSION_LOGGER_AVAILABLE and session_logging_enabled == "1":
+        logger.debug(f"DISCORD_ENABLE_SESSION_LOGGING = {session_logging_enabled}")
+        if session_logging_enabled == "1":
             logger.debug("Session logging is enabled")
             try:
                 session_id = event_data.get("session_id", "")
@@ -737,7 +399,7 @@ def main() -> None:
 
         # Check if this event should be processed based on filtering configuration
         if not should_process_event(event_type, config):
-            if ASTOLFO_LOGGER_AVAILABLE and AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if AstolfoLogger and isinstance(logger, AstolfoLogger):
                 logger.debug(
                     "event_filtered",
                     context={"event_type": event_type},
@@ -748,7 +410,7 @@ def main() -> None:
             sys.exit(0)  # Exit gracefully without processing
 
         # Set session ID for AstolfoLogger
-        if ASTOLFO_LOGGER_AVAILABLE and AstolfoLogger and isinstance(logger, AstolfoLogger):
+        if AstolfoLogger and isinstance(logger, AstolfoLogger):
             session_id = event_data.get("session_id", "")
             if session_id:
                 logger.set_session_id(session_id)
@@ -780,7 +442,7 @@ def main() -> None:
         success = send_to_discord(message, config, logger, http_client, session_id, event_type)
 
         if success:
-            if ASTOLFO_LOGGER_AVAILABLE and AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if AstolfoLogger and isinstance(logger, AstolfoLogger):
                 logger.info(
                     "notification_sent",
                     context={"event_type": event_type, "session_id": session_id},
@@ -789,7 +451,7 @@ def main() -> None:
             else:
                 logger.info("%s notification sent successfully", event_type)
         else:
-            if ASTOLFO_LOGGER_AVAILABLE and AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if AstolfoLogger and isinstance(logger, AstolfoLogger):
                 logger.error(
                     "notification_failed",
                     context={"event_type": event_type, "session_id": session_id},
@@ -810,7 +472,7 @@ def main() -> None:
         logger.exception("Unexpected error: %s", type(e).__name__)
     finally:
         # Clean up session loggers
-        if SESSION_LOGGER_AVAILABLE and _session_loggers:
+        if _session_loggers:
             import asyncio
             import time
             # Give async tasks a moment to complete
@@ -831,7 +493,6 @@ def main() -> None:
 
     # Always exit 0 to not block Claude Code
     sys.exit(0)
-
 
 if __name__ == "__main__":
     main()

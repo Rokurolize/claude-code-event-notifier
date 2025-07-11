@@ -8,9 +8,9 @@ from typing import TypeGuard, cast, Any
 
 # Try to import types from type_defs module first
 try:
-    from src.type_defs.base import BaseField, ToolInput
+    from src.type_defs.base import BaseField
     from src.type_defs.tools import (
-        BashToolInput, FileToolInputBase, SearchToolInputBase
+        ToolInput, BashToolInput, FileToolInputBase, SearchToolInputBase
     )
     from src.type_defs.events import (
         EventData, ToolEventDataBase, NotificationEventData, StopEventDataBase
