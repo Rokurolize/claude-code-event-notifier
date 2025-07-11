@@ -325,6 +325,33 @@ except ImportError:
         # Thread manager not available - will be defined later
         THREAD_MANAGER_AVAILABLE = False
 
+# Import message sender functions
+try:
+    from src.core.message_sender import (
+        send_to_discord,
+        _split_embed_if_needed,
+        _send_single_message,
+        _send_stop_or_notification_event,
+        _send_to_thread,
+        _send_to_regular_channel,
+    )
+    MESSAGE_SENDER_AVAILABLE = True
+except ImportError:
+    try:
+        # When run as a script
+        from core.message_sender import (
+            send_to_discord,
+            _split_embed_if_needed,
+            _send_single_message,
+            _send_stop_or_notification_event,
+            _send_to_thread,
+            _send_to_regular_channel,
+        )
+        MESSAGE_SENDER_AVAILABLE = True
+    except ImportError:
+        # Message sender not available - will be defined later
+        MESSAGE_SENDER_AVAILABLE = False
+
 # Import tool formatters
 try:
     from src.formatters.tool_formatters import (
@@ -363,6 +390,35 @@ except ImportError:
     except ImportError:
         # Tool formatters not available
         TOOL_FORMATTERS_AVAILABLE = False
+
+# Import event formatters
+try:
+    from src.formatters.event_formatters import (
+        format_pre_tool_use,
+        format_post_tool_use,
+        format_notification,
+        format_stop,
+        format_subagent_stop,
+        format_default_event,
+        format_event,
+    )
+    EVENT_FORMATTERS_AVAILABLE = True
+except ImportError:
+    try:
+        # When run as a script
+        from formatters.event_formatters import (
+            format_pre_tool_use,
+            format_post_tool_use,
+            format_notification,
+            format_stop,
+            format_subagent_stop,
+            format_default_event,
+            format_event,
+        )
+        EVENT_FORMATTERS_AVAILABLE = True
+    except ImportError:
+        # Event formatters not available - will be defined later
+        EVENT_FORMATTERS_AVAILABLE = False
 
 
 # Import custom exceptions
@@ -961,49 +1017,51 @@ else:
         return [format_json_field(tool_input, "Input")]
 
 
-def format_pre_tool_use(event_data: EventData, session_id: str) -> DiscordEmbed:
-    """Format PreToolUse event with detailed information."""
-    tool_name = event_data.get("tool_name", "Unknown")
-    tool_input = event_data.get("tool_input", {})
-    emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+# Conditionally define event formatters if not imported
+if not EVENT_FORMATTERS_AVAILABLE:
+    def format_pre_tool_use(event_data: EventData, session_id: str) -> DiscordEmbed:
+        """Format PreToolUse event with detailed information."""
+        tool_name = event_data.get("tool_name", "Unknown")
+        tool_input = event_data.get("tool_input", {})
+        emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
-    embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
+        embed: DiscordEmbed = {"title": f"About to execute: {emoji} {tool_name}"}
 
-    # Build detailed description
-    desc_parts: list[str] = []
-    add_field(desc_parts, "Session", session_id, code=True)
+        # Build detailed description
+        desc_parts: list[str] = []
+        add_field(desc_parts, "Session", session_id, code=True)
 
-    # Dispatch to tool-specific formatter
-    if is_bash_tool(tool_name):
-        desc_parts.extend(format_bash_pre_use(tool_input))
-    elif is_file_tool(tool_name):
-        desc_parts.extend(format_file_operation_pre_use(tool_name, tool_input))
-    elif is_search_tool(tool_name):
-        desc_parts.extend(format_search_tool_pre_use(tool_name, tool_input))
-    elif tool_name == ToolNames.TASK.value:
-        # For Task tool, handle prompt specially to use full description space
-        task_desc = tool_input.get("description", "")
-        task_prompt = tool_input.get("prompt", "")
-        
-        if task_desc:
-            add_field(desc_parts, "Task", task_desc)
+        # Dispatch to tool-specific formatter
+        if is_bash_tool(tool_name):
+            desc_parts.extend(format_bash_pre_use(tool_input))
+        elif is_file_tool(tool_name):
+            desc_parts.extend(format_file_operation_pre_use(tool_name, tool_input))
+        elif is_search_tool(tool_name):
+            desc_parts.extend(format_search_tool_pre_use(tool_name, tool_input))
+        elif tool_name == ToolNames.TASK.value:
+            # For Task tool, handle prompt specially to use full description space
+            task_desc = tool_input.get("description", "")
+            task_prompt = tool_input.get("prompt", "")
             
-        # Add prompt to description if it exists (without truncation)
-        if task_prompt:
-            # Separate the prompt with a clear header
-            desc_parts.append("\n**Prompt:**")
-            desc_parts.append(task_prompt)
-    elif tool_name == ToolNames.WEB_FETCH.value:
-        desc_parts.extend(format_web_fetch_pre_use(tool_input))
-    else:
-        desc_parts.extend(format_unknown_tool_pre_use(tool_input))
+            if task_desc:
+                add_field(desc_parts, "Task", task_desc)
+                
+            # Add prompt to description if it exists (without truncation)
+            if task_prompt:
+                # Separate the prompt with a clear header
+                desc_parts.append("\n**Prompt:**")
+                desc_parts.append(task_prompt)
+        elif tool_name == ToolNames.WEB_FETCH.value:
+            desc_parts.extend(format_web_fetch_pre_use(tool_input))
+        else:
+            desc_parts.extend(format_unknown_tool_pre_use(tool_input))
 
-    # Add timestamp
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
-    add_field(desc_parts, "Time", timestamp)
+        # Add timestamp
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        add_field(desc_parts, "Time", timestamp)
 
-    embed["description"] = "\n".join(desc_parts)
-    return embed
+        embed["description"] = "\n".join(desc_parts)
+        return embed
 
 
 # Post-use formatters
@@ -1363,298 +1421,60 @@ def format_event(
     return message
 
 
-def _send_stop_or_notification_event(
-    message: DiscordMessage,
-    config: Config,
-    logger: logging.Logger,
-    http_client: HTTPClient,
-    session_id: str,
-    event_type: str,
-) -> bool:
-    """Handle Stop and Notification events with special thread logic."""
-    success = False
-
-    # 1. Send embed to thread (if exists)
-    thread_id = get_or_create_thread(session_id, config, http_client, logger)
-    if thread_id:
-        # Create embed-only message for thread
-        thread_message: DiscordMessage = {"embeds": message.get("embeds", [])}
-
-        try:
-            if config["webhook_url"]:
-                success = http_client.post_webhook_to_thread(config["webhook_url"], thread_message, thread_id)
-            elif config["bot_token"]:
-                url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
-                success = http_client.post_bot_api(url, thread_message, config["bot_token"])
-
-            if success:
-                logger.debug("Sent embed to thread %s for %s event", thread_id, event_type)
-        except DiscordAPIError as e:
-            logger.warning("Failed to send embed to thread %s: %s", thread_id, e)
-
-    # 2. Send mention-only message to main channel
-    if config.get("mention_user_id"):
-        # Extract display message based on event type
-        if event_type == EventTypes.NOTIFICATION.value:
-            display_message = (
-                message.get("content", "").replace(f"<@{config['mention_user_id']}> ", "") or "System notification"
-            )
-        else:  # Stop event
-            display_message = "Session ended"
-
-        # Create mention-only message for main channel
-        mention_message: DiscordMessage = {"content": f"<@{config['mention_user_id']}> {display_message}"}
-
-        try:
-            if config["webhook_url"]:
-                main_success = http_client.post_webhook(config["webhook_url"], mention_message)
-            elif config["bot_token"] and config["channel_id"]:
-                url = f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
-                main_success = http_client.post_bot_api(url, mention_message, config["bot_token"])
-            else:
-                main_success = False
-
-            if main_success:
-                logger.debug("Sent mention to main channel for %s event", event_type)
-                success = True  # Consider successful if either thread or main channel succeeds
-
-        except DiscordAPIError as e:
-            logger.warning("Failed to send mention to main channel: %s", e)
-
-    # 3. Archive thread for Stop events
-    if event_type == EventTypes.STOP.value and thread_id and config.get("bot_token"):
-        try:
-            if http_client.archive_thread(thread_id, config["bot_token"]):
-                logger.info("Archived thread %s after session %s ended", thread_id, session_id)
-                # Remove from cache since it's now archived
-                SESSION_THREAD_CACHE.pop(session_id, None)
-            else:
-                logger.warning("Failed to archive thread %s", thread_id)
-        except DiscordAPIError as e:
-            logger.warning("Failed to archive thread %s: %s", thread_id, e)
-
-    return success
-
-
-def _send_to_thread(
-    message: DiscordMessage,
-    config: Config,
-    logger: logging.Logger,
-    http_client: HTTPClient,
-    session_id: str,
-) -> bool | None:
-    """Send message to thread if enabled. Returns True/False for success, None to fallback."""
-    if not config["use_threads"] or not session_id:
-        return None
-
-    thread_id = get_or_create_thread(session_id, config, http_client, logger)
-
-    if thread_id:
-        # Send to existing thread
-        if config["webhook_url"]:
-            try:
-                return http_client.post_webhook_to_thread(config["webhook_url"], message, thread_id)
-            except DiscordAPIError:
-                logger.warning("Failed to send to thread, falling back to regular channel")
-
-    elif config["channel_type"] == "forum" and config["webhook_url"]:
-        # Create forum thread with first message
-        thread_name = f"{config['thread_prefix']} {session_id[:8]}"
-        thread_message: DiscordThreadMessage = {
-            "embeds": message.get("embeds", []),
-            "thread_name": thread_name,
-        }
-
-        try:
-            thread_id = http_client.create_forum_thread(config["webhook_url"], thread_message, thread_name)
-            if thread_id:
-                SESSION_THREAD_CACHE[session_id] = thread_id
-                logger.info("Created forum thread %s for session %s", thread_id, session_id)
-                return True
-            logger.warning("Forum thread creation failed, falling back to regular channel")
-        except DiscordAPIError:
-            logger.warning("Forum thread creation failed, falling back to regular channel")
-
-    return None
-
-
-def _send_to_regular_channel(
-    message: DiscordMessage,
-    config: Config,
-    http_client: HTTPClient,
-) -> bool:
-    """Send message to regular channel via webhook or bot API."""
-    # Try webhook first
-    if config["webhook_url"]:
-        try:
-            return http_client.post_webhook(config["webhook_url"], message)
-        except DiscordAPIError:
-            pass  # Fall through to bot API
-
-    # Try bot API as fallback
-    if config["bot_token"] and config["channel_id"]:
-        try:
-            url = f"https://discord.com/api/v10/channels/{config['channel_id']}/messages"
-            return http_client.post_bot_api(url, message, config["bot_token"])
-        except DiscordAPIError:
-            pass
-
-    return False
-
-
-def send_to_discord(
-    message: DiscordMessage,
-    config: Config,
-    logger: logging.Logger,
-    http_client: HTTPClient,
-    session_id: str = "",
-    event_type: str = "",
-) -> bool:
-    """Send message to Discord via webhook or bot API, with optional thread support.
-
-    For Stop/Notification events:
-    - Send embed-only message to thread
-    - Send mention-only message to main channel
-    - Archive thread for Stop events
-    """
-    # Split message if needed (for long content)
-    messages = _split_embed_if_needed(message)
+# Conditionally define message sender functions if not imported
+if not MESSAGE_SENDER_AVAILABLE:
+    def send_to_discord(
+        message: DiscordMessage,
+        config: Config,
+        logger: logging.Logger,
+        http_client: HTTPClient,
+        session_id: str = "",
+        event_type: str = "",
+    ) -> bool:
+        """Send message to Discord via webhook or bot API."""
+        raise NotImplementedError("Message sender functions not available")
     
-    # If multiple messages, send them sequentially
-    if len(messages) > 1:
-        logger.info("Splitting long message into %d parts", len(messages))
-        all_success = True
-        for i, msg in enumerate(messages):
-            # Add small delay between messages to avoid rate limiting
-            if i > 0:
-                time.sleep(0.5)
-            
-            # Send each part using the regular logic
-            success = _send_single_message(msg, config, logger, http_client, session_id, event_type)
-            if not success:
-                all_success = False
-                logger.error("Failed to send message part %d", i + 1)
-        return all_success
+    def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
+        """Split a message if its embed description exceeds Discord limits."""
+        raise NotImplementedError("Message sender functions not available")
     
-    # Single message, use regular logic
-    return _send_single_message(message, config, logger, http_client, session_id, event_type)
-
-
-def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
-    """Split a message if its embed description exceeds Discord limits.
+    def _send_single_message(
+        message: DiscordMessage,
+        config: Config,
+        logger: logging.Logger,
+        http_client: HTTPClient,
+        session_id: str = "",
+        event_type: str = "",
+    ) -> bool:
+        """Send a single message to Discord."""
+        raise NotImplementedError("Message sender functions not available")
     
-    Args:
-        message: Original Discord message with embeds
-        
-    Returns:
-        List of messages, split if necessary
-    """
-    if not message.get("embeds") or not message["embeds"]:
-        return [message]
+    def _send_stop_or_notification_event(
+        message: DiscordMessage,
+        config: Config,
+        logger: logging.Logger,
+        http_client: HTTPClient,
+        session_id: str,
+        event_type: str,
+    ) -> bool:
+        """Handle special Stop/Notification event sending."""
+        raise NotImplementedError("Message sender functions not available")
     
-    embed = message["embeds"][0]
-    description = embed.get("description", "")
+    def _send_to_thread(
+        message: DiscordMessage,
+        config: Config,
+        logger: logging.Logger,
+        http_client: HTTPClient,
+        session_id: str = "",
+    ) -> bool | None:
+        """Try to send message to a thread."""
+        raise NotImplementedError("Message sender functions not available")
     
-    # If within limits, return as-is
-    if len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
-        return [message]
-    
-    # Split the description
-    messages: list[DiscordMessage] = []
-    remaining_desc = description
-    part_num = 1
-    
-    while remaining_desc:
-        # Calculate how much we can fit
-        chunk_size = DiscordLimits.MAX_DESCRIPTION_LENGTH
-        
-        # For continuation messages, reserve space for part indicator
-        if part_num > 1:
-            chunk_size -= 50  # Space for "... (continued from previous message)"
-            
-        # Find a good break point (prefer newline, then space)
-        if len(remaining_desc) > chunk_size:
-            # Look for newline near the end
-            newline_pos = remaining_desc.rfind('\n', chunk_size - 200, chunk_size)
-            if newline_pos > 0:
-                chunk_size = newline_pos + 1
-            else:
-                # Look for space
-                space_pos = remaining_desc.rfind(' ', chunk_size - 100, chunk_size)
-                if space_pos > 0:
-                    chunk_size = space_pos + 1
-        
-        # Extract chunk
-        chunk = remaining_desc[:chunk_size]
-        remaining_desc = remaining_desc[chunk_size:]
-        
-        # Create new message with modified embed
-        new_embed = embed.copy()
-        
-        if part_num == 1:
-            # First part keeps original title
-            new_embed["description"] = chunk
-            if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
-        else:
-            # Subsequent parts get modified title and description
-            original_title = embed.get("title", "Continued")
-            new_embed["title"] = f"{original_title} (Part {part_num})"
-            new_embed["description"] = "... (continued from previous message)\n\n" + chunk
-            if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
-            
-            # Remove fields from continuation messages to save space
-            new_embed["fields"] = None
-        
-        # Remove footer from all but the last part
-        if remaining_desc:
-            new_embed["footer"] = None
-            new_embed["timestamp"] = None
-        
-        new_message: DiscordMessage = {
-            "embeds": [new_embed],
-            "content": message.get("content")
-        }
-        messages.append(new_message)
-        part_num += 1
-    
-    return messages
-
-
-def _send_single_message(
-    message: DiscordMessage,
-    config: Config,
-    logger: logging.Logger,
-    http_client: HTTPClient,
-    session_id: str = "",
-    event_type: str = "",
-) -> bool:
-    """Send a single message to Discord (internal helper).
-    
-    Args:
-        message: Discord message to send
-        config: Configuration
-        logger: Logger instance
-        http_client: HTTP client for Discord API
-        session_id: Optional session ID for thread management
-        event_type: Optional event type for special handling
-        
-    Returns:
-        bool: True if message was successfully sent
-    """
-    # Special handling for Stop and Notification events
-    if event_type in [EventTypes.STOP.value, EventTypes.NOTIFICATION.value] and config["use_threads"] and session_id:
-        return _send_stop_or_notification_event(message, config, logger, http_client, session_id, event_type)
-
-    # Regular event handling (PreToolUse, PostToolUse, etc.)
-    # Try thread messaging first
-    thread_result = _send_to_thread(message, config, logger, http_client, session_id)
-    if thread_result is not None:
-        return thread_result
-
-    # Fall back to regular channel messaging
-    return _send_to_regular_channel(message, config, http_client)
+    def _send_to_regular_channel(
+        message: DiscordMessage, config: Config, http_client: HTTPClient
+    ) -> bool:
+        """Send message to regular Discord channel."""
+        raise NotImplementedError("Message sender functions not available")
 
 
 # Global session loggers for persistence
