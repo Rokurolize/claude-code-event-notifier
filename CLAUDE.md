@@ -8,26 +8,30 @@ Discord notifier for Claude Code hooks. Sends real-time notifications when Claud
 
 ## Commands
 
+**IMPORTANT: This project requires Python 3.13 or higher. All commands must use Python 3.13+.**
+
 ```bash
-# Install/configure the notifier in Claude Code
-python3 configure_hooks.py
+# Install/configure the notifier in Claude Code (MUST use Python 3.13+)
+uv run --no-sync --python 3.13 python configure_hooks.py
+# Or if you have Python 3.13+ installed:
+# python3.13 configure_hooks.py
 
 # Remove the notifier from Claude Code
-python3 configure_hooks.py --remove
+uv run --no-sync --python 3.13 python configure_hooks.py --remove
 
 # Run all tests
-python3 -m unittest discover -s tests -p "test_*.py"
+uv run --no-sync --python 3.13 python -m unittest discover -s tests -p "test_*.py"
 
 # Run specific test categories
-python3 -m unittest discover -s tests/unit -p "test_*.py"      # Unit tests only
-python3 -m unittest discover -s tests/feature -p "test_*.py"    # Feature tests
-python3 -m unittest discover -s tests/integration -p "test_*.py" # Integration tests
+uv run --no-sync --python 3.13 python -m unittest discover -s tests/unit -p "test_*.py"      # Unit tests only
+uv run --no-sync --python 3.13 python -m unittest discover -s tests/feature -p "test_*.py"    # Feature tests
+uv run --no-sync --python 3.13 python -m unittest discover -s tests/integration -p "test_*.py" # Integration tests
 
 # Run single test file
-python3 -m unittest tests/unit/test_discord_notifier.py
+uv run --no-sync --python 3.13 python -m unittest tests/unit/test_discord_notifier.py
 
-# Type checking and linting
-python3 -m mypy src/ configure_hooks.py
+# Type checking and linting (requires Python 3.13+)
+uv run --no-sync --python 3.13 python -m mypy src/ configure_hooks.py
 ruff check src/ configure_hooks.py utils/
 ruff format src/ configure_hooks.py utils/
 
@@ -119,3 +123,26 @@ Hooks are configured to execute source files directly:
 - No copying of files to hooks directory
 - Changes to source code take effect immediately
 - Must restart Claude Code after running `configure_hooks.py`
+
+## Testing and Development
+
+**CRITICAL: All testing must be done with Python 3.13 or higher.**
+
+```bash
+# Test if code runs without errors (basic smoke test)
+echo '{"session_id":"test123"}' | CLAUDE_HOOK_EVENT=Stop uv run --no-sync --python 3.13 python src/discord_notifier.py
+
+# Test syntax and imports
+uv run --no-sync --python 3.13 python -m py_compile src/*.py
+
+# Never test with system python3 which may be 3.12 or older
+# WRONG: python3 src/discord_notifier.py
+# RIGHT: uv run --no-sync --python 3.13 python src/discord_notifier.py
+```
+
+The project uses Python 3.13+ features including:
+- `TypeIs` for type guards
+- `ReadOnly` for TypedDict fields
+- Other Python 3.13+ typing improvements
+
+Testing with older Python versions will fail with import errors.

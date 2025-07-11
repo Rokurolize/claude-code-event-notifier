@@ -10,6 +10,13 @@ Usage:
     python3.13 configure_hooks.py [--remove]
 """
 
+# Python version check - must be first before any imports that might fail
+import sys
+if sys.version_info < (3, 13):
+    print(f"ERROR: This project requires Python 3.13 or higher. You are using Python {sys.version}", file=sys.stderr)
+    print("Please run with: uv run --no-sync --python 3.13 python configure_hooks.py", file=sys.stderr)
+    sys.exit(1)
+
 import argparse
 import contextlib
 import json

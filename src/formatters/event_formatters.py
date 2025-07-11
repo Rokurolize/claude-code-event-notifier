@@ -137,26 +137,26 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     elif is_search_tool(tool_name):
         desc_parts.extend(format_search_tool_pre_use(tool_name, cast("SearchToolInput", tool_input)))
     elif tool_name == "Task":
-        # For Task tool, try to get full prompt from transcript
-        task_parts = format_task_pre_use(cast("TaskToolInput", tool_input))
-
+        # For Task tool, handle prompt specially to use full description space
+        task_input_typed = cast("TaskToolInput", tool_input)
+        task_desc = task_input_typed.get("description", "")
+        task_prompt = task_input_typed.get("prompt", "")
+        
+        if task_desc:
+            add_field(desc_parts, "Task", task_desc)
+            
         # Try to get full prompt from transcript if available
         transcript_path = event_data.get("transcript_path")
         if transcript_path and isinstance(transcript_path, str):
             full_prompt = get_full_task_prompt(transcript_path, full_session_id)
             if full_prompt:
-                # Replace the truncated prompt with full prompt using split_long_text
-                for i, part in enumerate(task_parts):
-                    if part.startswith("**Prompt:**"):
-                        # Remove the old truncated prompt
-                        task_parts.pop(i)
-                        # Insert split parts at the same position
-                        prompt_parts = split_long_text(full_prompt, "Prompt")
-                        for j, prompt_part in enumerate(prompt_parts):
-                            task_parts.insert(i + j, prompt_part)
-                        break
-
-        desc_parts.extend(task_parts)
+                task_prompt = full_prompt
+                
+        # Add prompt to description if it exists
+        if task_prompt:
+            # Separate the prompt with a clear header
+            desc_parts.append("\n**Prompt:**")
+            desc_parts.append(task_prompt)
     elif tool_name == "WebFetch":
         desc_parts.extend(format_web_fetch_pre_use(cast("WebFetchInput", tool_input)))
     else:
