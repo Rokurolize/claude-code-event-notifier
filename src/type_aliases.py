@@ -4,45 +4,47 @@ This module defines common type aliases used throughout the codebase
 to improve type safety and reduce mypy errors.
 """
 
-from typing import Any, Dict, List, Optional, Union, TypedDict, NotRequired
+from typing import Dict, List, Optional, Union, TypedDict, NotRequired
 from typing_extensions import TypeAlias
 
+# JSON Primitive Types
+JSONPrimitive: TypeAlias = Union[str, int, float, bool, None]
+JSONValue: TypeAlias = Union[JSONPrimitive, Dict[str, "JSONValue"], List["JSONValue"]]
+JSONDict: TypeAlias = Dict[str, JSONValue]
+JSONList: TypeAlias = List[JSONValue]
+
 # Discord API Types
-DiscordEmbed: TypeAlias = Dict[str, Any]
-DiscordMessage: TypeAlias = Dict[str, Any]
-DiscordThread: TypeAlias = Dict[str, Any]
-DiscordChannel: TypeAlias = Dict[str, Any]
-DiscordWebhookPayload: TypeAlias = Dict[str, Any]
+DiscordEmbed: TypeAlias = Dict[str, Union[str, int, List[Dict[str, Union[str, bool]]]]]
+DiscordMessage: TypeAlias = Dict[str, Union[str, List[DiscordEmbed], None]]
+DiscordThread: TypeAlias = Dict[str, Union[str, int, bool, Dict[str, Union[bool, int]]]]
+DiscordChannel: TypeAlias = Dict[str, Union[str, int]]
+DiscordWebhookPayload: TypeAlias = DiscordMessage
 
 # Event Data Types
-EventData: TypeAlias = Dict[str, Any]
-ToolData: TypeAlias = Dict[str, Any]
-FormatterResult: TypeAlias = Dict[str, Any]
+EventData: TypeAlias = Dict[str, Union[str, int, float, bool, Dict[str, Union[str, int, float, bool]]]]
+ToolData: TypeAlias = Dict[str, Union[str, int, float, bool, List[str], Dict[str, str]]]
+FormatterResult: TypeAlias = DiscordEmbed
 
 # Configuration Types
-ConfigDict: TypeAlias = Dict[str, Any]
+ConfigDict: TypeAlias = Dict[str, Union[str, int, bool, List[str], None]]
 FilterConfig: TypeAlias = Dict[str, bool]
 ThreadConfig: TypeAlias = Dict[str, Union[str, bool, int]]
 
 # HTTP Response Types
-HTTPResponse: TypeAlias = Dict[str, Any]
+HTTPResponse: TypeAlias = Dict[str, Union[str, int, Dict[str, str]]]
 HTTPHeaders: TypeAlias = Dict[str, str]
 
-# JSON Types
-JSONValue: TypeAlias = Union[str, int, float, bool, None, Dict[str, Any], List[Any]]
-JSONDict: TypeAlias = Dict[str, JSONValue]
-
 # Session Types
-SessionData: TypeAlias = Dict[str, Any]
+SessionData: TypeAlias = Dict[str, Union[str, int, float, List[str]]]
 SessionMetadata: TypeAlias = Dict[str, Union[str, int, float]]
 
 # Thread Storage Types
 ThreadRecord: TypeAlias = Dict[str, Union[str, int]]
-ThreadMetadata: TypeAlias = Dict[str, Any]
+ThreadMetadata: TypeAlias = Dict[str, Union[str, int, bool]]
 
 # Logger Types
-LogRecord: TypeAlias = Dict[str, Any]
-LogContext: TypeAlias = Dict[str, Any]
+LogRecord: TypeAlias = Dict[str, Union[str, int, float, bool, None]]
+LogContext: TypeAlias = Dict[str, Union[str, int, float, bool, List[str]]]
 
 # Formatter Types
 EmbedField: TypeAlias = Dict[str, Union[str, bool]]
@@ -64,10 +66,10 @@ class EventDataTyped(TypedDict, total=False):
     session_id: str
     timestamp: str
     tool: str
-    arguments: Dict[str, Any]
+    arguments: Dict[str, Union[str, int, float, bool, List[str], Dict[str, str]]]
     result: ToolResult
     message: str
-    params: Dict[str, Any]
+    params: Dict[str, Union[str, int, float, bool, List[str]]]
 
 # Discord Embed Structure
 class DiscordEmbedTyped(TypedDict, total=False):

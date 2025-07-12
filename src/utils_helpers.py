@@ -6,11 +6,32 @@ file path formatting, and thread management.
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING, TypedDict
+
+if TYPE_CHECKING:
+    from src.core.http_client import HTTPClient
+
+
+# Type definitions
+class ThreadMetadata(TypedDict, total=False):
+    """Discord thread metadata."""
+    archived: bool
+    locked: bool
+    invitable: bool
+    create_timestamp: str
+
+
+class ThreadDetails(TypedDict, total=False):
+    """Discord thread details."""
+    id: str
+    type: int
+    name: str
+    thread_metadata: ThreadMetadata
 
 # Try to import constants
 try:
-    from src.constants import TRUNCATION_SUFFIX
+    from src.constants import TRUNCATION_SUFFIX as _TRUNCATION_SUFFIX
+    TRUNCATION_SUFFIX = _TRUNCATION_SUFFIX
 except ImportError:
     # Fallback if constants not available
     TRUNCATION_SUFFIX = "..."
@@ -106,9 +127,9 @@ def format_file_path(file_path: str) -> str:
 
 
 def ensure_thread_is_usable(
-    thread_details: dict[str, Any],
+    thread_details: ThreadDetails,
     channel_id: str,
-    http_client: Any,
+    http_client: "HTTPClient",
     bot_token: str,
 ) -> bool:
     """Ensure thread is active and can receive messages.
@@ -161,14 +182,7 @@ def ensure_thread_is_usable(
         # Try to unarchive the thread
         try:
             thread_id = thread_details["id"]
-            headers = {"Authorization": f"Bot {bot_token}"}
-            http_client.request(
-                "PATCH",
-                f"https://discord.com/api/v10/channels/{thread_id}",
-                headers=headers,
-                json={"archived": False},
-            )
-            return True
+            return http_client.unarchive_thread(thread_id, bot_token)
         except Exception:
             return False
     return True
@@ -177,5 +191,5 @@ def ensure_thread_is_usable(
 # Export all public utilities
 __all__ = [
     'truncate_string', 'format_file_path', 'ensure_thread_is_usable',
-    'SESSION_THREAD_CACHE'
+    'SESSION_THREAD_CACHE', 'ThreadMetadata', 'ThreadDetails'
 ]

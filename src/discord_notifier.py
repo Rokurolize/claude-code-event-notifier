@@ -148,6 +148,7 @@ from src.core.message_sender import (
     _send_to_thread,
     _send_to_regular_channel,
 )
+from src.core.http_client import DiscordMessage as HTTPClientDiscordMessage
 
 from src.formatters.tool_formatters import (
     format_bash_pre_use as tool_format_bash_pre_use,
@@ -404,7 +405,7 @@ def main() -> None:
                         # Create task and ignore result
                         task = loop.create_task(
                             _session_loggers[session_id].log_event(
-                                event_type, enriched_data
+                                event_type, enriched_data  # type: ignore[arg-type]
                             )
                         )
                         # Prevent uncaught exception warnings
@@ -461,7 +462,8 @@ def main() -> None:
             logger_for_send = logger.logger  # Use the internal logger
         else:
             logger_for_send = logger
-        success = send_to_discord(message, config, logger_for_send, http_client, session_id, event_type)
+        # Cast to the expected type for send_to_discord
+        success = send_to_discord(cast(HTTPClientDiscordMessage, message), config, logger_for_send, http_client, session_id, event_type)
 
         if success:
             if isinstance(logger, AstolfoLogger):

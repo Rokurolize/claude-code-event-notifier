@@ -390,9 +390,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     # Try to get subagent messages from transcript
     transcript_path_raw = event_data.get("transcript_path")
     if transcript_path_raw and isinstance(transcript_path_raw, str):
-        subagent_msgs_raw = get_subagent_messages(transcript_path_raw, full_session_id, limit=50)  # type: ignore[misc]  # External function returns Any
-        # Cast to avoid Any type issues - we validate structure below
-        subagent_msgs = cast(list[SubagentMessage], subagent_msgs_raw)
+        subagent_msgs = get_subagent_messages(transcript_path_raw, full_session_id, limit=50)
         if subagent_msgs:
             # Add messages as separate fields for better readability
             for i, msg in enumerate(subagent_msgs):
