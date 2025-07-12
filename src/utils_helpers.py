@@ -8,8 +8,13 @@ import os
 from pathlib import Path
 from typing import Any, TYPE_CHECKING, TypedDict
 
+from src.utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
+
 if TYPE_CHECKING:
     from src.core.http_client import HTTPClient
+
+# Set up logger for this module
+logger: AstolfoLogger = setup_astolfo_logger(__name__)
 
 
 # Type definitions
@@ -67,9 +72,34 @@ def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX)
         >>> truncate_string("Long text here", 8, ">>")
         'Long t>>'
     """
+    logger.debug(
+        "truncate_string_called",
+        context={
+            "text_length": len(text),
+            "max_length": max_length,
+            "suffix": suffix,
+            "needs_truncation": len(text) > max_length
+        }
+    )
+    
     if len(text) <= max_length:
+        logger.debug(
+            "truncate_string_no_truncation",
+            context={"text_length": len(text), "max_length": max_length}
+        )
         return text
-    return text[: max_length - len(suffix)] + suffix
+    
+    truncated = text[: max_length - len(suffix)] + suffix
+    logger.debug(
+        "truncate_string_truncated",
+        context={
+            "original_length": len(text),
+            "truncated_length": len(truncated),
+            "max_length": max_length,
+            "suffix_used": suffix
+        }
+    )
+    return truncated
 
 
 def format_file_path(file_path: str) -> str:
@@ -105,24 +135,66 @@ def format_file_path(file_path: str) -> str:
         - Path resolution errors are caught and original path returned
         - Always returns a string, never raises exceptions
     """
+    logger.debug(
+        "format_file_path_called",
+        context={
+            "file_path": file_path,
+            "is_empty": not file_path
+        }
+    )
+    
     if not file_path:
+        logger.debug("format_file_path_empty_path")
         return ""
 
     try:
         path = Path(file_path)
         cwd = Path.cwd()
+        
+        logger.debug(
+            "format_file_path_processing",
+            context={
+                "is_absolute": path.is_absolute(),
+                "cwd": str(cwd),
+                "original_path": str(path)
+            }
+        )
 
         # Try to make relative to current directory
         if path.is_absolute():
             try:
-                return str(path.relative_to(cwd))
+                relative_path = str(path.relative_to(cwd))
+                logger.debug(
+                    "format_file_path_made_relative",
+                    context={
+                        "original": str(path),
+                        "relative": relative_path,
+                        "cwd": str(cwd)
+                    }
+                )
+                return relative_path
             except ValueError:
                 # Path is not under cwd, return as is
+                logger.debug(
+                    "format_file_path_not_under_cwd",
+                    context={"path": str(path), "cwd": str(cwd)}
+                )
                 return str(path)
         else:
+            logger.debug(
+                "format_file_path_already_relative",
+                context={"path": str(path)}
+            )
             return str(path)
-    except Exception:
+    except Exception as e:
         # If all else fails, just return the original
+        logger.debug(
+            "format_file_path_error",
+            context={
+                "file_path": file_path,
+                "error": str(e)
+            }
+        )
         return file_path
 
 
@@ -176,15 +248,76 @@ def ensure_thread_is_usable(
         - Network errors return False
         - Always fails gracefully without raising
     """
+    thread_id = thread_details.get("id", "unknown")
+    thread_name = thread_details.get("name", "unknown")
+    
+    logger.debug(
+        "ensure_thread_is_usable_called",
+        context={
+            "thread_id": thread_id,
+            "thread_name": thread_name,
+            "channel_id": channel_id
+        }
+    )
+    
     # Check if thread is archived
     metadata = thread_details.get("thread_metadata", {})
-    if metadata.get("archived", False):
+    is_archived = metadata.get("archived", False)
+    is_locked = metadata.get("locked", False)
+    
+    logger.debug(
+        "ensure_thread_is_usable_metadata",
+        context={
+            "thread_id": thread_id,
+            "is_archived": is_archived,
+            "is_locked": is_locked
+        }
+    )
+    
+    if is_archived:
+        if is_locked:
+            logger.warning(
+                "ensure_thread_is_usable_locked",
+                context={
+                    "thread_id": thread_id,
+                    "thread_name": thread_name
+                }
+            )
+            return False
+            
         # Try to unarchive the thread
         try:
-            thread_id = thread_details["id"]
-            return http_client.unarchive_thread(thread_id, bot_token)
-        except Exception:
+            logger.debug(
+                "ensure_thread_is_usable_unarchiving",
+                context={"thread_id": thread_id}
+            )
+            
+            result = http_client.unarchive_thread(thread_id, bot_token)
+            
+            logger.debug(
+                "ensure_thread_is_usable_unarchived",
+                context={
+                    "thread_id": thread_id,
+                    "success": result
+                }
+            )
+            
+            return result
+        except Exception as e:
+            logger.error(
+                "ensure_thread_is_usable_unarchive_failed",
+                exception=e,
+                context={
+                    "thread_id": thread_id,
+                    "error": str(e)
+                }
+            )
             return False
+    
+    logger.debug(
+        "ensure_thread_is_usable_active",
+        context={"thread_id": thread_id}
+    )
     return True
 
 

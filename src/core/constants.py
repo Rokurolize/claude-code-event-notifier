@@ -9,6 +9,12 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final, Literal
 
+# Set up minimal logging for constants module
+from src.utils.astolfo_logger import setup_astolfo_logger
+
+logger = setup_astolfo_logger(__name__)
+logger.debug("Loading Discord Notifier constants")
+
 # Type aliases for better code clarity
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 ToolName = Literal[

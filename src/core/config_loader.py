@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 from typing import cast, Literal
 
+# Import AstolfoLogger for structured logging
+try:
+    from src.utils.astolfo_logger import AstolfoLogger
+except ImportError:
+    # Fallback if AstolfoLogger not available
+    AstolfoLogger = None  # type: ignore
+
 # Try to import types from type_defs module first
 try:
     from src.type_defs.config import Config
@@ -86,10 +93,16 @@ DEFAULT_CONFIG: Config = {
 
 class ConfigLoader:
     """Configuration loader with validation."""
+    
+    # Initialize logger for config loading
+    _logger = AstolfoLogger(name="ConfigLoader") if AstolfoLogger else None
 
     @staticmethod
     def _get_default_config() -> Config:
         """Get default configuration."""
+        if ConfigLoader._logger:
+            ConfigLoader._logger.debug("Creating default configuration")
+        
         # Return a deep copy to avoid mutation
         return {
             "webhook_url": DEFAULT_CONFIG["webhook_url"],
@@ -109,19 +122,35 @@ class ConfigLoader:
     @staticmethod
     def _update_config_from_dict(config: Config, env_vars: dict[str, str]) -> None:
         """Update config from environment variable dictionary."""
+        if ConfigLoader._logger:
+            ConfigLoader._logger.debug(
+                "Updating config from dictionary",
+                {"env_vars_count": len(env_vars), "keys": list(env_vars.keys())}
+            )
+        
         if ENV_WEBHOOK_URL in env_vars:
             value = env_vars[ENV_WEBHOOK_URL]
             config["webhook_url"] = value if value else None
+            if ConfigLoader._logger and value:
+                ConfigLoader._logger.debug("Webhook URL configured", {"has_value": bool(value)})
         if ENV_BOT_TOKEN in env_vars:
             value = env_vars[ENV_BOT_TOKEN]
             config["bot_token"] = value if value else None
+            if ConfigLoader._logger and value:
+                ConfigLoader._logger.debug("Bot token configured", {"has_value": bool(value)})
         if ENV_CHANNEL_ID in env_vars:
             value = env_vars[ENV_CHANNEL_ID]
             config["channel_id"] = value if value else None
+            if ConfigLoader._logger and value:
+                ConfigLoader._logger.debug("Channel ID configured", {"channel_id": value})
         if ENV_DEBUG in env_vars:
             config["debug"] = env_vars[ENV_DEBUG] == "1"
+            if ConfigLoader._logger:
+                ConfigLoader._logger.debug("Debug mode set", {"debug": config["debug"]})
         if ENV_USE_THREADS in env_vars:
             config["use_threads"] = env_vars[ENV_USE_THREADS] == "1"
+            if ConfigLoader._logger:
+                ConfigLoader._logger.debug("Thread usage configured", {"use_threads": config["use_threads"]})
         if ENV_CHANNEL_TYPE in env_vars:
             channel_type = env_vars[ENV_CHANNEL_TYPE]
             if channel_type in ["text", "forum"]:
@@ -135,9 +164,19 @@ class ConfigLoader:
         if ENV_ENABLED_EVENTS in env_vars:
             enabled_events = parse_event_list(env_vars[ENV_ENABLED_EVENTS])
             config["enabled_events"] = enabled_events if enabled_events else None
+            if ConfigLoader._logger and enabled_events:
+                ConfigLoader._logger.debug(
+                    "Enabled events configured",
+                    {"events": enabled_events, "count": len(enabled_events)}
+                )
         if ENV_DISABLED_EVENTS in env_vars:
             disabled_events = parse_event_list(env_vars[ENV_DISABLED_EVENTS])
             config["disabled_events"] = disabled_events if disabled_events else None
+            if ConfigLoader._logger and disabled_events:
+                ConfigLoader._logger.debug(
+                    "Disabled events configured",
+                    {"events": disabled_events, "count": len(disabled_events)}
+                )
         if ENV_THREAD_STORAGE_PATH in env_vars:
             value = env_vars[ENV_THREAD_STORAGE_PATH]
             config["thread_storage_path"] = value if value else None
@@ -179,6 +218,9 @@ class ConfigLoader:
     @staticmethod
     def load() -> Config:
         """Load Discord configuration with clear precedence: env vars override file config."""
+        if ConfigLoader._logger:
+            ConfigLoader._logger.info("Starting configuration load")
+        
         # 1. Start with defaults
         config = ConfigLoader._get_default_config()
 
@@ -186,22 +228,69 @@ class ConfigLoader:
         env_file = Path("/home/ubuntu/claude_code_event_notifier/.env")
         if env_file.exists():
             try:
+                if ConfigLoader._logger:
+                    ConfigLoader._logger.debug(f"Loading .env file from {env_file}")
                 env_vars = parse_env_file(env_file)
                 ConfigLoader._update_config_from_dict(config, env_vars)
-            except Exception:
+                if ConfigLoader._logger:
+                    ConfigLoader._logger.info(
+                        "Successfully loaded .env file",
+                        {"path": str(env_file), "var_count": len(env_vars)}
+                    )
+            except Exception as e:
                 # Don't exit during tests - just skip the file
+                if ConfigLoader._logger:
+                    ConfigLoader._logger.warning(
+                        "Failed to load .env file",
+                        {"path": str(env_file), "error": str(e)}
+                    )
                 pass
 
         # 3. Environment variables override file config
+        if ConfigLoader._logger:
+            ConfigLoader._logger.debug("Loading from environment variables")
         ConfigLoader._update_config_from_environment(config)
+        
+        if ConfigLoader._logger:
+            # Log final configuration (without sensitive values)
+            sanitized_config = {
+                "webhook_url": "***" if config["webhook_url"] else None,
+                "bot_token": "***" if config["bot_token"] else None,
+                "channel_id": config["channel_id"],
+                "debug": config["debug"],
+                "use_threads": config["use_threads"],
+                "channel_type": config["channel_type"],
+                "thread_prefix": config["thread_prefix"],
+                "mention_user_id": config["mention_user_id"],
+                "enabled_events": config["enabled_events"],
+                "disabled_events": config["disabled_events"],
+                "thread_storage_path": config["thread_storage_path"],
+                "thread_cleanup_days": config["thread_cleanup_days"],
+            }
+            ConfigLoader._logger.info(
+                "Configuration loaded successfully",
+                {"config": sanitized_config}
+            )
 
         return config
 
     @staticmethod
     def validate(config: Config) -> None:
         """Validate configuration."""
+        if ConfigLoader._logger:
+            ConfigLoader._logger.debug("Validating configuration")
+        
         if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
-            raise ConfigurationError("No Discord configuration found. Please set webhook URL or bot token/channel ID.")
+            error_msg = "No Discord configuration found. Please set webhook URL or bot token/channel ID."
+            if ConfigLoader._logger:
+                ConfigLoader._logger.error(
+                    "Configuration validation failed",
+                    {"error": error_msg}
+                )
+            raise ConfigurationError(error_msg)
+        
+        if ConfigLoader._logger:
+            ConfigLoader._logger.info("Configuration validation passed")
 
 
 # Export all public items

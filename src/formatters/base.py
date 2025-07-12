@@ -227,6 +227,14 @@ def split_long_text(text: str, label: str, max_length: int = DiscordLimits.MAX_F
         True
     """
     if len(text) <= max_length - len(f"**{label}:**\n"):
+        logger.debug(
+            "split_long_text_no_split",
+            context={
+                "label": label,
+                "text_length": len(text),
+                "max_length": max_length
+            }
+        )
         return [f"**{label}:**\n{text}"]
 
     parts: list[str] = []
@@ -236,6 +244,17 @@ def split_long_text(text: str, label: str, max_length: int = DiscordLimits.MAX_F
     # Reserve space for label and formatting
     overhead = 30  # Space for "**Label (Part N):**\n"
     chunk_size = max_length - overhead
+
+    logger.debug(
+        "split_long_text_started",
+        context={
+            "label": label,
+            "text_length": len(text),
+            "chunk_size": chunk_size,
+            "estimated_parts": (len(text) + chunk_size - 1) // chunk_size
+        },
+        ai_todo="Splitting long text into multiple Discord-compatible parts"
+    )
 
     while remaining:
         if len(remaining) <= chunk_size:
@@ -262,7 +281,26 @@ def split_long_text(text: str, label: str, max_length: int = DiscordLimits.MAX_F
 
         # Safety check to prevent infinite loops
         if part_num > 50:
+            logger.warning(
+                "split_long_text_truncated",
+                context={
+                    "label": label,
+                    "parts_created": part_num,
+                    "remaining_length": len(remaining)
+                },
+                ai_todo="Text was too long and had to be truncated at 50 parts"
+            )
             parts.append(f"**{label} (Part {part_num}):**\n[Content too long, truncated...]")
             break
+
+    logger.info(
+        "split_long_text_complete",
+        context={
+            "label": label,
+            "original_length": len(text),
+            "parts_created": len(parts),
+            "max_length_per_part": max_length
+        }
+    )
 
     return parts

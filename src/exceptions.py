@@ -4,7 +4,7 @@ This module contains all custom exception classes used throughout
 the Discord Notifier system.
 """
 
-from typing import Optional, Any, Dict, Callable, TypeVar, ParamSpec
+from typing import Optional, Dict, Callable, TypeVar, ParamSpec, Union, Any, cast
 import traceback
 from pathlib import Path
 from datetime import UTC, datetime
@@ -16,6 +16,10 @@ from src.utils.astolfo_logger_types import AstolfoLoggerConfig
 # Type variables for generic functions
 P = ParamSpec('P')
 T = TypeVar('T')
+
+# Type alias for context values
+ContextValue = Union[str, int, float, bool, None, Dict[str, Any]]
+ContextDict = Dict[str, ContextValue]
 
 
 class DiscordNotifierError(Exception):
@@ -45,8 +49,9 @@ class DiscordNotifierError(Exception):
                 "debug_level": 3,  # Maximum debug level for exceptions
                 "log_file": log_file,
                 "rotation": {
-                    "max_size": 10 * 1024 * 1024,  # 10MB
-                    "backup_count": 5
+                    "max_file_size_mb": 10,  # 10MB
+                    "max_files": 5,
+                    "compress_old_files": True
                 }
             }
             cls._logger = AstolfoLogger(
@@ -56,7 +61,7 @@ class DiscordNotifierError(Exception):
             )
         return cls._logger
     
-    def __init__(self, message: str, **context: Any):
+    def __init__(self, message: str, **context: ContextValue):
         """Initialize exception with message and optional context.
         
         Args:
@@ -64,7 +69,7 @@ class DiscordNotifierError(Exception):
             **context: Additional context to log with the exception
         """
         super().__init__(message)
-        self.context = context
+        self.context: ContextDict = cast(ContextDict, context)
         self._log_exception()
     
     def _log_exception(self) -> None:
@@ -314,10 +319,10 @@ def log_and_reraise(func: Callable[P, T]) -> Callable[P, T]:
 
 
 def create_exception_context(
-    event_data: Optional[Dict[str, Any]] = None,
+    event_data: Optional[Dict[str, ContextValue]] = None,
     session_id: Optional[str] = None,
-    **additional_context: Any
-) -> Dict[str, Any]:
+    **additional_context: ContextValue
+) -> ContextDict:
     """Create a rich context dictionary for exception logging.
     
     Args:
@@ -330,7 +335,7 @@ def create_exception_context(
     """
     import os
     
-    context: Dict[str, Any] = {
+    context: ContextDict = {
         "timestamp": datetime.now(UTC).isoformat(),
         "process_id": os.getpid(),
     }

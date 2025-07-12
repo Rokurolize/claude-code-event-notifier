@@ -453,12 +453,14 @@ class ToolInputValidator:
             )
             return False
             
-        if not isinstance(tool_input["command"], str):
+        # Type guard ensures 'command' exists, now check its type
+        command = tool_input.get("command")
+        if not isinstance(command, str):
             logger.error(
                 "bash_tool_input_validation_failed",
                 context={
                     "reason": "Invalid command type",
-                    "command_type": type(tool_input["command"]).__name__,
+                    "command_type": type(command).__name__ if command is not None else "None",
                     "tool": "Bash"
                 },
                 ai_todo="Bash tool 'command' field must be a string"
@@ -481,12 +483,14 @@ class ToolInputValidator:
             )
             return False
             
-        if not isinstance(tool_input["file_path"], str):
+        # Type guard ensures 'file_path' exists, now check its type
+        file_path = tool_input.get("file_path")
+        if not isinstance(file_path, str):
             logger.error(
                 "file_tool_input_validation_failed",
                 context={
                     "reason": "Invalid file_path type",
-                    "file_path_type": type(tool_input["file_path"]).__name__,
+                    "file_path_type": type(file_path).__name__ if file_path is not None else "None",
                     "tool": "File operation"
                 },
                 ai_todo="File tool 'file_path' field must be a string"
@@ -509,12 +513,14 @@ class ToolInputValidator:
             )
             return False
             
-        if not isinstance(tool_input["pattern"], str):
+        # Type guard ensures 'pattern' exists, now check its type
+        pattern = tool_input.get("pattern")
+        if not isinstance(pattern, str):
             logger.error(
                 "search_tool_input_validation_failed",
                 context={
                     "reason": "Invalid pattern type",
-                    "pattern_type": type(tool_input["pattern"]).__name__,
+                    "pattern_type": type(pattern).__name__ if pattern is not None else "None",
                     "tool": "Search operation"
                 },
                 ai_todo="Search tool 'pattern' field must be a string"
@@ -527,8 +533,47 @@ class ToolInputValidator:
     def validate_web_input(tool_input: ToolInput) -> bool:
         """Validate web tool input."""
         if not is_web_tool_input(tool_input):
+            logger.error(
+                "web_tool_input_validation_failed",
+                context={
+                    "reason": "Missing required fields",
+                    "has_url": "url" in tool_input,
+                    "has_prompt": "prompt" in tool_input,
+                    "tool": "Web operation"
+                },
+                ai_todo="Web tools require both 'url' and 'prompt' fields in tool_input"
+            )
             return False
-        return isinstance(tool_input["url"], str) and isinstance(tool_input["prompt"], str)
+            
+        # Type guard ensures both fields exist, now check their types
+        url = tool_input.get("url")
+        prompt = tool_input.get("prompt")
+        
+        if not isinstance(url, str):
+            logger.error(
+                "web_tool_input_validation_failed",
+                context={
+                    "reason": "Invalid url type",
+                    "url_type": type(url).__name__ if url is not None else "None",
+                    "tool": "Web operation"
+                },
+                ai_todo="Web tool 'url' field must be a string"
+            )
+            return False
+            
+        if not isinstance(prompt, str):
+            logger.error(
+                "web_tool_input_validation_failed",
+                context={
+                    "reason": "Invalid prompt type",
+                    "prompt_type": type(prompt).__name__ if prompt is not None else "None",
+                    "tool": "Web operation"
+                },
+                ai_todo="Web tool 'prompt' field must be a string"
+            )
+            return False
+            
+        return True
 
 
 # Thread validation
@@ -551,8 +596,27 @@ def validate_thread_exists(
     """
     try:
         thread_data = http_client.get_thread_details(thread_id, bot_token)
-        return thread_data is not None
-    except Exception:
+        if thread_data is None:
+            logger.warning(
+                "thread_validation_failed",
+                context={
+                    "thread_id": thread_id,
+                    "reason": "Thread not found or not accessible"
+                },
+                ai_todo="Verify thread ID is correct and bot has access to the thread"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(
+            "thread_validation_error",
+            exception=e,
+            context={
+                "thread_id": thread_id,
+                "reason": "Exception during thread validation"
+            },
+            ai_todo="Check Discord API connection and bot permissions"
+        )
         return False
 
 

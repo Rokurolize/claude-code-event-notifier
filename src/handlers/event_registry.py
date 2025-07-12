@@ -53,7 +53,7 @@ class FormatterRegistry:
 
     def __init__(self) -> None:
         """Initialize the formatter registry with default formatters."""
-        self._logger = AstolfoLogger()
+        self._logger = AstolfoLogger(__name__)
         self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
             EventTypes.PRE_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_pre_tool_use),
             EventTypes.POST_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_post_tool_use),

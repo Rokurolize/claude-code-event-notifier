@@ -398,25 +398,33 @@ def format_write_operation_post_use(tool_input: FileOperationInput, tool_respons
     Returns:
         List of formatted description parts
     """
+    logger.debug("Formatting write operation post-use", response_type=type(tool_response).__name__)
+    
     desc_parts: list[str] = []
 
     file_path = format_file_path(tool_input.get("file_path", ""))
     add_field(desc_parts, "File", file_path, code=True)
+    logger.debug("Processing write operation", file_path=file_path)
 
     if isinstance(tool_response, dict):
         if tool_response.get("success"):
             desc_parts.append("**Status:** ✅ Success")
+            logger.info("Write operation successful", file_path=file_path)
         elif "error" in tool_response:
             # Type assertion: if "error" exists, we can safely access it
             error_value = tool_response.get("error")
             if error_value:
                 add_field(desc_parts, "Error", str(error_value))
+                logger.error("Write operation failed", file_path=file_path, error=str(error_value))
     elif isinstance(tool_response, str) and "error" in tool_response.lower():
         error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
         add_field(desc_parts, "Error", error_msg)
+        logger.error("Write operation returned error string", file_path=file_path, error_preview=error_msg[:100])
     else:
         desc_parts.append("**Status:** ✅ Completed")
+        logger.info("Write operation completed", file_path=file_path)
 
+    logger.info("Formatted write operation post-use", fields_count=len(desc_parts), has_error="Error" in str(desc_parts))
     return desc_parts
 
 
@@ -430,16 +438,21 @@ def format_task_post_use(tool_input: TaskToolInput, tool_response: ToolResponse)
     Returns:
         List of formatted description parts
     """
+    logger.debug("Formatting Task tool post-use", response_type=type(tool_response).__name__)
+    
     desc_parts: list[str] = []
 
     desc = tool_input.get("description", "")
     if desc and isinstance(desc, str):
         add_field(desc_parts, "Task", desc)
+        logger.debug("Added task description", description_length=len(desc))
 
     if isinstance(tool_response, str):
         summary = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
         desc_parts.append(f"**Result:**\n{summary}")
+        logger.info("Task completed", result_length=len(tool_response), truncated=len(tool_response) > TruncationLimits.RESULT_PREVIEW)
 
+    logger.info("Formatted Task post-use", fields_count=len(desc_parts))
     return desc_parts
 
 
@@ -453,18 +466,24 @@ def format_web_fetch_post_use(tool_input: WebFetchInput, tool_response: ToolResp
     Returns:
         List of formatted description parts
     """
+    logger.debug("Formatting WebFetch tool post-use", response_type=type(tool_response).__name__)
+    
     desc_parts: list[str] = []
 
     url: str = tool_input.get("url", "")
     add_field(desc_parts, "URL", url, code=True)
+    logger.debug("Processing WebFetch response", url=url)
 
     if isinstance(tool_response, str):
         if "error" in tool_response.lower():
             error_msg = truncate_string(tool_response, TruncationLimits.PROMPT_PREVIEW)
             add_field(desc_parts, "Error", error_msg)
+            logger.error("WebFetch failed", url=url, error_preview=error_msg[:100])
         else:
             add_field(desc_parts, "Content length", f"{len(tool_response)} chars")
+            logger.info("WebFetch successful", url=url, content_length=len(tool_response))
 
+    logger.info("Formatted WebFetch post-use", fields_count=len(desc_parts), has_error="error" in str(tool_response).lower() if isinstance(tool_response, str) else False)
     return desc_parts
 
 
@@ -477,12 +496,17 @@ def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
     Returns:
         List of formatted description parts
     """
+    logger.warning("Formatting unknown tool post-use", response_type=type(tool_response).__name__)
+    
     desc_parts: list[str] = []
 
     if isinstance(tool_response, dict):
         desc_parts.append(format_json_field(tool_response, "Response", TruncationLimits.RESULT_PREVIEW))
+        logger.info("Formatted dict response", keys=list(tool_response.keys()))
     elif isinstance(tool_response, str):
         response_str = truncate_string(tool_response, TruncationLimits.RESULT_PREVIEW)
         add_field(desc_parts, "Response", response_str)
+        logger.info("Formatted string response", length=len(tool_response), truncated=len(tool_response) > TruncationLimits.RESULT_PREVIEW)
 
+    logger.info("Formatted unknown tool post-use", fields_count=len(desc_parts))
     return desc_parts

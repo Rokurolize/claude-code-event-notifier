@@ -115,7 +115,7 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     Returns:
         Discord embed with formatted pre-tool-use information
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
@@ -208,7 +208,7 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
     Returns:
         Discord embed with formatted post-tool-use information
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     tool_response = event_data.get("tool_response", {})
@@ -305,7 +305,7 @@ def format_notification(event_data: NotificationEventData | dict[str, object], s
     Returns:
         Discord embed with formatted notification
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     message = event_data.get("message", "System notification")
     
     logger.info(
@@ -363,7 +363,7 @@ def format_stop(event_data: StopEventData | dict[str, object], session_id: str) 
     Returns:
         Discord embed with formatted stop event
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
     
     logger.info(
@@ -410,7 +410,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     Returns:
         Discord embed with formatted subagent stop event
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
     fields_content: list[tuple[str, str]] = []
     
@@ -496,7 +496,7 @@ def format_default_impl(
     Returns:
         Discord embed with generic event formatting
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
     
     logger.warning(
@@ -553,7 +553,7 @@ def format_event(
     Returns:
         Discord message with formatted embed
     """
-    logger = AstolfoLogger()
+    logger = AstolfoLogger(__name__)
     timestamp = datetime.now(UTC).isoformat()
     session_id_raw = event_data.get("session_id", "unknown")
     session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"

@@ -6,6 +6,11 @@ to improve type safety and reduce mypy errors.
 
 from typing import Dict, List, Optional, Union, TypedDict, NotRequired
 from typing_extensions import TypeAlias
+from src.utils.astolfo_logger import AstolfoLogger
+
+# Initialize logger for module
+_logger = AstolfoLogger(__name__)
+_logger.debug("Loading type aliases module")
 
 # JSON Primitive Types
 JSONPrimitive: TypeAlias = Union[str, int, float, bool, None]

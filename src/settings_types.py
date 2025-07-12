@@ -11,6 +11,15 @@ from typing import (
     TypedDict,
 )
 
+# Import AstolfoLogger for module loading debug
+from src.utils.astolfo_logger import AstolfoLogger
+
+# Initialize logger for this module
+logger = AstolfoLogger(__name__)
+
+# Log module loading
+logger.debug("Loading settings_types module with TypedDict definitions")
+
 # Python 3.13+ ReadOnly - use typing_extensions for compatibility
 try:
     from typing import ReadOnly

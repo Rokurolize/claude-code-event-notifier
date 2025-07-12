@@ -41,7 +41,6 @@ class TestArchivedThreadSearch(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test fixtures."""
         self.logger = AstolfoLogger("test")
-        self.logger.setLevel(logging.DEBUG)
 
         # Mock config
         self.config: Config = {
@@ -293,7 +292,5 @@ class TestArchivedThreadSearch(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    # Set up logging for tests
-    # BasicConfig removed - AstolfoLogger handles configurations - %(name)s - %(levelname)s - %(message)s")
-
+    # AstolfoLogger handles configuration
     unittest.main()

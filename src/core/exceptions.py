@@ -5,6 +5,11 @@ This module provides a comprehensive exception hierarchy for handling
 various error conditions in the Discord notification system.
 """
 
+from src.utils.astolfo_logger import setup_astolfo_logger
+
+# Initialize logger for exceptions
+logger = setup_astolfo_logger(__name__)
+
 
 class DiscordNotifierError(Exception):
     """Base exception for Discord notifier.
@@ -20,6 +25,14 @@ class DiscordNotifierError(Exception):
         except DiscordNotifierError as e:
             logger.error("Discord notifier error: %s", e)
     """
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        logger.exception(
+            "DiscordNotifierError raised",
+            error_type=self.__class__.__name__,
+            error_message=message,
+        )
 
 
 class ConfigurationError(DiscordNotifierError):
@@ -135,9 +148,17 @@ class ThreadManagementError(DiscordNotifierError):
     """
 
     def __init__(self, message: str, session_id: str | None = None, thread_id: str | None = None):
-        super().__init__(message)
+        # Don't call parent __init__ directly to avoid double logging
+        Exception.__init__(self, message)
         self.session_id = session_id
         self.thread_id = thread_id
+        logger.exception(
+            "ThreadManagementError raised",
+            error_type=self.__class__.__name__,
+            error_message=message,
+            session_id=session_id,
+            thread_id=thread_id,
+        )
 
 
 class ThreadStorageError(DiscordNotifierError):
@@ -164,5 +185,13 @@ class ThreadStorageError(DiscordNotifierError):
     """
 
     def __init__(self, message: str, original_error: Exception | None = None):
-        super().__init__(message)
+        # Don't call parent __init__ directly to avoid double logging
+        Exception.__init__(self, message)
         self.original_error = original_error
+        logger.exception(
+            "ThreadStorageError raised",
+            error_type=self.__class__.__name__,
+            error_message=message,
+            original_error=str(original_error) if original_error else None,
+            original_error_type=type(original_error).__name__ if original_error else None,
+        )

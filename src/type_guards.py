@@ -25,6 +25,7 @@ except ImportError:
 # Import Discord notifier types from reorganized modules
 from src.core.constants import EventTypes as EventType
 from src.core.constants import ToolNames as ToolName
+from src.utils.astolfo_logger import AstolfoLogger
 from src.type_aliases import (
     DiscordEmbed,
     DiscordMessage,
@@ -46,6 +47,9 @@ from src.settings_types import (
     NonToolHookConfig,
     ToolHookConfig,
 )
+
+# Initialize logger for type guard debugging
+logger = AstolfoLogger("type_guards")
 
 
 # Define TypedDicts for event data structures
@@ -197,7 +201,18 @@ EventData = UnionType[
 
 def is_non_empty_string(value: object) -> TypeIs[str]:
     """Check if value is a non-empty string."""
-    return isinstance(value, str) and len(value.strip()) > 0
+    result = isinstance(value, str) and len(value.strip()) > 0
+    if not result:
+        logger.debug(
+            "is_non_empty_string check failed",
+            context={
+                "value_type": type(value).__name__,
+                "value_repr": repr(value)[:100],  # Truncate for safety
+                "is_string": isinstance(value, str),
+                "is_empty": isinstance(value, str) and len(value.strip()) == 0 if isinstance(value, str) else None
+            }
+        )
+    return result
 
 
 def is_string_or_none(value: object) -> TypeIs[str | None]:
@@ -217,7 +232,25 @@ def is_number_or_none(value: object) -> TypeIs[int | float | None]:
 
 def is_dict_with_str_keys(value: object) -> TypeIs[dict[str, object]]:
     """Check if value is a dictionary with string keys."""
-    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+    if not isinstance(value, dict):
+        logger.debug(
+            "is_dict_with_str_keys: not a dict",
+            context={"value_type": type(value).__name__}
+        )
+        return False
+    
+    non_str_keys = [key for key in value if not isinstance(key, str)]
+    if non_str_keys:
+        logger.debug(
+            "is_dict_with_str_keys: found non-string keys",
+            context={
+                "non_str_keys": [str(k) for k in non_str_keys[:5]],  # First 5 non-string keys
+                "total_non_str": len(non_str_keys)
+            }
+        )
+        return False
+    
+    return True
 
 
 def is_list_of_dicts(value: object) -> TypeIs[list[dict[str, object]]]:
@@ -275,19 +308,43 @@ def is_hook_entry_list(value: object) -> TypeIs[list[HookEntry]]:
 def is_hook_config(value: object) -> TypeIs[HookConfig]:
     """Check if value is a valid HookConfig."""
     if not isinstance(value, dict):
+        logger.debug(
+            "is_hook_config: not a dict",
+            context={"value_type": type(value).__name__}
+        )
         return False
 
     # Must have a hooks list
-    if "hooks" not in value or not is_hook_entry_list(value["hooks"]):
+    if "hooks" not in value:
+        logger.debug("is_hook_config: missing 'hooks' key")
+        return False
+    
+    if not is_hook_entry_list(value["hooks"]):
+        logger.debug(
+            "is_hook_config: invalid hooks list",
+            context={"hooks_type": type(value["hooks"]).__name__}
+        )
         return False
 
     # If matcher is present, it must be a string
     if "matcher" in value and not isinstance(value["matcher"], str):
+        logger.debug(
+            "is_hook_config: invalid matcher type",
+            context={"matcher_type": type(value["matcher"]).__name__}
+        )
         return False
 
     # No other keys should be present
     allowed_keys = {"hooks", "matcher"}
-    return all(key in allowed_keys for key in value)
+    extra_keys = [key for key in value if key not in allowed_keys]
+    if extra_keys:
+        logger.debug(
+            "is_hook_config: unexpected keys",
+            context={"extra_keys": extra_keys}
+        )
+        return False
+    
+    return True
 
 
 def is_tool_hook_config(value: object) -> TypeIs[ToolHookConfig]:
@@ -370,10 +427,20 @@ def is_discord_footer(value: object) -> TypeIs[DiscordFooter]:
 def is_discord_embed(value: object) -> TypeIs[DiscordEmbed]:
     """Check if value is a valid DiscordEmbed."""
     if not isinstance(value, dict):
+        logger.debug(
+            "is_discord_embed: not a dict",
+            context={"value_type": type(value).__name__}
+        )
         return False
 
     # Check optional fields with helper function
-    return _validate_discord_embed_fields(value)
+    result = _validate_discord_embed_fields(value)
+    if not result:
+        logger.debug(
+            "is_discord_embed: field validation failed",
+            context={"value_keys": list(value.keys())}
+        )
+    return result
 
 
 def _validate_discord_embed_fields(value: dict[str, object]) -> bool:
@@ -691,20 +758,54 @@ def is_base_event_data(value: object) -> TypeIs[BaseEventData]:
 def is_pre_tool_use_event_data(value: object) -> TypeIs[PreToolUseEventData]:
     """Check if value is a valid PreToolUseEventData."""
     if not isinstance(value, dict):
+        logger.debug(
+            "is_pre_tool_use_event_data: not a dict",
+            context={"value_type": type(value).__name__}
+        )
         return False
     
     # Check base event data fields
-    if not all(
-        field in value and isinstance(value[field], str) 
-        for field in ["session_id", "transcript_path", "hook_event_name"]
-    ):
+    base_fields = ["session_id", "transcript_path", "hook_event_name"]
+    missing_fields = [f for f in base_fields if f not in value]
+    if missing_fields:
+        logger.debug(
+            "is_pre_tool_use_event_data: missing base fields",
+            context={"missing_fields": missing_fields}
+        )
+        return False
+    
+    invalid_fields = [f for f in base_fields if f in value and not isinstance(value[f], str)]
+    if invalid_fields:
+        logger.debug(
+            "is_pre_tool_use_event_data: invalid base field types",
+            context={"invalid_fields": [f"{f}: {type(value[f]).__name__}" for f in invalid_fields]}
+        )
         return False
 
     # Check additional required fields for tool events
-    if "tool_name" not in value or not isinstance(value["tool_name"], str):
+    if "tool_name" not in value:
+        logger.debug("is_pre_tool_use_event_data: missing 'tool_name'")
         return False
-
-    return "tool_input" in value and isinstance(value["tool_input"], dict)
+    
+    if not isinstance(value["tool_name"], str):
+        logger.debug(
+            "is_pre_tool_use_event_data: invalid tool_name type",
+            context={"tool_name_type": type(value["tool_name"]).__name__}
+        )
+        return False
+    
+    if "tool_input" not in value:
+        logger.debug("is_pre_tool_use_event_data: missing 'tool_input'")
+        return False
+    
+    if not isinstance(value["tool_input"], dict):
+        logger.debug(
+            "is_pre_tool_use_event_data: invalid tool_input type",
+            context={"tool_input_type": type(value["tool_input"]).__name__}
+        )
+        return False
+    
+    return True
 
 
 def is_post_tool_use_event_data(value: object) -> TypeIs[PostToolUseEventData]:
@@ -921,34 +1022,81 @@ def validate_and_narrow_hook_config(value: object, event_type: str) -> ToolHookC
 
 def validate_and_narrow_event_data(value: object, event_type: str) -> EventData:
     """Validate and narrow event data for a specific event type."""
+    logger.debug(
+        "validate_and_narrow_event_data",
+        context={
+            "event_type": event_type,
+            "value_type": type(value).__name__
+        }
+    )
+    
     if not is_event_data(value):
+        logger.error(
+            "validate_and_narrow_event_data: not valid event data",
+            context={
+                "event_type": event_type,
+                "value_type": type(value).__name__,
+                "value_repr": repr(value)[:200]
+            }
+        )
         raise TypeError(f"Invalid event data: {value}")
 
     if event_type == "PreToolUse":
         if not is_pre_tool_use_event_data(value):
+            logger.error(
+                "validate_and_narrow_event_data: invalid PreToolUse data",
+                context={"value_keys": list(value.keys()) if isinstance(value, dict) else None}
+            )
             raise ValueError(f"Invalid PreToolUse event data: {value}")
         return value  # Type narrowed by type guard
     elif event_type == "PostToolUse":
         if not is_post_tool_use_event_data(value):
+            logger.error(
+                "validate_and_narrow_event_data: invalid PostToolUse data",
+                context={"value_keys": list(value.keys()) if isinstance(value, dict) else None}
+            )
             raise ValueError(f"Invalid PostToolUse event data: {value}")
         return value  # Type narrowed by type guard
     elif event_type == "Notification":
         if not is_notification_event_data(value):
+            logger.error(
+                "validate_and_narrow_event_data: invalid Notification data",
+                context={"value_keys": list(value.keys()) if isinstance(value, dict) else None}
+            )
             raise ValueError(f"Invalid Notification event data: {value}")
         return value  # Type narrowed by type guard
     elif event_type == "Stop":
         if not is_stop_event_data(value):
+            logger.error(
+                "validate_and_narrow_event_data: invalid Stop data",
+                context={"value_keys": list(value.keys()) if isinstance(value, dict) else None}
+            )
             raise ValueError(f"Invalid Stop event data: {value}")
         return value  # Type narrowed by type guard
     elif event_type == "SubagentStop":
         if not is_subagent_stop_event_data(value):
+            logger.error(
+                "validate_and_narrow_event_data: invalid SubagentStop data",
+                context={"value_keys": list(value.keys()) if isinstance(value, dict) else None}
+            )
             raise ValueError(f"Invalid SubagentStop event data: {value}")
         return value  # Type narrowed by type guard
     else:
         # For unknown event types, return as generic dict
         if isinstance(value, dict):
+            logger.warning(
+                "validate_and_narrow_event_data: unknown event type",
+                context={"event_type": event_type}
+            )
             return value
         else:
+            logger.error(  # type: ignore[unreachable]
+                "validate_and_narrow_event_data: unknown event type with non-dict data",
+                context={
+                    "event_type": event_type,
+                    "value_type": type(value).__name__
+                }
+            )
             raise ValueError(f"Unknown event type {event_type} with non-dict data: {value}")
 
 
