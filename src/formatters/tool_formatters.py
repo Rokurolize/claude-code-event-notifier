@@ -187,7 +187,8 @@ def format_search_tool_pre_use(tool_name: str, tool_input: SearchToolInput) -> l
         add_field(desc_parts, "Path", path, code=True)
 
     if tool_name == ToolNames.GREP.value:
-        include: str = tool_input.get("include", "")
+        include_raw = tool_input.get("include", "")
+        include = str(include_raw) if include_raw else ""
         if include:
             add_field(desc_parts, "Include", include, code=True)
 
@@ -204,8 +205,10 @@ def format_task_pre_use(tool_input: TaskToolInput) -> list[str]:
         List of formatted description parts
     """
     desc_parts: list[str] = []
-    desc: str = tool_input.get("description", "")
-    prompt: str = tool_input.get("prompt", "")
+    desc_raw = tool_input.get("description", "")
+    desc = str(desc_raw) if desc_raw else ""
+    prompt_raw = tool_input.get("prompt", "")
+    prompt = str(prompt_raw) if prompt_raw else ""
 
     if desc:
         add_field(desc_parts, "Task", desc)

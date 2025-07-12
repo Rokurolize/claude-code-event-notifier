@@ -95,6 +95,14 @@ ToolResponse = str | dict[str, str | int | float | bool | list[str]] | list[dict
 # Union type for all event data
 EventData = Union[ToolEventData, NotificationEventData, StopEventData, SubagentStopEventData]
 
+# Type for subagent message
+class SubagentMessage(TypedDict):
+    """Structure for subagent messages from transcript."""
+    timestamp: str
+    type: str
+    role: str
+    content: str | None
+
 
 def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEmbed:
     """Format PreToolUse event with detailed information.
@@ -111,7 +119,7 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
 
     # Get full session ID for transcript lookup
-    full_session_id = event_data.get("session_id", "")
+    full_session_id = str(event_data.get("session_id", ""))
 
     # Initialize embed with all required fields
     embed: DiscordEmbed = {
@@ -139,16 +147,16 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     elif tool_name == "Task":
         # For Task tool, handle prompt specially to use full description space
         task_input_typed = cast("TaskToolInput", tool_input)
-        task_desc = task_input_typed.get("description", "")
-        task_prompt = task_input_typed.get("prompt", "")
+        task_desc = str(task_input_typed.get("description", ""))
+        task_prompt = str(task_input_typed.get("prompt", ""))
         
         if task_desc:
             add_field(desc_parts, "Task", task_desc)
             
         # Try to get full prompt from transcript if available
-        transcript_path = event_data.get("transcript_path")
-        if transcript_path and isinstance(transcript_path, str):
-            full_prompt = get_full_task_prompt(transcript_path, full_session_id)
+        transcript_path_raw = event_data.get("transcript_path")
+        if transcript_path_raw and isinstance(transcript_path_raw, str):
+            full_prompt = get_full_task_prompt(transcript_path_raw, full_session_id)
             if full_prompt:
                 task_prompt = full_prompt
                 
@@ -251,7 +259,7 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
     return embed
 
 
-def format_notification(event_data: NotificationEventData, session_id: str) -> DiscordEmbed:
+def format_notification(event_data: NotificationEventData | dict[str, object], session_id: str) -> DiscordEmbed:
     """Format Notification event with full details.
 
     Args:
@@ -270,18 +278,26 @@ def format_notification(event_data: NotificationEventData, session_id: str) -> D
     ]
 
     # Add any additional data from the event
-    extra_keys: list[str] = [
-        k for k in event_data if k not in ["message", "session_id", "transcript_path", "hook_event_name"]
-    ]
+    if isinstance(event_data, dict):
+        extra_keys: list[str] = [
+            k for k in event_data if k not in ["message", "session_id", "transcript_path", "hook_event_name"]
+        ]
 
-    if extra_keys:
-        for key in extra_keys:
-            value = event_data[key]
-            if isinstance(value, (str, int, float, bool)):
-                add_field(desc_parts, key.title(), str(value))
-            else:
-                # For complex types, show as JSON
-                desc_parts.append(format_json_field(value, key.title(), TruncationLimits.PROMPT_PREVIEW))
+        if extra_keys:
+            for key in extra_keys:
+                if key in ["message", "level", "timestamp"]:
+                    value = event_data.get(key, "")
+                    if isinstance(value, (str, int, float, bool)):
+                        add_field(desc_parts, key.title(), str(value))
+                else:
+                    # For other keys, try to get value safely
+                    value = event_data.get(key)
+                    if value is not None:
+                        if isinstance(value, (str, int, float, bool)):
+                            add_field(desc_parts, key.title(), str(value))
+                        else:
+                            # For complex types, show as JSON
+                            desc_parts.append(format_json_field(value, key.title(), TruncationLimits.PROMPT_PREVIEW))
 
     return {
         "title": "📢 Notification",
@@ -293,7 +309,7 @@ def format_notification(event_data: NotificationEventData, session_id: str) -> D
     }
 
 
-def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
+def format_stop(event_data: StopEventData | dict[str, object], session_id: str) -> DiscordEmbed:
     """Format Stop event with session details.
 
     Args:
@@ -309,15 +325,18 @@ def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
     add_field(desc_parts, "Ended at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
 
     # Add transcript path if available
-    transcript_path = event_data.get("transcript_path", "")
-    if transcript_path:
-        add_field(desc_parts, "Transcript", transcript_path, code=True)
+    transcript_path_raw = event_data.get("transcript_path", "")
+    if transcript_path_raw and isinstance(transcript_path_raw, str):
+        add_field(desc_parts, "Transcript", transcript_path_raw, code=True)
 
     # Add any session statistics if available
-    for key in ["duration", "tools_used", "messages_exchanged"]:
-        if key in event_data:
-            label = key.replace("_", " ").title()
-            add_field(desc_parts, label, str(event_data[key]))
+    if isinstance(event_data, dict):
+        for key in ["duration", "tools_used", "messages_exchanged"]:
+            if key in event_data:
+                value = event_data.get(key)
+                if value is not None:
+                    label = key.replace("_", " ").title()
+                    add_field(desc_parts, label, str(value))
 
     return {
         "title": "🏁 Session Ended",
@@ -343,7 +362,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     fields_content: list[tuple[str, str]] = []
 
     # Get full session ID for transcript lookup
-    full_session_id = event_data.get("session_id", "")
+    full_session_id = str(event_data.get("session_id", ""))
 
     add_field(desc_parts, "Session", session_id, code=True)
     add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
@@ -369,14 +388,17 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         add_field(desc_parts, "Tools Used", str(tools))
 
     # Try to get subagent messages from transcript
-    transcript_path = event_data.get("transcript_path")
-    if transcript_path and isinstance(transcript_path, str):
-        subagent_msgs = get_subagent_messages(transcript_path, full_session_id, limit=50)  # Increased limit
+    transcript_path_raw = event_data.get("transcript_path")
+    if transcript_path_raw and isinstance(transcript_path_raw, str):
+        subagent_msgs_raw = get_subagent_messages(transcript_path_raw, full_session_id, limit=50)  # type: ignore[misc]  # External function returns Any
+        # Cast to avoid Any type issues - we validate structure below
+        subagent_msgs = cast(list[SubagentMessage], subagent_msgs_raw)
         if subagent_msgs:
             # Add messages as separate fields for better readability
             for i, msg in enumerate(subagent_msgs):
-                content = msg.get("content", "")
-                if content:
+                # Extract content safely
+                content = msg.get("content")
+                if content is not None and isinstance(content, str):
                     # Each message becomes a field
                     field_name = f"Message {i+1}"
                     fields_content.append((field_name, content))
@@ -457,17 +479,20 @@ def format_event(
         Discord message with formatted embed
     """
     timestamp = datetime.now(UTC).isoformat()
-    session_id = event_data.get("session_id", "unknown")[:8]
+    session_id_raw = event_data.get("session_id", "unknown")
+    session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"
 
     # Format the event using the appropriate formatter
     embed = formatter_func(event_data, session_id)
 
     # Enforce Discord's length limits
-    if "title" in embed and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
-        embed["title"] = truncate_string(embed["title"], DiscordLimits.MAX_TITLE_LENGTH)
+    title = embed.get("title")
+    if title is not None and len(title) > DiscordLimits.MAX_TITLE_LENGTH:
+        embed["title"] = truncate_string(title, DiscordLimits.MAX_TITLE_LENGTH)
 
-    if "description" in embed and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
-        embed["description"] = truncate_string(embed["description"], DiscordLimits.MAX_DESCRIPTION_LENGTH)
+    description = embed.get("description")
+    if description is not None and len(description) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
+        embed["description"] = truncate_string(description, DiscordLimits.MAX_DESCRIPTION_LENGTH)
 
     # Add common fields
     embed["timestamp"] = timestamp
@@ -481,7 +506,7 @@ def format_event(
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
     # Create message with embeds
-    message: DiscordMessage = {"embeds": [embed]}
+    message: DiscordMessage = {"embeds": [embed], "content": None}
 
     # Add user mention for Notification and Stop events if configured
     if event_type in [
@@ -490,7 +515,7 @@ def format_event(
     ] and config.get("mention_user_id"):
         # Extract appropriate message based on event type
         if event_type == EventTypes.NOTIFICATION.value:
-            display_message = event_data.get("message", "System notification")
+            display_message = str(event_data.get("message", "System notification"))
         else:  # Stop event
             display_message = "Session ended"
         # Include both mention and message for better Windows notification visibility

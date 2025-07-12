@@ -5,16 +5,27 @@ allowing dynamic registration and lookup of formatters by event type.
 """
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Protocol, cast
 
 # Try to import types
 try:
-    from src.type_defs.events import EventData
+    from src.type_defs.events import (
+        EventData,
+        PreToolUseEventData,
+        PostToolUseEventData,
+        NotificationEventData,
+        StopEventData,
+        SubagentStopEventData
+    )
     from src.type_defs.discord import DiscordEmbed, DiscordMessage
     from src.type_defs.config import Config
 except ImportError:
     # Fallback if modules not available
-    from discord_notifier import EventData, DiscordEmbed, DiscordMessage, Config  # type: ignore
+    from discord_notifier import (  # type: ignore
+        EventData, DiscordEmbed, DiscordMessage, Config,
+        PreToolUseEventData, PostToolUseEventData,
+        NotificationEventData, StopEventData, SubagentStopEventData
+    )
 
 # Try to import constants
 try:
@@ -30,7 +41,7 @@ try:
         format_notification,
         format_stop,
         format_subagent_stop,
-        format_default_event,
+        format_default,
     )
 except ImportError:
     # These will be provided by discord_notifier
@@ -40,8 +51,41 @@ except ImportError:
         format_notification,
         format_stop,
         format_subagent_stop,
-        format_default_event,
+        format_default,
     )
+
+
+class EventFormatter(Protocol):
+    """Protocol for event formatter functions."""
+    
+    def __call__(self, event_data: EventData, session_id: str) -> DiscordEmbed:
+        """Format event data into Discord embed.
+        
+        Args:
+            event_data: Event-specific data
+            session_id: Session identifier
+            
+        Returns:
+            Formatted Discord embed
+        """
+        ...
+
+
+def _create_default_formatter(event_type: str) -> EventFormatter:
+    """Create a default formatter for unknown event types.
+    
+    Args:
+        event_type: The event type to create formatter for
+        
+    Returns:
+        EventFormatter that handles the event as a generic dict
+    """
+    def formatter(event_data: EventData, session_id: str) -> DiscordEmbed:
+        # Cast to dict for format_default which expects dict type
+        data_dict = cast(dict[str, str | int | float | bool], event_data)
+        return cast(DiscordEmbed, format_default(data_dict, session_id))
+    
+    return formatter
 
 
 class FormatterRegistry:
@@ -59,15 +103,15 @@ class FormatterRegistry:
     
     def __init__(self) -> None:
         """Initialize registry with default formatters."""
-        self._formatters: dict[str, Callable[[Any, str], DiscordEmbed]] = {
-            EventTypes.PRE_TOOL_USE.value: cast(Callable[[Any, str], DiscordEmbed], format_pre_tool_use),
-            EventTypes.POST_TOOL_USE.value: cast(Callable[[Any, str], DiscordEmbed], format_post_tool_use),
-            EventTypes.NOTIFICATION.value: cast(Callable[[Any, str], DiscordEmbed], format_notification),
-            EventTypes.STOP.value: cast(Callable[[Any, str], DiscordEmbed], format_stop),
-            EventTypes.SUBAGENT_STOP.value: cast(Callable[[Any, str], DiscordEmbed], format_subagent_stop),
+        self._formatters: dict[str, EventFormatter] = {
+            EventTypes.PRE_TOOL_USE.value: cast(EventFormatter, format_pre_tool_use),
+            EventTypes.POST_TOOL_USE.value: cast(EventFormatter, format_post_tool_use),
+            EventTypes.NOTIFICATION.value: cast(EventFormatter, format_notification),
+            EventTypes.STOP.value: cast(EventFormatter, format_stop),
+            EventTypes.SUBAGENT_STOP.value: cast(EventFormatter, format_subagent_stop),
         }
     
-    def get_formatter(self, event_type: str) -> Callable[[Any, str], DiscordEmbed]:
+    def get_formatter(self, event_type: str) -> EventFormatter:
         """Get formatter for event type.
         
         Args:
@@ -78,10 +122,10 @@ class FormatterRegistry:
         """
         if event_type in self._formatters:
             return self._formatters[event_type]
-        # Return a lambda that captures the event_type for unknown events
-        return lambda event_data, session_id: format_default_event(event_type, cast(EventData, event_data), session_id)
+        # Return a default formatter for unknown events
+        return _create_default_formatter(event_type)
     
-    def register(self, event_type: str, formatter: Callable[[Any, str], DiscordEmbed]) -> None:
+    def register(self, event_type: str, formatter: EventFormatter) -> None:
         """Register a new formatter.
         
         Args:

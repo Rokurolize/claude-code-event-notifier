@@ -180,7 +180,10 @@ def _handle_thread_messaging(
         # Send to existing thread
         if ctx.config["webhook_url"]:
             try:
-                return ctx.http_client.post_webhook_to_thread(ctx.config["webhook_url"], message, thread_id)
+                webhook_url = ctx.config.get("webhook_url")
+                if not isinstance(webhook_url, str):
+                    return None
+                return ctx.http_client.post_webhook_to_thread(webhook_url, message, thread_id)
             except DiscordAPIError:
                 ctx.logger.warning("Failed to send to thread, falling back to regular channel")
                 return None

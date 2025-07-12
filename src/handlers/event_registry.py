@@ -6,7 +6,7 @@ event type to formatter function mappings.
 """
 
 from collections.abc import Callable
-from typing import Union, Any, cast
+from typing import Union, cast
 
 from src.constants import EventTypes
 from src.core.http_client import DiscordEmbed
@@ -52,11 +52,11 @@ class FormatterRegistry:
     def __init__(self) -> None:
         """Initialize the formatter registry with default formatters."""
         self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
-            EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
-            EventTypes.POST_TOOL_USE.value: format_post_tool_use,
-            EventTypes.NOTIFICATION.value: format_notification,
-            EventTypes.STOP.value: format_stop,
-            EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
+            EventTypes.PRE_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_pre_tool_use),
+            EventTypes.POST_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_post_tool_use),
+            EventTypes.NOTIFICATION.value: cast(Callable[[EventData, str], DiscordEmbed], format_notification),
+            EventTypes.STOP.value: cast(Callable[[EventData, str], DiscordEmbed], format_stop),
+            EventTypes.SUBAGENT_STOP.value: cast(Callable[[EventData, str], DiscordEmbed], format_subagent_stop),
         }
 
     def get_formatter(
@@ -87,7 +87,7 @@ class FormatterRegistry:
     def register(
         self,
         event_type: str,
-        formatter: Callable[[Any, str], DiscordEmbed],
+        formatter: Callable[[EventData, str], DiscordEmbed],
     ) -> None:
         """Register a new formatter.
 

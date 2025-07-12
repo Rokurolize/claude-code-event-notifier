@@ -80,11 +80,11 @@ def validate_thread_exists(
         - parent_id: Parent channel ID
     """
     bot_token = config.get("bot_token")
-    if not thread_id or not bot_token:
+    if not thread_id or not bot_token or not isinstance(bot_token, str):
         return None
 
     try:
-        thread_details = http_client.get_thread_details(thread_id, bot_token)
+        thread_details = http_client.get_thread_details(thread_id, bot_token)  # bot_token is str here
         if thread_details:
             logger.debug("Thread %s exists and is accessible", thread_id)
             return thread_details
@@ -131,7 +131,7 @@ def find_existing_thread_by_name(
         3. None if no matches found
     """
     bot_token = config.get("bot_token")
-    if not channel_id or not thread_name or not bot_token:
+    if not channel_id or not thread_name or not bot_token or not isinstance(bot_token, str):
         return None
 
     try:
@@ -283,10 +283,12 @@ def _check_persistent_storage(
         # Use configured storage path or default
         storage_path = None
         thread_storage_path = config.get("thread_storage_path")
-        if thread_storage_path:
+        if thread_storage_path and isinstance(thread_storage_path, str):
             storage_path = Path(thread_storage_path)
 
         cleanup_days = config.get("thread_cleanup_days", 30)
+        if not isinstance(cleanup_days, int):
+            cleanup_days = 30
         storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
         stored_record = storage.get_thread(session_id)
 
@@ -345,9 +347,11 @@ def _store_thread_in_storage(
     try:
         storage_path = None
         thread_storage_path = config.get("thread_storage_path")
-        if thread_storage_path:
+        if thread_storage_path and isinstance(thread_storage_path, str):
             storage_path = Path(thread_storage_path)
         cleanup_days = config.get("thread_cleanup_days", 30)
+        if not isinstance(cleanup_days, int):
+            cleanup_days = 30
         storage = ThreadStorage(db_path=storage_path, cleanup_days=cleanup_days)
 
         storage.store_thread(
@@ -380,7 +384,7 @@ def _search_discord_for_thread(
     thread_name = f"{config['thread_prefix']} {session_id[:8]}"
     channel_id = config.get("channel_id")
 
-    if not channel_id or not config.get("bot_token"):
+    if not channel_id or not isinstance(channel_id, str) or not config.get("bot_token"):
         return None
 
     logger.debug("Searching Discord API for thread: %s", thread_name)
@@ -399,12 +403,14 @@ def _search_discord_for_thread(
     SESSION_THREAD_CACHE[session_id] = thread_id
 
     # Store in persistent storage for future use
+    thread_metadata = existing_thread.get("thread_metadata", {})
+    is_archived = thread_metadata.get("archived", False) if isinstance(thread_metadata, dict) else False
     thread_info = ThreadInfo(
         session_id=session_id,
         thread_id=thread_id,
         channel_id=channel_id,
         thread_name=thread_name,
-        is_archived=existing_thread.get("thread_metadata", {}).get("archived", False),
+        is_archived=is_archived,
     )
     _store_thread_in_storage(thread_info, config, logger)
 
@@ -438,11 +444,13 @@ def _create_new_thread(session_id: str, config: Config, http_client: HTTPClient,
 
     if config["channel_type"] == "text":
         # Text channels: Use bot API to create thread
-        if not config["bot_token"] or not config["channel_id"]:
+        bot_token = config.get("bot_token")
+        channel_id = config.get("channel_id")
+        if not bot_token or not isinstance(bot_token, str) or not channel_id or not isinstance(channel_id, str):
             logger.warning("Text channel threads require bot token and channel ID")
             return None
 
-        new_thread_id = http_client.create_text_thread(config["channel_id"], thread_name, config["bot_token"])
+        new_thread_id = http_client.create_text_thread(channel_id, thread_name, bot_token)
 
         if new_thread_id:
             # Cache the new thread
@@ -452,7 +460,7 @@ def _create_new_thread(session_id: str, config: Config, http_client: HTTPClient,
             thread_info = ThreadInfo(
                 session_id=session_id,
                 thread_id=new_thread_id,
-                channel_id=config["channel_id"],
+                channel_id=channel_id,
                 thread_name=thread_name,
                 is_archived=False,
             )
