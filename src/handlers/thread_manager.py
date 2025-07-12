@@ -188,12 +188,16 @@ def ensure_thread_is_usable(
     """
     thread_id = thread_details.get("id")
     bot_token = config.get("bot_token")
-    if not thread_id or not bot_token:
+    if not thread_id or not bot_token or not isinstance(bot_token, str):
         return False
 
     thread_metadata = thread_details.get("thread_metadata", {})
-    is_archived = thread_metadata.get("archived", False)
-    is_locked = thread_metadata.get("locked", False)
+    if isinstance(thread_metadata, dict):
+        is_archived = bool(thread_metadata.get("archived", False))
+        is_locked = bool(thread_metadata.get("locked", False))
+    else:
+        is_archived = False
+        is_locked = False
 
     # If thread is neither archived nor locked, it's already usable
     if not is_archived and not is_locked:

@@ -142,7 +142,7 @@ def split_description_to_embeds(
     for i, part in enumerate(parts[:10]):  # Discord allows max 10 embeds
         part_title = f"{title} (Part {i+1}/{len(parts)})" if len(parts) > 1 else title
 
-        embed: DiscordEmbed = {
+        part_embed: DiscordEmbed = {
             "title": part_title,
             "description": part,
             "color": color,
@@ -150,7 +150,7 @@ def split_description_to_embeds(
             "footer": {"text": footer_text} if footer_text and i == len(parts) - 1 else None,
             "fields": None
         }
-        embeds.append(embed)
+        embeds.append(part_embed)
 
     return embeds
 

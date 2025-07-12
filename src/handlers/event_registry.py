@@ -6,7 +6,7 @@ event type to formatter function mappings.
 """
 
 from collections.abc import Callable
-from typing import Union
+from typing import Union, Any, cast
 
 from src.constants import EventTypes
 from src.core.http_client import DiscordEmbed
@@ -82,12 +82,12 @@ class FormatterRegistry:
         if event_type in self._formatters:
             return self._formatters[event_type]
         # Return a lambda that captures the event_type for unknown events
-        return lambda event_data, session_id: format_default_impl(event_type, event_data, session_id)
+        return lambda event_data, session_id: format_default_impl(event_type, cast(dict[str, str | int | float | bool], event_data), session_id)
 
     def register(
         self,
         event_type: str,
-        formatter: Callable[[EventData, str], DiscordEmbed],
+        formatter: Callable[[Any, str], DiscordEmbed],
     ) -> None:
         """Register a new formatter.
 

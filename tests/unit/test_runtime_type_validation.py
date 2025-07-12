@@ -338,7 +338,7 @@ MULTI_EQUALS=value=with=equals
             assert "DISCORD_CHANNEL_ID" in env_vars
             assert "DISCORD_DEBUG" in env_vars
             assert "EMPTY_VALUE" in env_vars
-            assert "SPACES_AROUND_EQUALS " in env_vars  # Key includes trailing space
+            assert "SPACES_AROUND_EQUALS" in env_vars  # Key is stripped
             assert "MULTI_EQUALS" in env_vars
 
             # Should skip invalid lines
@@ -353,7 +353,7 @@ MULTI_EQUALS=value=with=equals
             assert env_vars["DISCORD_CHANNEL_ID"] == "123456789"
             assert env_vars["DISCORD_DEBUG"] == "1"
             assert env_vars["EMPTY_VALUE"] == ""
-            assert env_vars["SPACES_AROUND_EQUALS "] == " value_with_spaces"
+            assert env_vars["SPACES_AROUND_EQUALS"] == "value_with_spaces"
             assert env_vars["MULTI_EQUALS"] == "value=with=equals"
 
     def test_parse_env_file_with_quotes(self) -> None:

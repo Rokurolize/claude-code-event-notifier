@@ -6,21 +6,21 @@ with support for threads, message splitting, and special event handling.
 
 import logging
 import time
-from typing import Any
+from typing import Any, cast
+from src.core.http_client import DiscordEmbed
 
 # Try to import types
 try:
     from src.type_defs.config import Config
-    from src.type_defs.discord import DiscordMessage
 except ImportError:
     # Fallback if modules not available
-    from discord_notifier import Config, DiscordMessage  # type: ignore
+    from discord_notifier import Config  # type: ignore
 
-# Try to import HTTPClient
+# Try to import HTTPClient and its types
 try:
-    from src.core.http_client import HTTPClient
+    from src.core.http_client import HTTPClient, DiscordMessage
 except ImportError:
-    from discord_notifier import HTTPClient  # type: ignore
+    from discord_notifier import HTTPClient, DiscordMessage  # type: ignore
 
 # Try to import constants
 try:
@@ -28,7 +28,7 @@ try:
     from src.core.constants import DISCORD_API_BASE
 except ImportError:
     from discord_notifier import EventTypes, DiscordLimits  # type: ignore
-    DISCORD_API_BASE = "https://discord.com/api/v10"
+    DISCORD_API_BASE = "https://discord.com/api/v10"  # type: ignore[misc]
 
 # Try to import thread manager
 try:
@@ -91,7 +91,7 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
     description = embed.get("description", "")
     
     # If within limits, return as-is
-    if len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
+    if description is None or len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
         return [message]
     
     # Split the description
@@ -124,32 +124,40 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
         remaining_desc = remaining_desc[chunk_size:]
         
         # Create new message with modified embed
-        new_embed = embed.copy()
+        # Convert to regular dict to allow field deletion
+        new_embed = dict(embed)
         
         if part_num == 1:
             # First part keeps original title
             new_embed["description"] = chunk
             if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
+                desc = str(new_embed.get("description", ""))
+                new_embed["description"] = desc + "\n\n... (continued in next message)"
         else:
             # Subsequent parts get modified title and description
             original_title = embed.get("title", "Continued")
             new_embed["title"] = f"{original_title} (Part {part_num})"
             new_embed["description"] = "... (continued from previous message)\n\n" + chunk
             if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
+                desc = str(new_embed.get("description", ""))
+                new_embed["description"] = desc + "\n\n... (continued in next message)"
             
             # Remove fields from continuation messages to save space
-            new_embed["fields"] = None
+            if "fields" in new_embed:
+                del new_embed["fields"]
         
         # Remove footer from all but the last part
         if remaining_desc:
-            new_embed["footer"] = None
-            new_embed["timestamp"] = None
+            if "footer" in new_embed:
+                del new_embed["footer"]
+            if "timestamp" in new_embed:
+                del new_embed["timestamp"]
         
+        # Cast back to DiscordEmbed after modifications
+        final_embed = cast(DiscordEmbed, new_embed)
         new_message: DiscordMessage = {
-            "embeds": [new_embed],
-            "content": message.get("content")
+            "embeds": [final_embed],
+            "content": message.get("content", "")
         }
         messages.append(new_message)
         part_num += 1
@@ -215,17 +223,22 @@ def _send_stop_or_notification_event(
     """
     # 1. Send embeds-only message to thread (no mention)
     thread_id = get_or_create_thread(session_id, config, http_client, logger)
-    embeds_only_message: DiscordMessage = {"embeds": message.get("embeds", [])}
+    embeds_only_message: DiscordMessage = {
+        "embeds": message.get("embeds", []),
+        "content": ""
+    }
     thread_success = False
 
     if thread_id:
         if config["webhook_url"]:
-            thread_success = http_client.send_webhook_to_thread(
+            thread_success = http_client.post_webhook_to_thread(
                 config["webhook_url"], embeds_only_message, thread_id
             )
         elif config["bot_token"] and thread_id:
             thread_success = http_client.post_bot_api(
-                config["bot_token"], thread_id, embeds_only_message
+                f"{DISCORD_API_BASE}/channels/{thread_id}/messages",
+                embeds_only_message,
+                config["bot_token"]
             )
     else:
         logger.warning("No thread found/created for Stop/Notification event in session %s", session_id)
@@ -233,14 +246,19 @@ def _send_stop_or_notification_event(
     # 2. Send mention-only message to main channel
     main_channel_success = False
     if message.get("content"):  # Only if there's a mention
-        mention_only_message: DiscordMessage = {"content": message["content"]}
+        mention_only_message: DiscordMessage = {
+            "content": message["content"],
+            "embeds": []
+        }
         if config["webhook_url"]:
             main_channel_success = http_client.post_webhook(
                 config["webhook_url"], mention_only_message
             )
         elif config["bot_token"] and config["channel_id"]:
             main_channel_success = http_client.post_bot_api(
-                config["bot_token"], config["channel_id"], mention_only_message
+                f"{DISCORD_API_BASE}/channels/{config['channel_id']}/messages",
+                mention_only_message,
+                config["bot_token"]
             )
 
     # 3. Archive thread for Stop events
@@ -285,7 +303,7 @@ def _send_to_thread(
 
     # Try webhook first
     if config["webhook_url"]:
-        if http_client.send_webhook_to_thread(config["webhook_url"], message, thread_id):
+        if http_client.post_webhook_to_thread(config["webhook_url"], message, thread_id):
             return True
         logger.warning("Failed to send to thread %s via webhook", thread_id)
         return False
@@ -314,9 +332,19 @@ def _send_to_regular_channel(
         bool: True if message was successfully sent
     """
     if config["webhook_url"]:
-        return http_client.post_webhook(config["webhook_url"], message)
+        try:
+            return http_client.post_webhook(config["webhook_url"], message)
+        except Exception:
+            # If webhook fails, try bot API
+            if config["bot_token"] and config["channel_id"]:
+                try:
+                    return http_client.post_bot_api(
+                        f"{DISCORD_API_BASE}/channels/{config['channel_id']}/messages", message, config["bot_token"]
+                    )
+                except Exception:
+                    return False
 
-    if config["bot_token"] and config["channel_id"]:
+    elif config["bot_token"] and config["channel_id"]:
         return http_client.post_bot_api(
             f"{DISCORD_API_BASE}/channels/{config['channel_id']}/messages", message, config["bot_token"]
         )

@@ -10,7 +10,7 @@ This module provides comprehensive thread management functionality including:
 
 import logging
 from pathlib import Path
-from typing import cast
+from typing import cast, Any
 
 # Try to import types
 try:
@@ -49,8 +49,9 @@ try:
     UTILS_HELPERS_AVAILABLE = True
 except ImportError:
     # Define minimal SESSION_THREAD_CACHE if not available
-    SESSION_THREAD_CACHE: dict[str, str] = {}
     UTILS_HELPERS_AVAILABLE = False
+    # Create a module-level cache
+    SESSION_THREAD_CACHE = {}
 
 # Try to import ThreadStorage
 try:
@@ -192,7 +193,7 @@ def find_existing_thread_by_name(
     return None
 
 
-def _check_thread_state(thread_details: DiscordThread) -> tuple[bool, bool]:
+def _check_thread_state(thread_details: dict[str, object]) -> tuple[bool, bool]:
     """Check if thread is archived or locked.
 
     Args:
@@ -201,9 +202,9 @@ def _check_thread_state(thread_details: DiscordThread) -> tuple[bool, bool]:
     Returns:
         Tuple of (is_archived, is_locked)
     """
-    thread_metadata = thread_details.get("thread_metadata", {})
-    is_archived = thread_metadata.get("archived", False)
-    is_locked = thread_metadata.get("locked", False)
+    thread_metadata: dict[str, object] = cast(dict[str, object], thread_details.get("thread_metadata", {}))
+    is_archived = bool(thread_metadata.get("archived", False))
+    is_locked = bool(thread_metadata.get("locked", False))
     return is_archived, is_locked
 
 
@@ -240,40 +241,27 @@ def _try_unarchive_thread(
 
 
 # ensure_thread_is_usable implementation
-if UTILS_HELPERS_AVAILABLE:
-    def ensure_thread_is_usable(
-        thread_details: DiscordThread,
-        config: Config,
-        http_client: HTTPClient,
-        logger: logging.Logger,
-    ) -> bool:
-        """Adapter for utils_helpers.ensure_thread_is_usable."""
-        # utils_helpers version has different signature
-        channel_id = config.get("channel_id", "")
-        bot_token = config.get("bot_token", "")
-        return utils_ensure_thread_is_usable(thread_details, channel_id, http_client, bot_token)
-else:
-    def ensure_thread_is_usable(
-        thread_details: DiscordThread,
-        config: Config,
-        http_client: HTTPClient,
-        logger: logging.Logger,
-    ) -> bool:
-        """Ensure a thread is usable by unarchiving if needed."""
-        is_archived, is_locked = _check_thread_state(thread_details)
-        
-        if is_locked:
-            logger.warning("Thread %s is locked and cannot be used", thread_details["id"])
-            return False
-        
-        if is_archived:
-            bot_token = config.get("bot_token")
-            if bot_token:
-                return _try_unarchive_thread(thread_details["id"], bot_token, http_client, logger)
-            logger.warning("Thread %s is archived but no bot token available to unarchive", thread_details["id"])
-            return False
-        
-        return True
+def ensure_thread_is_usable(
+    thread_details: DiscordThread,
+    config: Config,
+    http_client: HTTPClient,
+    logger: logging.Logger,
+) -> bool:
+    """Ensure a thread is usable by unarchiving if needed."""
+    is_archived, is_locked = _check_thread_state(cast(dict[str, object], thread_details))
+    
+    if is_locked:
+        logger.warning("Thread %s is locked and cannot be used", thread_details["id"])
+        return False
+    
+    if is_archived:
+        bot_token = config.get("bot_token")
+        if bot_token:
+            return _try_unarchive_thread(thread_details["id"], bot_token, http_client, logger)
+        logger.warning("Thread %s is archived but no bot token available to unarchive", thread_details["id"])
+        return False
+    
+    return True
 
 
 def _check_cached_thread(
@@ -404,7 +392,10 @@ def _search_discord_for_thread(
     SESSION_THREAD_CACHE[session_id] = thread_id
 
     # Store in persistent storage for future use
-    is_archived = existing_thread.get("thread_metadata", {}).get("archived", False)
+    # existing_thread might have thread_metadata
+    thread_data = cast(dict[str, object], existing_thread)
+    thread_metadata = cast(dict[str, object], thread_data.get("thread_metadata", {}))
+    is_archived = bool(thread_metadata.get("archived", False))
     _store_thread_in_storage(session_id, thread_id, channel_id, thread_name, is_archived, config, logger)
     logger.info("Discovered and restored existing thread %s for session %s", thread_id, session_id)
 
@@ -477,9 +468,12 @@ def _create_new_thread(
     try:
         if config["channel_type"] == "forum":
             return _handle_forum_channel_thread(config, logger)
-
-        if config["channel_type"] == "text":
+        elif config["channel_type"] == "text":
             return _create_text_channel_thread(session_id, thread_name, config, http_client, logger)
+        else:
+            # Unknown channel type
+            logger.warning("Unknown channel type: %s", config.get("channel_type"))  # type: ignore[unreachable]
+            return None
 
     except DiscordAPIError:
         logger.exception("Discord API error creating thread for session %s", session_id)
@@ -489,9 +483,6 @@ def _create_new_thread(
         logger.exception("Thread storage error for session %s", session_id)
     except (OSError, ValueError, TypeError, RuntimeError):
         logger.exception("Unexpected error creating thread for session %s", session_id)
-    else:
-        # Unknown channel type
-        logger.warning("Unknown channel type: %s", config.get("channel_type"))
 
     return None
 

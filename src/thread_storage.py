@@ -9,14 +9,11 @@ zero-dependency storage.
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import NamedTuple, TypedDict
+from typing import Any, NamedTuple, TypedDict
 
-try:
-    from src.type_guards import is_valid_snowflake
-except ImportError:
-    from type_guards import is_valid_snowflake
+from src.type_guards import is_valid_snowflake
 
 
 class ThreadStats(TypedDict):
@@ -50,17 +47,12 @@ class ThreadRecord(NamedTuple):
     is_archived: bool
 
 
-# Import ThreadStorageError from discord_notifier to maintain consistency
-try:
-    from src.discord_notifier import ThreadStorageError
-except ImportError:
-    # Fallback definition if import fails
-    class ThreadStorageError(Exception):
-        """Base exception for thread storage operations."""
+class ThreadStorageError(Exception):
+    """Base exception for thread storage operations."""
 
-        def __init__(self, message: str, operation: str | None = None):
-            super().__init__(message)
-            self.operation = operation
+    def __init__(self, message: str, operation: str | None = None):
+        super().__init__(message)
+        self.operation = operation
 
 
 class ThreadStorage:
@@ -146,17 +138,21 @@ class ThreadStorage:
         Returns:
             True if stored successfully, False otherwise
         """
-        if not session_id or not thread_id or not channel_id:
-            self._logger.warning("Invalid parameters for thread storage")
+        if not session_id:
+            self._logger.warning("Invalid session_id for thread storage")
             return False
-
-        if not is_valid_snowflake(thread_id) or not is_valid_snowflake(channel_id):
-            self._logger.warning("Invalid Discord snowflake format")
+            
+        if not thread_id or not is_valid_snowflake(thread_id):
+            self._logger.warning("Invalid thread_id for thread storage")
+            return False
+            
+        if not channel_id or not is_valid_snowflake(channel_id):
+            self._logger.warning("Invalid channel_id for thread storage")
             return False
 
         with self._lock:
             try:
-                now = datetime.now(datetime.UTC)
+                now = datetime.now(UTC)
                 with sqlite3.connect(str(self.db_path)) as conn:
                     conn.execute(
                         """
@@ -209,10 +205,10 @@ class ThreadStorage:
                         (session_id,),
                     )
 
-                    row = cursor.fetchone()
-                    if row:
+                    row: Any = cursor.fetchone()
+                    if row is not None:
                         # Update last_used timestamp
-                        now = datetime.now(datetime.UTC)
+                        now = datetime.now(UTC)
                         conn.execute(
                             """
                             UPDATE thread_mappings
@@ -224,11 +220,11 @@ class ThreadStorage:
                         conn.commit()
 
                         return ThreadRecord(
-                            session_id=row["session_id"],
-                            thread_id=row["thread_id"],
-                            channel_id=row["channel_id"],
-                            thread_name=row["thread_name"],
-                            created_at=datetime.fromisoformat(row["created_at"]),
+                            session_id=str(row["session_id"]),
+                            thread_id=str(row["thread_id"]),
+                            channel_id=str(row["channel_id"]),
+                            thread_name=str(row["thread_name"]),
+                            created_at=datetime.fromisoformat(str(row["created_at"])),
                             last_used=now,
                             is_archived=bool(row["is_archived"]),
                         )
@@ -260,7 +256,7 @@ class ThreadStorage:
                         SET is_archived = ?, last_used = ?
                         WHERE session_id = ?
                     """,
-                        (is_archived, datetime.now(datetime.UTC), session_id),
+                        (is_archived, datetime.now(UTC), session_id),
                     )
 
                     conn.commit()
@@ -337,18 +333,25 @@ class ThreadStorage:
                         (channel_id,),
                     )
 
-                    return [
-                        ThreadRecord(
-                            session_id=row["session_id"],
-                            thread_id=row["thread_id"],
-                            channel_id=row["channel_id"],
-                            thread_name=row["thread_name"],
-                            created_at=datetime.fromisoformat(row["created_at"]),
-                            last_used=datetime.fromisoformat(row["last_used"]),
-                            is_archived=bool(row["is_archived"]),
-                        )
-                        for row in cursor.fetchall()
-                    ]
+                    results: list[ThreadRecord] = []
+                    rows: list[Any] = cursor.fetchall()
+                    for row in rows:
+                        try:
+                            record = ThreadRecord(
+                                session_id=str(row["session_id"]),
+                                thread_id=str(row["thread_id"]),
+                                channel_id=str(row["channel_id"]),
+                                thread_name=str(row["thread_name"]),
+                                created_at=datetime.fromisoformat(str(row["created_at"])),
+                                last_used=datetime.fromisoformat(str(row["last_used"])),
+                                is_archived=bool(row["is_archived"]),
+                            )
+                            results.append(record)
+                        except (ValueError, TypeError):
+                            self._logger.warning("Skipping invalid thread record")
+                            continue
+                    
+                    return results
 
             except sqlite3.Error:
                 self._logger.exception("Failed to find threads by channel")
@@ -364,10 +367,7 @@ class ThreadStorage:
         Returns:
             ThreadRecord if found, None otherwise
         """
-        if not channel_id or not thread_name:
-            return None
-
-        if not is_valid_snowflake(channel_id):
+        if not channel_id or not thread_name or not is_valid_snowflake(channel_id):
             return None
 
         with self._lock:
@@ -386,15 +386,15 @@ class ThreadStorage:
                         (channel_id, thread_name),
                     )
 
-                    row = cursor.fetchone()
-                    if row:
+                    row: Any = cursor.fetchone()
+                    if row is not None:
                         return ThreadRecord(
-                            session_id=row["session_id"],
-                            thread_id=row["thread_id"],
-                            channel_id=row["channel_id"],
-                            thread_name=row["thread_name"],
-                            created_at=datetime.fromisoformat(row["created_at"]),
-                            last_used=datetime.fromisoformat(row["last_used"]),
+                            session_id=str(row["session_id"]),
+                            thread_id=str(row["thread_id"]),
+                            channel_id=str(row["channel_id"]),
+                            thread_name=str(row["thread_name"]),
+                            created_at=datetime.fromisoformat(str(row["created_at"])),
+                            last_used=datetime.fromisoformat(str(row["last_used"])),
                             is_archived=bool(row["is_archived"]),
                         )
 
@@ -410,7 +410,7 @@ class ThreadStorage:
         Returns:
             Number of records removed
         """
-        cutoff_date = datetime.now(datetime.UTC) - timedelta(days=self.cleanup_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=self.cleanup_days)
 
         with self._lock:
             try:
@@ -454,14 +454,21 @@ class ThreadStorage:
                         FROM thread_mappings
                     """)
 
-                    row = cursor.fetchone()
-                    if row:
+                    row: Any = cursor.fetchone()
+                    if row is not None:
+                        # SQLite aggregate functions return int/None
+                        total: int = row[0] or 0
+                        archived: int = row[1] or 0
+                        active: int = row[2] or 0
+                        oldest: str | None = row[3]
+                        recent: str | None = row[4]
+                        
                         return ThreadStats(
-                            total_threads=row[0],
-                            archived_threads=row[1],
-                            active_threads=row[2],
-                            oldest_thread=row[3],
-                            most_recent_use=row[4],
+                            total_threads=total,
+                            archived_threads=archived,
+                            active_threads=active,
+                            oldest_thread=oldest,
+                            most_recent_use=recent,
                             db_path=str(self.db_path),
                             cleanup_days=self.cleanup_days,
                         )

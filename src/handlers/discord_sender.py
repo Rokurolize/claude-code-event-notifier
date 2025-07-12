@@ -45,14 +45,19 @@ def _send_embed_to_thread(
     Returns:
         bool: True if successful, False otherwise
     """
-    thread_message: DiscordMessage = {"embeds": message.get("embeds", [])}
+    thread_message: DiscordMessage = {
+        "content": None,
+        "embeds": message.get("embeds", [])
+    }
 
     try:
-        if ctx.config["webhook_url"]:
-            return ctx.http_client.post_webhook_to_thread(ctx.config["webhook_url"], thread_message, thread_id)
-        if ctx.config["bot_token"]:
+        webhook_url = ctx.config.get("webhook_url")
+        if webhook_url and isinstance(webhook_url, str):
+            return ctx.http_client.post_webhook_to_thread(webhook_url, thread_message, thread_id)
+        bot_token = ctx.config.get("bot_token")
+        if bot_token and isinstance(bot_token, str):
             url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
-            return ctx.http_client.post_bot_api(url, thread_message, ctx.config["bot_token"])
+            return ctx.http_client.post_bot_api(url, thread_message, bot_token)
     except DiscordAPIError as e:
         ctx.logger.warning("Failed to send embed to thread %s: %s", thread_id, e)
 
@@ -79,21 +84,30 @@ def _send_mention_to_channel(
 
     # Extract display message based on event type
     if event_type == EventTypes.NOTIFICATION.value:
-        display_message = (
-            message.get("content", "").replace(f"<@{ctx.config['mention_user_id']}> ", "") or "System notification"
-        )
+        original_content = message.get("content", "")
+        if original_content:
+            display_message = original_content.replace(f"<@{ctx.config['mention_user_id']}> ", "") or "System notification"
+        else:
+            display_message = "System notification"
     else:  # Stop event
         display_message = "Session ended"
 
     # Create mention-only message
-    mention_message: DiscordMessage = {"content": f"<@{ctx.config['mention_user_id']}> {display_message}"}
+    mention_message: DiscordMessage = {
+        "content": f"<@{ctx.config['mention_user_id']}> {display_message}",
+        "embeds": None
+    }
 
     try:
-        if ctx.config["webhook_url"]:
-            return ctx.http_client.post_webhook(ctx.config["webhook_url"], mention_message)
-        if ctx.config["bot_token"] and ctx.config["channel_id"]:
-            url = f"https://discord.com/api/v10/channels/{ctx.config['channel_id']}/messages"
-            return ctx.http_client.post_bot_api(url, mention_message, ctx.config["bot_token"])
+        webhook_url = ctx.config.get("webhook_url")
+        if webhook_url and isinstance(webhook_url, str):
+            return ctx.http_client.post_webhook(webhook_url, mention_message)
+        
+        bot_token = ctx.config.get("bot_token")
+        channel_id = ctx.config.get("channel_id")
+        if bot_token and isinstance(bot_token, str) and channel_id:
+            url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+            return ctx.http_client.post_bot_api(url, mention_message, bot_token)
     except DiscordAPIError as e:
         ctx.logger.warning("Failed to send mention to main channel: %s", e)
 
@@ -131,9 +145,10 @@ def _handle_stop_notification_events(
         success = True
 
     # 3. Archive thread for Stop events
-    if event_type == EventTypes.STOP.value and thread_id and ctx.config.get("bot_token"):
+    bot_token = ctx.config.get("bot_token")
+    if event_type == EventTypes.STOP.value and thread_id and bot_token and isinstance(bot_token, str):
         try:
-            if ctx.http_client.archive_thread(thread_id, ctx.config["bot_token"]):
+            if ctx.http_client.archive_thread(thread_id, bot_token):
                 ctx.logger.info("Archived thread %s after session %s ended", thread_id, session_id)
                 SESSION_THREAD_CACHE.pop(session_id, None)
             else:
@@ -170,23 +185,25 @@ def _handle_thread_messaging(
                 ctx.logger.warning("Failed to send to thread, falling back to regular channel")
                 return None
 
-    elif ctx.config["channel_type"] == "forum" and ctx.config["webhook_url"]:
+    elif ctx.config.get("channel_type") == "forum":
         # Create forum thread with first message
-        thread_name = f"{ctx.config['thread_prefix']} {session_id[:8]}"
-        thread_message: DiscordThreadMessage = {
-            "embeds": message.get("embeds", []),
-            "thread_name": thread_name,
-        }
+        webhook_url = ctx.config.get("webhook_url")
+        if webhook_url and isinstance(webhook_url, str):
+            thread_name = f"{ctx.config.get('thread_prefix', 'Session')} {session_id[:8]}"
+            thread_message: DiscordThreadMessage = {
+                "embeds": message.get("embeds", []),
+                "thread_name": thread_name,
+            }
 
-        try:
-            thread_id = ctx.http_client.create_forum_thread(ctx.config["webhook_url"], thread_message, thread_name)
-            if thread_id:
-                SESSION_THREAD_CACHE[session_id] = thread_id
-                ctx.logger.info("Created forum thread %s for session %s", thread_id, session_id)
-                return True
-            ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
-        except DiscordAPIError:
-            ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
+            try:
+                thread_id = ctx.http_client.create_forum_thread(webhook_url, thread_message, thread_name)
+                if thread_id:
+                    SESSION_THREAD_CACHE[session_id] = thread_id
+                    ctx.logger.info("Created forum thread %s for session %s", thread_id, session_id)
+                    return True
+                ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
+            except DiscordAPIError:
+                ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
 
     return None
 
@@ -207,7 +224,7 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
     description = embed.get("description", "")
     
     # If within limits, return as-is
-    if len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
+    if not description or len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
         return [message]
     
     # Split the description
@@ -246,14 +263,15 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
             # First part keeps original title
             new_embed["description"] = chunk
             if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
+                new_embed["description"] = chunk + "\n\n... (continued in next message)"
         else:
             # Subsequent parts get modified title and description
             original_title = embed.get("title", "Continued")
             new_embed["title"] = f"{original_title} (Part {part_num})"
-            new_embed["description"] = "... (continued from previous message)\n\n" + chunk
             if remaining_desc:
-                new_embed["description"] += "\n\n... (continued in next message)"
+                new_embed["description"] = "... (continued from previous message)\n\n" + chunk + "\n\n... (continued in next message)"
+            else:
+                new_embed["description"] = "... (continued from previous message)\n\n" + chunk
             
             # Remove fields from continuation messages to save space
             new_embed["fields"] = None
@@ -352,17 +370,20 @@ def _send_single_message(
 
     # Regular channel messaging (no threads or fallback)
     # Try webhook first
-    if ctx.config["webhook_url"]:
+    webhook_url = ctx.config.get("webhook_url")
+    if webhook_url and isinstance(webhook_url, str):
         try:
-            return ctx.http_client.post_webhook(ctx.config["webhook_url"], message)
+            return ctx.http_client.post_webhook(webhook_url, message)
         except DiscordAPIError:
             pass  # Fall through to bot API
 
     # Try bot API as fallback
-    if ctx.config["bot_token"] and ctx.config["channel_id"]:
+    bot_token = ctx.config.get("bot_token")
+    channel_id = ctx.config.get("channel_id")
+    if bot_token and isinstance(bot_token, str) and channel_id:
         try:
-            url = f"https://discord.com/api/v10/channels/{ctx.config['channel_id']}/messages"
-            return ctx.http_client.post_bot_api(url, message, ctx.config["bot_token"])
+            url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+            return ctx.http_client.post_bot_api(url, message, bot_token)
         except DiscordAPIError:
             pass
 

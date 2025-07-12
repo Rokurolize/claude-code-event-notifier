@@ -26,17 +26,17 @@ from unittest.mock import MagicMock, patch
 src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from discord_notifier import (
-    SESSION_THREAD_CACHE,
-    ConfigLoader,
-    HTTPClient,
-    ThreadStorageError,
+from discord_notifier import SESSION_THREAD_CACHE
+from src.core.config import ConfigLoader
+from src.core.http_client import HTTPClient
+from src.core.thread_manager import (
     ensure_thread_is_usable,
     find_existing_thread_by_name,
     get_or_create_thread,
     validate_thread_exists,
 )
-from thread_storage import ThreadRecord, ThreadStorage
+from src.exceptions import ThreadStorageError
+from src.thread_storage import ThreadRecord, ThreadStorage
 
 
 class TestIntelligentThreadManagement(unittest.TestCase):
@@ -125,9 +125,9 @@ class TestIntelligentThreadManagement(unittest.TestCase):
 
         # Store multiple threads
         test_threads = [
-            ("session-1", "thread-1", "TestSession session-1"),
-            ("session-2", "thread-2", "TestSession session-2"),
-            ("session-3", "thread-3", "OtherPrefix session-3"),
+            ("session-1", "123456789012345671", "TestSession session-1"),
+            ("session-2", "123456789012345672", "TestSession session-2"),
+            ("session-3", "123456789012345673", "OtherPrefix session-3"),
         ]
 
         for session_id, thread_id, thread_name in test_threads:
@@ -159,7 +159,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Store a thread with old last_used timestamp
         storage.store_thread(
             session_id="old-session",
-            thread_id="old-thread",
+            thread_id="123456789012345681",
             channel_id=self.config["channel_id"],
             thread_name="Old Session old-sess",
             is_archived=False,
@@ -177,7 +177,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Store a recent thread
         storage.store_thread(
             session_id="recent-session",
-            thread_id="recent-thread",
+            thread_id="123456789012345682",
             channel_id=self.config["channel_id"],
             thread_name="Recent Session recent-s",
             is_archived=False,
@@ -199,8 +199,8 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         storage = ThreadStorage(db_path=self.test_db_path)
 
         # Store some test threads
-        storage.store_thread("session-1", "thread-1", self.config["channel_id"], "Session 1", False)
-        storage.store_thread("session-2", "thread-2", self.config["channel_id"], "Session 2", True)
+        storage.store_thread("session-1", "123456789012345691", self.config["channel_id"], "Session 1", False)
+        storage.store_thread("session-2", "123456789012345692", self.config["channel_id"], "Session 2", True)
 
         stats = storage.get_stats()
 
@@ -209,7 +209,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         self.assertEqual(stats["archived_threads"], 1)
         self.assertEqual(stats["db_path"], str(self.test_db_path))
 
-    @patch("discord_notifier.ThreadStorage")
+    @patch("src.core.thread_manager.ThreadStorage")
     def test_get_or_create_thread_cache_hit(self, mock_storage_class):
         """Test thread retrieval from in-memory cache."""
         # Pre-populate cache
@@ -229,7 +229,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Storage should not be accessed for cache hits
         mock_storage_class.assert_not_called()
 
-    @patch("discord_notifier.ThreadStorage")
+    @patch("src.core.thread_manager.ThreadStorage")
     def test_get_or_create_thread_storage_recovery(self, mock_storage_class):
         """Test thread recovery from persistent storage."""
         # Mock storage to return a stored thread
@@ -261,7 +261,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         self.assertEqual(SESSION_THREAD_CACHE[self.session_id], self.thread_id)
         mock_storage.get_thread.assert_called_with(self.session_id)
 
-    @patch("discord_notifier.ThreadStorage")
+    @patch("src.core.thread_manager.ThreadStorage")
     def test_get_or_create_thread_api_discovery(self, mock_storage_class):
         """Test thread discovery via Discord API search."""
         # Mock storage to return None (no stored thread)
@@ -286,7 +286,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
         # Thread should be cached
         self.assertEqual(SESSION_THREAD_CACHE[self.session_id], self.thread_id)
 
-    @patch("discord_notifier.ThreadStorage")
+    @patch("src.core.thread_manager.ThreadStorage")
     def test_get_or_create_thread_creation(self, mock_storage_class):
         """Test new thread creation when none exists."""
         # Mock storage to return None
@@ -423,7 +423,7 @@ class TestIntelligentThreadManagement(unittest.TestCase):
             # Should keep default value
             self.assertEqual(config["thread_cleanup_days"], 30)
 
-    @patch("discord_notifier.ThreadStorage")
+    @patch("src.core.thread_manager.ThreadStorage")
     def test_error_handling_storage_failure(self, mock_storage_class):
         """Test error handling when storage operations fail."""
         # Mock storage to raise an exception

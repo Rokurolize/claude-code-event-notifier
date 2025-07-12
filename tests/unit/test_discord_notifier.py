@@ -257,7 +257,9 @@ class TestDiscordSending(unittest.TestCase):
         result = discord_notifier.send_to_discord(message, self.config, self.logger, http_client)
 
         assert not result
-        assert self.logger.error.call_count == 2
+        # Logger errors are in HTTPClient, not in discord_notifier
+        # We should check that both methods were attempted
+        assert mock_urlopen.call_count == 2
 
     def _create_mock_response(self, status: int) -> MagicMock:
         """Helper to create mock HTTP response."""

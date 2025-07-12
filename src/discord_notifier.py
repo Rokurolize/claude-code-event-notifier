@@ -114,13 +114,12 @@ from src.validators import (
     is_tool_event_data, is_notification_event_data, is_stop_event_data,
     is_bash_tool_input, is_file_tool_input, is_search_tool_input,
     is_valid_event_type, is_bash_tool, is_file_tool, is_search_tool,
-    is_list_tool, validate_thread_exists,
+    is_list_tool,
 )
 
 from src.utils_helpers import (
     truncate_string as utils_truncate_string,
     format_file_path as utils_format_file_path,
-    ensure_thread_is_usable,
     SESSION_THREAD_CACHE,
 )
 
@@ -248,7 +247,7 @@ class EventFormatter(Protocol):
         """Format event data into Discord embed."""
         ...
 
-def setup_logging(debug: bool) -> logging.Logger:
+def setup_logging(debug: bool) -> Union[logging.Logger, AstolfoLogger]:
     """Set up logging with optional debug mode."""
     print(f"[DEBUG] Using AstolfoLogger", file=sys.stderr)
     print(f"[DEBUG] Debug level will be: {os.environ.get('DISCORD_DEBUG_LEVEL', '1')}", file=sys.stderr)
@@ -262,17 +261,34 @@ def format_event(
 ) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits."""
     timestamp = datetime.now(UTC).isoformat()
-    session_id = event_data.get("session_id", "unknown")[:8]
+    session_id_raw = event_data.get("session_id", "unknown")
+    session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"
 
     # Get formatter for event type
     formatter = registry.get_formatter(event_type)
-    embed = formatter(event_data, session_id)
+    # Cast to the expected type for the formatter
+    from typing import cast as typing_cast
+    if event_type in ["PreToolUse", "PostToolUse"]:
+        from src.formatters.event_formatters import ToolEventData as FormatterToolEventData
+        embed = formatter(typing_cast(FormatterToolEventData, event_data), session_id)
+    elif event_type == "Notification":
+        from src.formatters.event_formatters import NotificationEventData as FormatterNotificationEventData
+        embed = formatter(typing_cast(FormatterNotificationEventData, event_data), session_id)
+    elif event_type == "Stop":
+        from src.formatters.event_formatters import StopEventData as FormatterStopEventData
+        embed = formatter(typing_cast(FormatterStopEventData, event_data), session_id)
+    elif event_type == "SubagentStop":
+        from src.formatters.event_formatters import SubagentStopEventData as FormatterSubagentStopEventData
+        embed = formatter(typing_cast(FormatterSubagentStopEventData, event_data), session_id)
+    else:
+        # For unknown event types, cast to generic dict format
+        embed = formatter(cast(dict[str, Any], event_data), session_id)
 
     # Enforce Discord's length limits
-    if "title" in embed and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
+    if "title" in embed and embed["title"] and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
         embed["title"] = truncate_string(embed["title"], DiscordLimits.MAX_TITLE_LENGTH)
 
-    if "description" in embed and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
+    if "description" in embed and embed["description"] and len(embed["description"]) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
         embed["description"] = truncate_string(embed["description"], DiscordLimits.MAX_DESCRIPTION_LENGTH)
 
     # Add common fields
@@ -286,8 +302,9 @@ def format_event(
 
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
-    # Create message with embeds
-    message: DiscordMessage = {"embeds": [embed]}
+    # Create message with embeds - cast to expected type
+    from src.type_defs.discord import DiscordEmbed as TypeDefDiscordEmbed
+    message: DiscordMessage = {"embeds": [cast(TypeDefDiscordEmbed, embed)]}
 
     # Add user mention for Notification and Stop events if configured
     if event_type in [
@@ -399,7 +416,7 @@ def main() -> None:
 
         # Check if this event should be processed based on filtering configuration
         if not should_process_event(event_type, config):
-            if AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if isinstance(logger, AstolfoLogger):
                 logger.debug(
                     "event_filtered",
                     context={"event_type": event_type},
@@ -410,7 +427,7 @@ def main() -> None:
             sys.exit(0)  # Exit gracefully without processing
 
         # Set session ID for AstolfoLogger
-        if AstolfoLogger and isinstance(logger, AstolfoLogger):
+        if isinstance(logger, AstolfoLogger):
             session_id = event_data.get("session_id", "")
             if session_id:
                 logger.set_session_id(session_id)
@@ -439,10 +456,15 @@ def main() -> None:
         # Format and send message
         message = format_event(event_type, event_data, formatter_registry, config)
         session_id = event_data.get("session_id", "")
-        success = send_to_discord(message, config, logger, http_client, session_id, event_type)
+        # Create a logging.Logger adapter for send_to_discord
+        if isinstance(logger, AstolfoLogger):
+            logger_for_send = logger.logger  # Use the internal logger
+        else:
+            logger_for_send = logger
+        success = send_to_discord(message, config, logger_for_send, http_client, session_id, event_type)
 
         if success:
-            if AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if isinstance(logger, AstolfoLogger):
                 logger.info(
                     "notification_sent",
                     context={"event_type": event_type, "session_id": session_id},
@@ -451,7 +473,7 @@ def main() -> None:
             else:
                 logger.info("%s notification sent successfully", event_type)
         else:
-            if AstolfoLogger and isinstance(logger, AstolfoLogger):
+            if isinstance(logger, AstolfoLogger):
                 logger.error(
                     "notification_failed",
                     context={"event_type": event_type, "session_id": session_id},

@@ -4,13 +4,14 @@ This module contains all validation logic including type guards,
 configuration validators, and event data validators.
 """
 
-from typing import TypeGuard, cast, Any
+from typing import TypeGuard, cast, Any, TYPE_CHECKING
 
 # Try to import types from type_defs module first
 try:
     from src.type_defs.base import BaseField
     from src.type_defs.tools import (
-        ToolInput, BashToolInput, FileToolInputBase, SearchToolInputBase
+        ToolInput, BashToolInput, FileToolInputBase, SearchToolInputBase,
+        WebToolInput
     )
     from src.type_defs.events import (
         EventData, ToolEventDataBase, NotificationEventData, StopEventDataBase
@@ -23,6 +24,14 @@ except ImportError:
         SearchToolInputBase, EventData, ToolEventDataBase,
         NotificationEventData, StopEventDataBase, Config
     )
+    # Create WebToolInput type if not available
+    from typing import TypedDict
+    class WebToolInput(TypedDict):  # type: ignore
+        url: str
+        prompt: str
+
+if TYPE_CHECKING:
+    from src.core.http_client import HTTPClient
 
 # Try to import constants
 try:
@@ -63,6 +72,11 @@ def is_file_tool_input(tool_input: ToolInput) -> TypeGuard[FileToolInputBase]:
 def is_search_tool_input(tool_input: ToolInput) -> TypeGuard[SearchToolInputBase]:
     """Check if tool input is for search operations."""
     return "pattern" in tool_input
+
+
+def is_web_tool_input(tool_input: ToolInput) -> TypeGuard[WebToolInput]:
+    """Check if tool input is for web operations."""
+    return "url" in tool_input and "prompt" in tool_input
 
 
 def is_valid_event_type(event_type: str) -> TypeGuard[str]:
@@ -317,33 +331,36 @@ class ToolInputValidator:
     @staticmethod
     def validate_bash_input(tool_input: ToolInput) -> bool:
         """Validate Bash tool input."""
-        return "command" in tool_input and isinstance(tool_input["command"], str)
+        if not is_bash_tool_input(tool_input):
+            return False
+        return isinstance(tool_input["command"], str)
 
     @staticmethod
     def validate_file_input(tool_input: ToolInput) -> bool:
         """Validate file tool input."""
-        return "file_path" in tool_input and isinstance(tool_input["file_path"], str)
+        if not is_file_tool_input(tool_input):
+            return False
+        return isinstance(tool_input["file_path"], str)
 
     @staticmethod
     def validate_search_input(tool_input: ToolInput) -> bool:
         """Validate search tool input."""
-        return "pattern" in tool_input and isinstance(tool_input["pattern"], str)
+        if not is_search_tool_input(tool_input):
+            return False
+        return isinstance(tool_input["pattern"], str)
 
     @staticmethod
     def validate_web_input(tool_input: ToolInput) -> bool:
         """Validate web tool input."""
-        return (
-            "url" in tool_input
-            and isinstance(tool_input["url"], str)
-            and "prompt" in tool_input
-            and isinstance(tool_input["prompt"], str)
-        )
+        if not is_web_tool_input(tool_input):
+            return False
+        return isinstance(tool_input["url"], str) and isinstance(tool_input["prompt"], str)
 
 
 # Thread validation
 def validate_thread_exists(
     thread_id: str,
-    http_client: Any,
+    http_client: "HTTPClient",
     channel_id: str,
     bot_token: str,
 ) -> bool:
@@ -352,20 +369,15 @@ def validate_thread_exists(
     Args:
         thread_id: Discord thread ID to validate
         http_client: HTTP client instance for API calls
-        channel_id: Discord channel ID
+        channel_id: Discord channel ID (not used, kept for backward compatibility)
         bot_token: Discord bot token for authentication
 
     Returns:
         bool: True if thread exists and is accessible, False otherwise
     """
     try:
-        headers = {"Authorization": f"Bot {bot_token}"}
-        thread_data = http_client.request(
-            "GET",
-            f"https://discord.com/api/v10/channels/{thread_id}",
-            headers=headers,
-        )
-        return bool(thread_data)
+        thread_data = http_client.get_thread_details(thread_id, bot_token)
+        return thread_data is not None
     except Exception:
         return False
 
@@ -377,8 +389,8 @@ __all__ = [
     # Type guards
     'is_tool_event_data', 'is_notification_event_data', 'is_stop_event_data',
     'is_bash_tool_input', 'is_file_tool_input', 'is_search_tool_input',
-    'is_valid_event_type', 'is_bash_tool', 'is_file_tool', 'is_search_tool',
-    'is_list_tool',
+    'is_web_tool_input', 'is_valid_event_type', 'is_bash_tool', 'is_file_tool', 
+    'is_search_tool', 'is_list_tool',
     # Thread validation
     'validate_thread_exists',
 ]

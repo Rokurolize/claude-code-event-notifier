@@ -15,6 +15,7 @@ from unittest.mock import mock_open, patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src import discord_notifier
+from src.core.config_loader import ConfigLoader
 
 
 class TestConfigTypeDefinitions(unittest.TestCase):
@@ -109,7 +110,7 @@ class TestConfigLoaderTypeSafety(unittest.TestCase):
             patch("pathlib.Path.exists", return_value=False),
             patch.dict(os.environ, {"DISCORD_WEBHOOK_URL": "test_webhook"}),
         ):
-            config = discord_notifier.ConfigLoader.load()
+            config = ConfigLoader.load()
 
             # Verify return type structure
             self.assertIsInstance(config, dict)
@@ -153,11 +154,14 @@ DISCORD_DEBUG=1
 DISCORD_USE_THREADS=1
 """
 
+        # Need to patch both the instance method and the path itself
+        env_file_path = Path.home() / ".claude" / "hooks" / ".env.discord"
+        
         with (
-            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "exists", return_value=True),
             patch("builtins.open", mock_open(read_data=file_content)),
         ):
-            config = discord_notifier.ConfigLoader.load()
+            config = ConfigLoader.load()
 
             # Test that channel_type is properly cast to Literal type
             self.assertEqual(config["channel_type"], "forum")
@@ -179,7 +183,7 @@ DISCORD_USE_THREADS=1
             patch("pathlib.Path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=file_content)),
         ):
-            config = discord_notifier.ConfigLoader.load()
+            config = ConfigLoader.load()
 
             # Should fall back to default "text" for invalid values
             self.assertEqual(config["channel_type"], "text")
@@ -199,7 +203,7 @@ DISCORD_USE_THREADS=1
             patch("pathlib.Path.exists", return_value=False),
             patch.dict(os.environ, env_vars),
         ):
-            config = discord_notifier.ConfigLoader.load()
+            config = ConfigLoader.load()
 
             # Test string values
             self.assertEqual(config["webhook_url"], "https://example.com/webhook")
@@ -501,7 +505,7 @@ DISCORD_MENTION_USER_ID=123456789012345678
             patch("builtins.open", mock_open(read_data=file_content)),
             patch.dict(os.environ, env_vars),
         ):
-            config = discord_notifier.ConfigLoader.load()
+            config = ConfigLoader.load()
 
             # Test that final config maintains proper types
             self.assertIsInstance(config, dict)

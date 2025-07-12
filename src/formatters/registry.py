@@ -5,6 +5,7 @@ allowing dynamic registration and lookup of formatters by event type.
 """
 
 from collections.abc import Callable
+from typing import Any, cast
 
 # Try to import types
 try:
@@ -58,15 +59,15 @@ class FormatterRegistry:
     
     def __init__(self) -> None:
         """Initialize registry with default formatters."""
-        self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
-            EventTypes.PRE_TOOL_USE.value: format_pre_tool_use,
-            EventTypes.POST_TOOL_USE.value: format_post_tool_use,
-            EventTypes.NOTIFICATION.value: format_notification,
-            EventTypes.STOP.value: format_stop,
-            EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
+        self._formatters: dict[str, Callable[[Any, str], DiscordEmbed]] = {
+            EventTypes.PRE_TOOL_USE.value: cast(Callable[[Any, str], DiscordEmbed], format_pre_tool_use),
+            EventTypes.POST_TOOL_USE.value: cast(Callable[[Any, str], DiscordEmbed], format_post_tool_use),
+            EventTypes.NOTIFICATION.value: cast(Callable[[Any, str], DiscordEmbed], format_notification),
+            EventTypes.STOP.value: cast(Callable[[Any, str], DiscordEmbed], format_stop),
+            EventTypes.SUBAGENT_STOP.value: cast(Callable[[Any, str], DiscordEmbed], format_subagent_stop),
         }
     
-    def get_formatter(self, event_type: str) -> Callable[[EventData, str], DiscordEmbed]:
+    def get_formatter(self, event_type: str) -> Callable[[Any, str], DiscordEmbed]:
         """Get formatter for event type.
         
         Args:
@@ -78,9 +79,9 @@ class FormatterRegistry:
         if event_type in self._formatters:
             return self._formatters[event_type]
         # Return a lambda that captures the event_type for unknown events
-        return lambda event_data, session_id: format_default_event(event_type, event_data, session_id)
+        return lambda event_data, session_id: format_default_event(event_type, cast(EventData, event_data), session_id)
     
-    def register(self, event_type: str, formatter: Callable[[EventData, str], DiscordEmbed]) -> None:
+    def register(self, event_type: str, formatter: Callable[[Any, str], DiscordEmbed]) -> None:
         """Register a new formatter.
         
         Args:

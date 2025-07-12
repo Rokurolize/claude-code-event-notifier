@@ -11,13 +11,15 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, TypedDict, Union, cast
+from http.client import HTTPResponse
+from typing import TYPE_CHECKING, Any, TypedDict, Union, cast, NotRequired
 
 from .constants import DEFAULT_TIMEOUT, DISCORD_API_BASE, USER_AGENT
 from .exceptions import DiscordAPIError
 
 if TYPE_CHECKING:
     from src.utils.astolfo_logger import AstolfoLogger
+    from src.utils.astolfo_logger_types import JsonValue
 
 
 # Type definitions for Discord API structures
@@ -135,6 +137,18 @@ class HTTPClient:
         self.logger = logger
         self.timeout = timeout
         self.headers_base = {"User-Agent": USER_AGENT}
+    
+    def _convert_to_json_value(self, data: object) -> "JsonValue":
+        """Convert data to JsonValue type recursively."""
+        if data is None or isinstance(data, (str, int, float, bool)):
+            return data
+        elif isinstance(data, dict):
+            return {k: self._convert_to_json_value(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._convert_to_json_value(item) for item in data]
+        else:
+            # For any other type, convert to string
+            return str(data)
 
     def post_webhook(self, url: str, data: DiscordMessage) -> bool:
         """Send message via Discord webhook.
@@ -212,12 +226,16 @@ class HTTPClient:
             
             # Log request if using AstolfoLogger
             if isinstance(self.logger, AstolfoLogger):
-                self.logger.log_api_request("POST", url, headers, data)
+                # Convert data to JsonValue type
+                json_data_for_log = self._convert_to_json_value(data)
+                self.logger.log_api_request("POST", url, headers, json_data_for_log)
             
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 
                 # Calculate duration
                 duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
@@ -225,13 +243,14 @@ class HTTPClient:
                 # Log response
                 if isinstance(self.logger, AstolfoLogger):
                     # Try to read response body for debugging (if small)
+                    response_data = None
                     try:
-                        response_body = response.read().decode('utf-8')
-                        response_data = json.loads(response_body) if response_body else None
+                        response_body = http_response.read().decode('utf-8')
+                        response_data = json.loads(response_body) if response_body else None  # type: ignore[misc]
                     except:
                         response_data = None
                     
-                    self.logger.log_api_response(url, status, response_data, duration_ms)
+                    self.logger.log_api_response(url, status, response_data, duration_ms)  # type: ignore[misc]
                 else:
                     self.logger.debug("%s response: %s", api_name, status)
                 
@@ -240,10 +259,10 @@ class HTTPClient:
                 return bool(status == success_check)
 
         except urllib.error.HTTPError as e:
-            self.logger.exception("%s HTTP error %s: %s", api_name, e.code, e.reason)
+            self.logger.exception("%s HTTP error %s: %s", api_name, e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"{api_name} failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("%s URL error: %s", api_name, e.reason)
+            self.logger.exception("%s URL error: %s", api_name, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"{api_name} connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during HTTP operations
@@ -296,21 +315,23 @@ class HTTPClient:
             json_data = json.dumps(thread_data).encode("utf-8")
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Forum Thread Creation response: %s", status)
 
                 if status == 200:
                     # Parse response to get thread_id
-                    response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("str | None", response_data.get("id"))  # thread_id
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
+                    return cast("str | None", response_data.get("id"))  # type: ignore[misc] # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
-            self.logger.exception("Forum Thread Creation HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("Forum Thread Creation HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Forum thread creation failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Forum Thread Creation URL error: %s", e.reason)
+            self.logger.exception("Forum Thread Creation URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Forum thread creation connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during forum thread creation
@@ -343,26 +364,28 @@ class HTTPClient:
             json_data = json.dumps(data).encode("utf-8")
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Text Thread Creation response: %s", status)
 
                 if 200 <= status < 300:
                     # Parse response to get thread_id
-                    response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("str | None", response_data.get("id"))  # thread_id
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
+                    return cast("str | None", response_data.get("id"))  # type: ignore[misc] # thread_id
                 return None
 
         except urllib.error.HTTPError as e:
             error_body = ""
             try:
                 error_body = e.read().decode("utf-8")
-                self.logger.exception("Text Thread Creation HTTP error %s: %s, body: %s", e.code, e.reason, error_body)
+                self.logger.exception("Text Thread Creation HTTP error %s: %s, body: %s", e.code, str(e.reason) if e.reason else "Unknown", error_body)
             except (OSError, UnicodeDecodeError):
-                self.logger.exception("Text Thread Creation HTTP error %s: %s", e.code, e.reason)
+                self.logger.exception("Text Thread Creation HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Text thread creation failed: {e.code} {e.reason}, details: {error_body}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Text Thread Creation URL error: %s", e.reason)
+            self.logger.exception("Text Thread Creation URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Text thread creation connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during text thread creation
@@ -390,12 +413,14 @@ class HTTPClient:
 
         try:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Get Channel Info response: %s", status)
 
                 if 200 <= status < 300:
-                    response_data = json.loads(response.read().decode("utf-8"))
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
                     return cast("DiscordChannel", response_data)
                 return None
 
@@ -404,10 +429,10 @@ class HTTPClient:
                 # Channel not found
                 self.logger.debug("Channel not found: %s", channel_id)
                 return None
-            self.logger.exception("Get Channel Info HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("Get Channel Info HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Get channel info failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Get Channel Info URL error: %s", e.reason)
+            self.logger.exception("Get Channel Info URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Get channel info connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during channel info retrieval
@@ -448,15 +473,17 @@ class HTTPClient:
         try:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("List Active Threads response: %s", status)
 
                 if 200 <= status < 300:
-                    response_data = json.loads(response.read().decode("utf-8"))
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
                     # Filter threads to only include those from our channel
-                    all_threads = response_data.get("threads", [])
-                    channel_threads = [t for t in all_threads if t.get("parent_id") == channel_id]
+                    all_threads = response_data.get("threads", [])  # type: ignore[misc]
+                    channel_threads = [t for t in all_threads if t.get("parent_id") == channel_id]  # type: ignore[misc]
                     return cast("list[DiscordThread]", channel_threads)
                 return []
 
@@ -464,15 +491,15 @@ class HTTPClient:
             error_body = ""
             try:
                 error_body = e.read().decode("utf-8")
-                self.logger.exception("List Active Threads HTTP error %s: %s, body: %s", e.code, e.reason, error_body)
+                self.logger.exception("List Active Threads HTTP error %s: %s, body: %s", e.code, str(e.reason) if e.reason else "Unknown", error_body)
             except (OSError, UnicodeDecodeError):
-                self.logger.exception("List Active Threads HTTP error %s: %s", e.code, e.reason)
+                self.logger.exception("List Active Threads HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             if e.code == 404:
                 # Guild not found or no access - return empty list
                 return []
             raise DiscordAPIError(f"List active threads failed: {e.code} {e.reason}, details: {error_body}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("List Active Threads URL error: %s", e.reason)
+            self.logger.exception("List Active Threads URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"List active threads connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during active thread listing
@@ -501,12 +528,14 @@ class HTTPClient:
         try:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Get Thread Details response: %s", status)
 
                 if 200 <= status < 300:
-                    response_data = json.loads(response.read().decode("utf-8"))
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
                     return cast("DiscordThread", response_data)
                 return None
 
@@ -517,7 +546,7 @@ class HTTPClient:
                 return None
             raise DiscordAPIError(f"Get thread details failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Get Thread Details URL error: %s", e.reason)
+            self.logger.exception("Get Thread Details URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Get thread details connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during thread detail retrieval
@@ -555,8 +584,10 @@ class HTTPClient:
 
             req = PatchRequest(url, data=json_data, headers=headers)
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Unarchive Thread response: %s", status)
 
                 return bool(200 <= status < 300)
@@ -566,10 +597,10 @@ class HTTPClient:
                 # Thread not found
                 self.logger.debug("Thread not found for unarchive: %s", thread_id)
                 return False
-            self.logger.exception("Unarchive Thread HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("Unarchive Thread HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Unarchive thread failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Unarchive Thread URL error: %s", e.reason)
+            self.logger.exception("Unarchive Thread URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Unarchive thread connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during thread unarchiving
@@ -610,8 +641,10 @@ class HTTPClient:
 
             req = PatchRequest(url, data=json_data, headers=headers)
 
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("Archive Thread response: %s", status)
 
                 return bool(200 <= status < 300)
@@ -621,10 +654,10 @@ class HTTPClient:
                 # Thread not found
                 self.logger.debug("Thread not found for archive: %s", thread_id)
                 return False
-            self.logger.exception("Archive Thread HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("Archive Thread HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Archive thread failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Archive Thread URL error: %s", e.reason)
+            self.logger.exception("Archive Thread URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"Archive thread connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during thread archiving
@@ -663,14 +696,16 @@ class HTTPClient:
 
         try:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("List Public Archived Threads response: %s", status)
 
                 if 200 <= status < 300:
-                    response_data = json.loads(response.read().decode("utf-8"))
-                    threads = response_data.get("threads", [])
-                    has_more = response_data.get("has_more", False)
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
+                    threads = cast(list[DiscordThread], response_data.get("threads", []))  # type: ignore[misc]
+                    has_more = bool(response_data.get("has_more", False))  # type: ignore[misc]
                     return threads, has_more
                 return [], False
 
@@ -678,10 +713,10 @@ class HTTPClient:
             if e.code == 404:
                 self.logger.debug("Channel not found for listing archived threads: %s", channel_id)
                 return [], False
-            self.logger.exception("List Public Archived Threads HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("List Public Archived Threads HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"List public archived threads failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("List Public Archived Threads URL error: %s", e.reason)
+            self.logger.exception("List Public Archived Threads URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"List public archived threads connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during public archived thread listing
@@ -720,14 +755,16 @@ class HTTPClient:
 
         try:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
-                status = response.status
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
+                # Cast to HTTPResponse for proper typing
+                http_response = cast(HTTPResponse, response)
+                status: int = http_response.status
                 self.logger.debug("List Private Archived Threads response: %s", status)
 
                 if 200 <= status < 300:
-                    response_data = json.loads(response.read().decode("utf-8"))
-                    threads = response_data.get("threads", [])
-                    has_more = response_data.get("has_more", False)
+                    response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
+                    threads = cast(list[DiscordThread], response_data.get("threads", []))  # type: ignore[misc]
+                    has_more = bool(response_data.get("has_more", False))  # type: ignore[misc]
                     return threads, has_more
                 return [], False
 
@@ -735,10 +772,10 @@ class HTTPClient:
             if e.code == 404:
                 self.logger.debug("Channel not found for listing private archived threads: %s", channel_id)
                 return [], False
-            self.logger.exception("List Private Archived Threads HTTP error %s: %s", e.code, e.reason)
+            self.logger.exception("List Private Archived Threads HTTP error %s: %s", e.code, str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"List private archived threads failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("List Private Archived Threads URL error: %s", e.reason)
+            self.logger.exception("List Private Archived Threads URL error: %s", str(e.reason) if e.reason else "Unknown")
             raise DiscordAPIError(f"List private archived threads connection failed: {e.reason}") from e
         except Exception as e:
             # Catch any other unexpected errors during private archived thread listing
@@ -786,6 +823,70 @@ class HTTPClient:
             matching_threads.extend(
                 thread for thread in private_archived_threads if search_name in thread.get("name", "").lower()
             )
+        except DiscordAPIError:
+            self.logger.debug("Could not search private archived threads for %s", channel_id)
+
+        return matching_threads
+
+    def search_all_threads(self, channel_id: str, thread_name: str, token: str) -> list[DiscordThread]:
+        """Search for all threads by name (including paginated archived threads).
+
+        Args:
+            channel_id: Discord channel ID
+            thread_name: Thread name to search for
+            token: Discord bot token
+
+        Returns:
+            List of all thread objects that match the name pattern
+
+        Raises:
+            DiscordAPIError: On API communication errors
+        """
+        matching_threads: list[DiscordThread] = []
+        search_name = thread_name.lower()
+
+        # Search active threads
+        try:
+            active_threads = self.list_active_threads(channel_id, token)
+            matching_threads.extend(
+                thread for thread in active_threads if search_name in thread.get("name", "").lower()
+            )
+        except DiscordAPIError:
+            self.logger.debug("Could not search active threads for %s", channel_id)
+
+        # Search all public archived threads with pagination
+        try:
+            before = None
+            while True:
+                archived_threads, has_more = self.list_public_archived_threads(
+                    channel_id, token, before=before
+                )
+                matching_threads.extend(
+                    thread for thread in archived_threads
+                    if search_name in thread.get("name", "").lower()
+                )
+                if not has_more or not archived_threads:
+                    break
+                # Get the ID of the last thread for pagination
+                before = archived_threads[-1].get("id")
+        except DiscordAPIError:
+            self.logger.debug("Could not search public archived threads for %s", channel_id)
+
+        # Search all private archived threads with pagination
+        try:
+            before = None
+            while True:
+                private_archived_threads, has_more = self.list_private_archived_threads(
+                    channel_id, token, before=before
+                )
+                matching_threads.extend(
+                    thread for thread in private_archived_threads
+                    if search_name in thread.get("name", "").lower()
+                )
+                if not has_more or not private_archived_threads:
+                    break
+                # Get the ID of the last thread for pagination
+                before = private_archived_threads[-1].get("id")
         except DiscordAPIError:
             self.logger.debug("Could not search private archived threads for %s", channel_id)
 

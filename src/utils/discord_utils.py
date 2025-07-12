@@ -71,12 +71,13 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
     env_vars: dict[str, str] = {}
 
     try:
-        with Path(file_path).open() as f:
+        with open(file_path) as f:
             for line in f:
                 stripped_line = line.strip()
                 if "=" in stripped_line and not stripped_line.startswith("#"):
                     key, value = stripped_line.split("=", 1)
-                    value = value.strip('"').strip("'")
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
                     env_vars[key] = value
     except (OSError, ValueError) as e:
         raise ConfigurationError(f"Error reading {file_path}: {e}") from e

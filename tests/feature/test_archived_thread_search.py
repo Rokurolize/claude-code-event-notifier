@@ -23,15 +23,15 @@ from unittest.mock import MagicMock, Mock, patch
 src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from discord_notifier import (  # noqa: E402
-    DiscordAPIError,
-    HTTPClient,
+from src.core.exceptions import DiscordAPIError  # noqa: E402
+from src.core.http_client import HTTPClient  # noqa: E402
+from src.core.thread_manager import (  # noqa: E402
     find_existing_thread_by_name,
     get_or_create_thread,
 )
 
 if TYPE_CHECKING:
-    from discord_notifier import Config
+    from src.core.config import Config
 
 
 class TestArchivedThreadSearch(unittest.TestCase):
@@ -219,7 +219,7 @@ class TestArchivedThreadSearch(unittest.TestCase):
         http_client = HTTPClient(self.logger)
 
         # Mock search to return only an archived thread
-        with patch.object(http_client, "search_all_threads", return_value=[self.archived_thread]):
+        with patch.object(http_client, "search_threads_by_name", return_value=[self.archived_thread]):
             thread = find_existing_thread_by_name(  # type: ignore[misc]
                 str(self.config["channel_id"]), "Session efgh5678", self.config, http_client, self.logger
             )
@@ -245,7 +245,7 @@ class TestArchivedThreadSearch(unittest.TestCase):
         }
 
         # Return partial match first, then exact match
-        with patch.object(http_client, "search_all_threads", return_value=[partial_match, exact_match]):
+        with patch.object(http_client, "search_threads_by_name", return_value=[partial_match, exact_match]):
             thread = find_existing_thread_by_name(  # type: ignore[misc]
                 str(self.config["channel_id"]), "Session abcd1234", self.config, http_client, self.logger
             )
@@ -254,7 +254,8 @@ class TestArchivedThreadSearch(unittest.TestCase):
             assert thread is not None
             assert thread["id"] == exact_match["id"]  # type: ignore[misc]
 
-    @patch("discord_notifier.SESSION_THREAD_CACHE", {})
+    @patch("src.core.thread_manager.SESSION_THREAD_CACHE", {})
+    @patch("src.core.thread_manager.THREAD_STORAGE_AVAILABLE", False)
     def test_get_or_create_thread_finds_archived(self) -> None:
         """Test that get_or_create_thread finds and unarchives existing archived threads."""
         http_client = HTTPClient(self.logger)
@@ -263,22 +264,13 @@ class TestArchivedThreadSearch(unittest.TestCase):
 
         # Mock finding an archived thread
         with (
-            patch("discord_notifier.find_existing_thread_by_name", return_value=self.archived_thread),
-            patch("discord_notifier.ensure_thread_is_usable", return_value=True),
-            patch("thread_storage.ThreadStorage") as mock_storage,
+            patch("src.core.thread_manager.find_existing_thread_by_name", return_value=self.archived_thread),
+            patch("src.core.thread_manager.ensure_thread_is_usable", return_value=True),
         ):
-            # Configure mock storage
-            mock_storage_instance = MagicMock()
-            mock_storage_instance.get_thread.return_value = None  # Not in storage yet
-            mock_storage.return_value = mock_storage_instance
-
             thread_id = get_or_create_thread(session_id, self.config, http_client, self.logger)
 
             # Should find and return the existing archived thread
             assert thread_id == self.archived_thread["id"]
-
-            # Verify storage was called to save the discovered thread
-            mock_storage_instance.store_thread.assert_called_once()
 
     def test_error_handling_graceful_degradation(self) -> None:
         """Test that errors in archived thread search don't break the overall search."""

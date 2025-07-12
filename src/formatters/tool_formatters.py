@@ -377,8 +377,8 @@ def format_task_post_use(tool_input: TaskToolInput, tool_response: ToolResponse)
     """
     desc_parts: list[str] = []
 
-    desc: str = tool_input.get("description", "")
-    if desc:
+    desc = tool_input.get("description", "")
+    if desc and isinstance(desc, str):
         add_field(desc_parts, "Task", desc)
 
     if isinstance(tool_response, str):

@@ -14,7 +14,7 @@ and static type narrowing for improved type safety.
 """
 
 import json
-from typing import TypedDict, cast
+from typing import TypedDict, cast, Any, Dict, List, Optional, Union
 
 # TypeIs is available in Python 3.13+
 try:
@@ -25,7 +25,18 @@ except ImportError:
 # Import Discord notifier types from reorganized modules
 from src.core.constants import EventTypes as EventType
 from src.core.constants import ToolNames as ToolName
-from src.core.http_client import DiscordEmbed, DiscordFooter, DiscordMessage, DiscordThreadMessage
+from src.type_aliases import (
+    DiscordEmbed,
+    DiscordMessage,
+    ConfigDict,
+    ToolResult,
+    EventDataTyped,
+    DiscordEmbedTyped,
+)
+from src.type_defs.discord import (
+    DiscordFooter,
+    DiscordThreadMessage,
+)
 from src.settings_types import (
     ClaudeSettings,
     HookConfig,
@@ -151,30 +162,33 @@ class FileEditOperation(TypedDict):
 
 
 # Type aliases for unions
+from typing import Union as UnionType
+
 Config = dict[str, str | int | bool]
-ToolResponse = (
-    BashToolResponse
-    | FileOperationResponse
-    | str
-    | list[dict[str, str]]
-    | dict[str, str | int | float | bool]
-)
-ToolInput = (
-    BashToolInput
-    | FileToolInput
-    | SearchToolInput
-    | TaskToolInput
-    | WebToolInput
-    | dict[str, str | int | float | bool]
-)
-EventData = (
-    BaseEventData
-    | PreToolUseEventData
-    | PostToolUseEventData
-    | NotificationEventData
-    | StopEventData
-    | SubagentStopEventData
-)
+ToolResponse = UnionType[
+    BashToolResponse,
+    FileOperationResponse,
+    str,
+    list[dict[str, str]],
+    dict[str, str | int | float | bool]
+]
+ToolInput = UnionType[
+    BashToolInput,
+    FileToolInput,
+    SearchToolInput,
+    TaskToolInput,
+    WebToolInput,
+    dict[str, str | int | float | bool]
+]
+EventData = UnionType[
+    BaseEventData,
+    PreToolUseEventData,
+    PostToolUseEventData,
+    NotificationEventData,
+    StopEventData,
+    SubagentStopEventData,
+    dict[str, Any]
+]
 
 # =============================================================================
 # Basic Type Guards
@@ -323,10 +337,12 @@ def _validate_hook_configs_for_event_type(hook_configs: list[object], event_type
 
         # Validate matcher requirements based on event type
         if event_type in ["PreToolUse", "PostToolUse"]:
+            # Tool events require matcher field
             if not is_tool_hook_config(hook_config):
                 return False
         elif not is_non_tool_hook_config(hook_config):
-            return False
+            # Non-tool events should not have matcher field
+            return False  # type: ignore[unreachable]
 
     return True
 
@@ -363,7 +379,7 @@ def is_discord_embed(value: object) -> TypeIs[DiscordEmbed]:
 def _validate_discord_embed_fields(value: dict[str, object]) -> bool:
     """Validate Discord embed fields."""
     # Check optional fields
-    field_checks = [
+    field_checks: list[tuple[str, Any]] = [
         ("title", lambda v: isinstance(v, str)),
         ("description", lambda v: isinstance(v, str)),
         ("color", lambda v: isinstance(v, int)),
@@ -430,7 +446,7 @@ def is_config(value: object) -> TypeIs[Config]:
         return False
 
     # Check required fields with proper types
-    required_fields = {
+    required_fields: dict[str, Any] = {
         "webhook_url": is_string_or_none,
         "bot_token": is_string_or_none,
         "channel_id": is_string_or_none,
@@ -465,9 +481,12 @@ def is_bash_tool_input(value: object) -> TypeIs[BashToolInput]:
 
     if "description" in value and not isinstance(value["description"], str):
         return False
+    
+    if "timeout" in value and not isinstance(value["timeout"], int):
+        return False
 
     # No other keys should be present
-    allowed_keys = {"command", "description"}
+    allowed_keys = {"command", "description", "timeout"}
     return all(key in allowed_keys for key in value)
 
 
@@ -503,13 +522,14 @@ def is_file_tool_input(value: object) -> TypeIs[FileToolInput]:
         return False
 
     # Define field validators
-    field_validators = {
+    field_validators: dict[str, Any] = {
         "file_path": lambda v: isinstance(v, str),
         "old_string": lambda v: isinstance(v, str),
         "new_string": lambda v: isinstance(v, str),
         "edits": is_file_edit_list,
         "offset": is_number_or_none,
         "limit": is_number_or_none,
+        "content": lambda v: isinstance(v, str),
     }
 
     # Check all fields are valid
@@ -534,11 +554,17 @@ def is_search_tool_input(value: object) -> TypeIs[SearchToolInput]:
     if "path" in value and not isinstance(value["path"], str):
         return False
 
-    if "include" in value and not isinstance(value["include"], str):
+    if "glob" in value and not isinstance(value["glob"], str):
+        return False
+    
+    if "type" in value and not isinstance(value["type"], str):
+        return False
+    
+    if "output_mode" in value and not isinstance(value["output_mode"], str):
         return False
 
     # No other keys should be present
-    allowed_keys = {"pattern", "path", "include"}
+    allowed_keys = {"pattern", "path", "glob", "type", "output_mode"}
     return all(key in allowed_keys for key in value)
 
 
@@ -548,14 +574,14 @@ def is_task_tool_input(value: object) -> TypeIs[TaskToolInput]:
         return False
 
     # Check optional fields
-    if "description" in value and not isinstance(value["description"], str):
+    if "instructions" in value and not isinstance(value["instructions"], str):
         return False
 
-    if "prompt" in value and not isinstance(value["prompt"], str):
+    if "parent" in value and not isinstance(value["parent"], str):
         return False
 
     # No other keys should be present
-    allowed_keys = {"description", "prompt"}
+    allowed_keys = {"instructions", "parent"}
     return all(key in allowed_keys for key in value)
 
 
@@ -598,20 +624,21 @@ def is_bash_tool_response(value: object) -> TypeIs[BashToolResponse]:
     if not isinstance(value, dict):
         return False
 
-    # Check required fields
-    required_fields = {
+    # Check optional fields (all fields are optional in BashToolResponse)
+    field_validators: dict[str, Any] = {
         "stdout": lambda v: isinstance(v, str),
         "stderr": lambda v: isinstance(v, str),
-        "interrupted": lambda v: isinstance(v, bool),
-        "isImage": lambda v: isinstance(v, bool),
+        "exit_code": lambda v: isinstance(v, int),
+        "output": lambda v: isinstance(v, str),
     }
 
-    for field, validator in required_fields.items():
-        if field not in value or not validator(value[field]):
+    for field, validator in field_validators.items():
+        if field in value and not validator(value[field]):
             return False
 
     # No other keys should be present
-    return all(key in required_fields for key in value)
+    allowed_keys = set(field_validators.keys())
+    return all(key in allowed_keys for key in value)
 
 
 def is_file_operation_response(value: object) -> TypeIs[FileOperationResponse]:
@@ -619,19 +646,21 @@ def is_file_operation_response(value: object) -> TypeIs[FileOperationResponse]:
     if not isinstance(value, dict):
         return False
 
-    # Check required fields
-    required_fields = {
+    # Check optional fields
+    field_validators: dict[str, Any] = {
         "success": lambda v: isinstance(v, bool),
-        "error": is_string_or_none,
-        "filePath": is_string_or_none,
+        "message": lambda v: isinstance(v, str),
+        "content": lambda v: isinstance(v, str),
+        "lines_written": lambda v: isinstance(v, int),
     }
 
-    for field, validator in required_fields.items():
-        if field not in value or not validator(value[field]):
+    for field, validator in field_validators.items():
+        if field in value and not validator(value[field]):
             return False
 
     # No other keys should be present
-    return all(key in required_fields for key in value)
+    allowed_keys = set(field_validators.keys())
+    return all(key in allowed_keys for key in value)
 
 
 def is_tool_response(value: object) -> TypeIs[ToolResponse]:
@@ -650,7 +679,7 @@ def is_base_event_data(value: object) -> TypeIs[BaseEventData]:
         return False
 
     # Check required fields
-    required_fields = {
+    required_fields: dict[str, Any] = {
         "session_id": lambda v: isinstance(v, str),
         "transcript_path": lambda v: isinstance(v, str),
         "hook_event_name": lambda v: isinstance(v, str),
@@ -661,10 +690,17 @@ def is_base_event_data(value: object) -> TypeIs[BaseEventData]:
 
 def is_pre_tool_use_event_data(value: object) -> TypeIs[PreToolUseEventData]:
     """Check if value is a valid PreToolUseEventData."""
-    if not is_base_event_data(value):
+    if not isinstance(value, dict):
+        return False
+    
+    # Check base event data fields
+    if not all(
+        field in value and isinstance(value[field], str) 
+        for field in ["session_id", "transcript_path", "hook_event_name"]
+    ):
         return False
 
-    # Check additional required fields
+    # Check additional required fields for tool events
     if "tool_name" not in value or not isinstance(value["tool_name"], str):
         return False
 
@@ -673,7 +709,21 @@ def is_pre_tool_use_event_data(value: object) -> TypeIs[PreToolUseEventData]:
 
 def is_post_tool_use_event_data(value: object) -> TypeIs[PostToolUseEventData]:
     """Check if value is a valid PostToolUseEventData."""
-    if not is_pre_tool_use_event_data(value):
+    if not isinstance(value, dict):
+        return False
+    
+    # Check base event data fields
+    if not all(
+        field in value and isinstance(value[field], str) 
+        for field in ["session_id", "transcript_path", "hook_event_name"]
+    ):
+        return False
+    
+    # Check tool event fields
+    if "tool_name" not in value or not isinstance(value["tool_name"], str):
+        return False
+        
+    if "tool_input" not in value or not isinstance(value["tool_input"], dict):
         return False
 
     # Check additional required field
@@ -683,52 +733,83 @@ def is_post_tool_use_event_data(value: object) -> TypeIs[PostToolUseEventData]:
 
 def is_notification_event_data(value: object) -> TypeIs[NotificationEventData]:
     """Check if value is a valid NotificationEventData."""
-    if not is_base_event_data(value):
+    if not isinstance(value, dict):
+        return False
+    
+    # Check base event data fields
+    if not all(
+        field in value and isinstance(value[field], str) 
+        for field in ["session_id", "transcript_path", "hook_event_name"]
+    ):
         return False
 
-    # Check additional required fields
-    if "message" not in value or not isinstance(value["message"], str):
+    # Check optional fields that are specific to notification events
+    if "message" in value and not isinstance(value["message"], str):
+        return False
+    
+    if "level" in value and not isinstance(value["level"], str):
+        return False
+    
+    if "timestamp" in value and not isinstance(value["timestamp"], str):
         return False
 
-    # Check optional fields
-    return "title" not in value or is_string_or_none(value["title"])
+    return True
 
 
 def is_stop_event_data(value: object) -> TypeIs[StopEventData]:
     """Check if value is a valid StopEventData."""
-    if not is_base_event_data(value):
+    if not isinstance(value, dict):
+        return False
+    
+    # Check base event data fields
+    if not all(
+        field in value and isinstance(value[field], str) 
+        for field in ["session_id", "transcript_path", "hook_event_name"]
+    ):
         return False
 
-    # Check optional fields
-    if "stop_hook_active" in value and not is_boolean_or_none(value["stop_hook_active"]):
+    # Check optional fields specific to stop events
+    if "reason" in value and not isinstance(value["reason"], str):
         return False
 
-    if "duration" in value and not is_number_or_none(value["duration"]):
+    if "duration_seconds" in value and not isinstance(value["duration_seconds"], int):
         return False
 
-    if "tools_used" in value and not is_number_or_none(value["tools_used"]):
+    if "tools_used" in value and not isinstance(value["tools_used"], int):
         return False
 
-    return "messages_exchanged" not in value or is_number_or_none(value["messages_exchanged"])
+    if "errors_encountered" in value and not isinstance(value["errors_encountered"], int):
+        return False
+
+    return True
 
 
 def is_subagent_stop_event_data(value: object) -> TypeIs[SubagentStopEventData]:
     """Check if value is a valid SubagentStopEventData."""
-    if not is_stop_event_data(value):
+    if not isinstance(value, dict):
+        return False
+    
+    # Check base event data fields (don't require stop event data)
+    if not all(
+        field in value and isinstance(value[field], str) 
+        for field in ["session_id", "transcript_path", "hook_event_name"]
+    ):
         return False
 
-    # Check optional fields
-    if "task_description" in value and not is_string_or_none(value["task_description"]):
+    # Check optional fields specific to subagent stop events
+    if "subagent_id" in value and not isinstance(value["subagent_id"], str):
         return False
 
-    if "result" in value and value["result"] is not None and not isinstance(value["result"], (str, dict)):
-        # result can be string, dict, or None
+    if "result" in value and not isinstance(value["result"], str):
         return False
 
-    if "execution_time" in value and not is_number_or_none(value["execution_time"]):
+    if "duration_seconds" in value and not isinstance(value["duration_seconds"], int):
         return False
 
-    return not ("status" in value and not is_string_or_none(value["status"]))
+    if "tools_used" in value and not isinstance(value["tools_used"], int):
+        return False
+
+    return True
 
 
 def is_event_data(value: object) -> TypeIs[EventData]:
@@ -831,10 +912,11 @@ def validate_and_narrow_hook_config(value: object, event_type: str) -> ToolHookC
     if event_type in ["PreToolUse", "PostToolUse"]:
         if not is_tool_hook_config(value):
             raise ValueError(f"Tool event {event_type} requires a matcher field")
-        return cast("ToolHookConfig", value)
-    if not is_non_tool_hook_config(value):
-        raise ValueError(f"Non-tool event {event_type} should not have a matcher field")
-    return cast("NonToolHookConfig", value)
+        return value  # Already type narrowed by is_tool_hook_config
+    else:
+        if not is_non_tool_hook_config(value):
+            raise ValueError(f"Non-tool event {event_type} should not have a matcher field")
+        return value  # Already type narrowed by is_non_tool_hook_config
 
 
 def validate_and_narrow_event_data(value: object, event_type: str) -> EventData:
@@ -845,25 +927,29 @@ def validate_and_narrow_event_data(value: object, event_type: str) -> EventData:
     if event_type == "PreToolUse":
         if not is_pre_tool_use_event_data(value):
             raise ValueError(f"Invalid PreToolUse event data: {value}")
-        return cast("PreToolUseEventData", value)
-    if event_type == "PostToolUse":
+        return value  # Type narrowed by type guard
+    elif event_type == "PostToolUse":
         if not is_post_tool_use_event_data(value):
             raise ValueError(f"Invalid PostToolUse event data: {value}")
-        return cast("PostToolUseEventData", value)
-    if event_type == "Notification":
+        return value  # Type narrowed by type guard
+    elif event_type == "Notification":
         if not is_notification_event_data(value):
             raise ValueError(f"Invalid Notification event data: {value}")
-        return cast("NotificationEventData", value)
-    if event_type == "Stop":
+        return value  # Type narrowed by type guard
+    elif event_type == "Stop":
         if not is_stop_event_data(value):
             raise ValueError(f"Invalid Stop event data: {value}")
-        return cast("StopEventData", value)
-    if event_type == "SubagentStop":
+        return value  # Type narrowed by type guard
+    elif event_type == "SubagentStop":
         if not is_subagent_stop_event_data(value):
             raise ValueError(f"Invalid SubagentStop event data: {value}")
-        return cast("SubagentStopEventData", value)
-    # For unknown event types, return as generic dict
-    return cast("dict[str, str | int | float | bool]", value)
+        return value  # Type narrowed by type guard
+    else:
+        # For unknown event types, return as generic dict
+        if isinstance(value, dict):
+            return value
+        else:
+            raise ValueError(f"Unknown event type {event_type} with non-dict data: {value}")
 
 
 def validate_and_narrow_tool_input(value: object, tool_name: str) -> ToolInput:
@@ -874,25 +960,29 @@ def validate_and_narrow_tool_input(value: object, tool_name: str) -> ToolInput:
     if tool_name == "Bash":
         if not is_bash_tool_input(value):
             raise ValueError(f"Invalid Bash tool input: {value}")
-        return cast("BashToolInput", value)
-    if tool_name in ["Read", "Write", "Edit", "MultiEdit"]:
+        return value  # Type narrowed by type guard
+    elif tool_name in ["Read", "Write", "Edit", "MultiEdit"]:
         if not is_file_tool_input(value):
             raise ValueError(f"Invalid file tool input for {tool_name}: {value}")
-        return cast("FileToolInput", value)
-    if tool_name in ["Glob", "Grep"]:
+        return value  # Type narrowed by type guard
+    elif tool_name in ["Glob", "Grep"]:
         if not is_search_tool_input(value):
             raise ValueError(f"Invalid search tool input for {tool_name}: {value}")
-        return cast("SearchToolInput", value)
-    if tool_name == "Task":
+        return value  # Type narrowed by type guard
+    elif tool_name == "Task":
         if not is_task_tool_input(value):
             raise ValueError(f"Invalid Task tool input: {value}")
-        return cast("TaskToolInput", value)
-    if tool_name == "WebFetch":
+        return value  # Type narrowed by type guard
+    elif tool_name == "WebFetch":
         if not is_web_tool_input(value):
             raise ValueError(f"Invalid WebFetch tool input: {value}")
-        return cast("WebToolInput", value)
-    # For unknown tool types, return as generic dict
-    return cast("dict[str, str | int | float | bool]", value)
+        return value  # Type narrowed by type guard
+    else:
+        # For unknown tool types, return as generic dict
+        if isinstance(value, dict):
+            return value
+        else:
+            raise ValueError(f"Unknown tool {tool_name} with non-dict input: {value}")
 
 
 # =============================================================================
@@ -906,16 +996,18 @@ def validate_complete_settings(settings_data: object) -> ClaudeSettings:
         raise TypeError("Invalid Claude settings structure")
 
     # Additional validation for hooks if present
-    if "hooks" in settings_data:
+    if isinstance(settings_data, dict) and "hooks" in settings_data:
         hooks = settings_data["hooks"]
-        for event_type, hook_configs in hooks.items():
-            for i, hook_config in enumerate(hook_configs):
-                try:
-                    validate_and_narrow_hook_config(hook_config, event_type)
-                except (TypeError, ValueError) as e:
-                    raise ValueError(f"Invalid hook config at {event_type}[{i}]: {e}") from e
+        if isinstance(hooks, dict):
+            for event_type, hook_configs in hooks.items():
+                if isinstance(hook_configs, list):
+                    for i, hook_config in enumerate(hook_configs):
+                        try:
+                            validate_and_narrow_hook_config(hook_config, event_type)
+                        except (TypeError, ValueError) as e:
+                            raise ValueError(f"Invalid hook config at {event_type}[{i}]: {e}") from e
 
-    return cast("ClaudeSettings", settings_data)
+    return settings_data  # Type already narrowed by is_claude_settings
 
 
 def validate_complete_config(config_data: object) -> Config:
@@ -924,15 +1016,17 @@ def validate_complete_config(config_data: object) -> Config:
         raise TypeError("Invalid Discord configuration structure")
 
     # Additional validation for Discord-specific fields
-    config = cast("Config", config_data)
+    config = config_data  # Type already narrowed by is_config
 
-    if config["webhook_url"] and not is_valid_discord_webhook_url(config["webhook_url"]):
+    if "webhook_url" in config and config["webhook_url"] and not is_valid_discord_webhook_url(config["webhook_url"]):
         raise ValueError("Invalid Discord webhook URL format")
 
-    if config["mention_user_id"] and not is_valid_discord_user_id(config["mention_user_id"]):
+    if "mention_user_id" in config and config["mention_user_id"] and not is_valid_discord_user_id(config["mention_user_id"]):
         raise ValueError("Invalid Discord user ID format")
 
-    if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
+    if ("webhook_url" not in config or not config["webhook_url"]) and \
+       ("bot_token" not in config or not config["bot_token"] or \
+        "channel_id" not in config or not config["channel_id"]):
         raise ValueError("Must provide either webhook URL or bot token + channel ID")
 
     return config
@@ -943,18 +1037,19 @@ def validate_complete_discord_message(message_data: object) -> DiscordMessage:
     if not is_discord_message(message_data):
         raise TypeError("Invalid Discord message structure")
 
-    message = cast("DiscordMessage", message_data)
+    message = message_data  # Type already narrowed by is_discord_message
 
     # Additional validation for Discord API limits
-    if "embeds" in message:
+    if "embeds" in message and isinstance(message["embeds"], list):
         if len(message["embeds"]) > 10:  # Discord limit
             raise ValueError("Discord message cannot have more than 10 embeds")
 
         for i, embed in enumerate(message["embeds"]):
-            if "title" in embed and len(embed["title"]) > 256:
-                raise ValueError(f"Embed {i} title exceeds 256 characters")
-            if "description" in embed and len(embed["description"]) > 4096:
-                raise ValueError(f"Embed {i} description exceeds 4096 characters")
+            if isinstance(embed, dict):
+                if "title" in embed and isinstance(embed["title"], str) and len(embed["title"]) > 256:
+                    raise ValueError(f"Embed {i} title exceeds 256 characters")
+                if "description" in embed and isinstance(embed["description"], str) and len(embed["description"]) > 4096:
+                    raise ValueError(f"Embed {i} description exceeds 4096 characters")
 
     return message
 
