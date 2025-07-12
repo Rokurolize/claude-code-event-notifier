@@ -5,14 +5,14 @@ This module handles sending formatted messages to Discord through
 various methods including webhooks, bot API, and thread management.
 """
 
-import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 from src.core.constants import DiscordLimits, EventTypes
 from src.core.exceptions import DiscordAPIError
 from src.core.http_client import DiscordMessage, HTTPClient
 from src.handlers.thread_manager import SESSION_THREAD_CACHE, get_or_create_thread
+from src.utils.astolfo_logger import AstolfoLogger
 
 if TYPE_CHECKING:
     from src.core.http_client import DiscordEmbed, DiscordThreadMessage
@@ -26,7 +26,7 @@ class DiscordContext:
     """Context object containing Discord API resources."""
 
     config: Config
-    logger: logging.Logger
+    logger: AstolfoLogger
     http_client: HTTPClient
 
 
@@ -59,7 +59,17 @@ def _send_embed_to_thread(
             url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
             return ctx.http_client.post_bot_api(url, thread_message, bot_token)
     except DiscordAPIError as e:
-        ctx.logger.warning("Failed to send embed to thread %s: %s", thread_id, e)
+        ctx.logger.warning(
+            "thread_send_failed",
+            context={
+                "thread_id": thread_id,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "has_webhook": bool(ctx.config.get("webhook_url")),
+                "has_bot_token": bool(ctx.config.get("bot_token"))
+            },
+            ai_todo="Check thread permissions, verify bot/webhook configuration, and ensure thread is not archived"
+        )
 
     return False
 
@@ -109,7 +119,17 @@ def _send_mention_to_channel(
             url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
             return ctx.http_client.post_bot_api(url, mention_message, bot_token)
     except DiscordAPIError as e:
-        ctx.logger.warning("Failed to send mention to main channel: %s", e)
+        ctx.logger.warning(
+            "mention_send_failed",
+            context={
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "event_type": event_type,
+                "mention_user_id": str(ctx.config.get("mention_user_id", "")),
+                "channel_id": str(ctx.config.get("channel_id", ""))
+            },
+            ai_todo="Check channel permissions and verify mention_user_id is valid"
+        )
 
     return False
 
@@ -136,12 +156,26 @@ def _handle_stop_notification_events(
     # 1. Send embed to thread (if exists)
     thread_id = get_or_create_thread(session_id, ctx.config, ctx.http_client, ctx.logger)
     if thread_id and _send_embed_to_thread(thread_id, message, ctx):
-        ctx.logger.debug("Sent embed to thread %s for %s event", thread_id, event_type)
+        ctx.logger.debug(
+            "embed_sent_to_thread",
+            context={
+                "thread_id": thread_id,
+                "event_type": event_type,
+                "session_id": session_id
+            }
+        )
         success = True
 
     # 2. Send mention-only message to main channel
     if _send_mention_to_channel(message, event_type, ctx):
-        ctx.logger.debug("Sent mention to main channel for %s event", event_type)
+        ctx.logger.debug(
+            "mention_sent_to_channel",
+            context={
+                "event_type": event_type,
+                "channel_id": str(ctx.config.get("channel_id", "")),
+                "mention_user_id": str(ctx.config.get("mention_user_id", ""))
+            }
+        )
         success = True
 
     # 3. Archive thread for Stop events
@@ -149,12 +183,36 @@ def _handle_stop_notification_events(
     if event_type == EventTypes.STOP.value and thread_id and bot_token and isinstance(bot_token, str):
         try:
             if ctx.http_client.archive_thread(thread_id, bot_token):
-                ctx.logger.info("Archived thread %s after session %s ended", thread_id, session_id)
+                ctx.logger.info(
+                    "thread_archived",
+                    context={
+                        "thread_id": thread_id,
+                        "session_id": session_id,
+                        "event_type": event_type
+                    },
+                    human_note="Thread automatically archived when session ended"
+                )
                 SESSION_THREAD_CACHE.pop(session_id, None)
             else:
-                ctx.logger.warning("Failed to archive thread %s", thread_id)
+                ctx.logger.warning(
+                    "thread_archive_failed",
+                    context={
+                        "thread_id": thread_id,
+                        "session_id": session_id
+                    },
+                    ai_todo="Check if thread is already archived or bot lacks permissions"
+                )
         except DiscordAPIError as e:
-            ctx.logger.warning("Failed to archive thread %s: %s", thread_id, e)
+            ctx.logger.warning(
+                "thread_archive_error",
+                context={
+                    "thread_id": thread_id,
+                    "session_id": session_id,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                },
+                ai_todo="Verify bot has MANAGE_THREADS permission"
+            )
 
     return success
 
@@ -184,8 +242,18 @@ def _handle_thread_messaging(
                 if not isinstance(webhook_url, str):
                     return None
                 return ctx.http_client.post_webhook_to_thread(webhook_url, message, thread_id)
-            except DiscordAPIError:
-                ctx.logger.warning("Failed to send to thread, falling back to regular channel")
+            except DiscordAPIError as e:
+                ctx.logger.warning(
+                    "thread_send_fallback",
+                    context={
+                        "thread_id": thread_id,
+                        "session_id": session_id,
+                        "webhook_url": str(ctx.config.get("webhook_url", ""))[:50] + "...",  # Truncate for security
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    },
+                    ai_todo="Thread may be archived or webhook lacks thread permissions"
+                )
                 return None
 
     elif ctx.config.get("channel_type") == "forum":
@@ -202,11 +270,36 @@ def _handle_thread_messaging(
                 thread_id = ctx.http_client.create_forum_thread(webhook_url, thread_message, thread_name)
                 if thread_id:
                     SESSION_THREAD_CACHE[session_id] = thread_id
-                    ctx.logger.info("Created forum thread %s for session %s", thread_id, session_id)
+                    ctx.logger.info(
+                        "forum_thread_created",
+                        context={
+                            "thread_id": thread_id,
+                            "session_id": session_id,
+                            "thread_name": thread_name,
+                            "channel_type": "forum"
+                        },
+                        human_note="New forum thread created for session tracking"
+                    )
                     return True
-                ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
-            except DiscordAPIError:
-                ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
+                ctx.logger.warning(
+                    "forum_thread_creation_failed",
+                    context={
+                        "session_id": session_id,
+                        "thread_name": thread_name
+                    },
+                    ai_todo="Check if webhook has CREATE_PUBLIC_THREADS permission in forum channel"
+                )
+            except DiscordAPIError as e:
+                ctx.logger.warning(
+                    "forum_thread_api_error",
+                    context={
+                        "session_id": session_id,
+                        "thread_name": thread_name,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e)
+                    },
+                    ai_todo="Forum channel may not exist or webhook lacks permissions"
+                )
 
     return None
 
@@ -320,7 +413,16 @@ def send_to_discord(
     
     # If multiple messages, send them sequentially
     if len(messages) > 1:
-        ctx.logger.info("Splitting long message into %d parts", len(messages))
+        ctx.logger.info(
+            "message_split",
+            context={
+                "parts_count": len(messages),
+                "session_id": session_id,
+                "event_type": event_type,
+                "original_length": len(str(message.get("embeds", [{}])[0].get("description", "")))
+            },
+            human_note="Message exceeded Discord's 4096 character limit for embed descriptions"
+        )
         all_success = True
         for i, msg in enumerate(messages):
             # Add small delay between messages to avoid rate limiting
@@ -332,7 +434,16 @@ def send_to_discord(
             success = _send_single_message(msg, ctx, session_id, event_type)
             if not success:
                 all_success = False
-                ctx.logger.error("Failed to send message part %d", i + 1)
+                ctx.logger.error(
+                    "message_part_failed",
+                    context={
+                        "part_number": i + 1,
+                        "total_parts": len(messages),
+                        "session_id": session_id,
+                        "event_type": event_type
+                    },
+                    ai_todo="Check rate limits or connection issues when sending multiple messages"
+                )
         return all_success
     
     # Single message, use regular logic

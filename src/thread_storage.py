@@ -6,7 +6,6 @@ duplicate thread creation across process restarts. Uses SQLite for lightweight,
 zero-dependency storage.
 """
 
-import logging
 import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
@@ -14,6 +13,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from src.type_guards import is_valid_snowflake
+from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
 
 
 class ThreadStats(TypedDict):
@@ -72,7 +72,7 @@ class ThreadStorage:
         self.db_path = db_path or (Path.home() / ".claude" / "hooks" / "threads.db")
         self.cleanup_days = cleanup_days
         self._lock = threading.Lock()
-        self._logger = logging.getLogger(__name__)
+        self._logger = setup_astolfo_logger(__name__)
 
         # Ensure parent directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,7 +113,15 @@ class ThreadStorage:
                 """)
 
                 conn.commit()
-                self._logger.debug("Thread storage database initialized: %s", self.db_path)
+                self._logger.debug(
+                    "thread_storage_initialized",
+                    context={
+                        "db_path": str(self.db_path),
+                        "cleanup_days": self.cleanup_days,
+                        "table_exists": True
+                    },
+                    human_note="SQLite database ready for thread mapping storage"
+                )
 
         except sqlite3.Error as e:
             raise ThreadStorageError(f"Failed to initialize database: {e}") from e
@@ -139,15 +147,36 @@ class ThreadStorage:
             True if stored successfully, False otherwise
         """
         if not session_id:
-            self._logger.warning("Invalid session_id for thread storage")
+            self._logger.warning(
+                "thread_storage_invalid_input",
+                context={
+                    "field": "session_id",
+                    "value": str(session_id)[:50] if session_id else "None"
+                },
+                ai_todo="Ensure session_id is a valid string before storage operations"
+            )
             return False
             
         if not thread_id or not is_valid_snowflake(thread_id):
-            self._logger.warning("Invalid thread_id for thread storage")
+            self._logger.warning(
+                "thread_storage_invalid_input",
+                context={
+                    "field": "thread_id",
+                    "value": str(thread_id)[:50] if thread_id else "None"
+                },
+                ai_todo="Verify thread_id is a valid Discord snowflake ID"
+            )
             return False
             
         if not channel_id or not is_valid_snowflake(channel_id):
-            self._logger.warning("Invalid channel_id for thread storage")
+            self._logger.warning(
+                "thread_storage_invalid_input",
+                context={
+                    "field": "channel_id",
+                    "value": str(channel_id)[:50] if channel_id else "None"
+                },
+                ai_todo="Verify channel_id is a valid Discord snowflake ID"
+            )
             return False
 
         with self._lock:
@@ -172,7 +201,15 @@ class ThreadStorage:
                     )
 
                     conn.commit()
-                    self._logger.debug("Stored thread mapping: %s -> %s", session_id, thread_id)
+                    self._logger.debug(
+                        "thread_mapping_stored",
+                        context={
+                            "session_id": session_id,
+                            "thread_id": thread_id,
+                            "channel_id": channel_id,
+                            "thread_name": thread_name
+                        }
+                    )
                     return True
 
             except sqlite3.Error:
@@ -263,7 +300,14 @@ class ThreadStorage:
                     updated = cursor.rowcount > 0
 
                     if updated:
-                        self._logger.debug("Updated thread status: %s -> archived=%s", session_id, is_archived)
+                        self._logger.debug(
+                            "thread_status_updated",
+                            context={
+                                "session_id": session_id,
+                                "is_archived": is_archived,
+                                "rows_affected": cursor.rowcount
+                            }
+                        )
 
                     return updated
 
@@ -298,7 +342,13 @@ class ThreadStorage:
                     removed = cursor.rowcount > 0
 
                     if removed:
-                        self._logger.debug("Removed thread mapping: %s", session_id)
+                        self._logger.debug(
+                            "thread_mapping_removed",
+                            context={
+                                "session_id": session_id,
+                                "was_deleted": True
+                            }
+                        )
 
                     return removed
 
@@ -348,7 +398,13 @@ class ThreadStorage:
                             )
                             results.append(record)
                         except (ValueError, TypeError):
-                            self._logger.warning("Skipping invalid thread record")
+                            self._logger.warning(
+                                "thread_record_invalid",
+                                context={
+                                    "row_data": str(row)[:100]
+                                },
+                                ai_todo="Check database integrity or migration issues"
+                            )
                             continue
                     
                     return results
@@ -427,7 +483,15 @@ class ThreadStorage:
                     removed_count = cursor.rowcount
 
                     if removed_count > 0:
-                        self._logger.info("Cleaned up %s stale thread mappings", removed_count)
+                        self._logger.info(
+                            "thread_cleanup_completed",
+                            context={
+                                "removed_count": removed_count,
+                                "cleanup_days": self.cleanup_days,
+                                "cutoff_date": cutoff_date.isoformat()
+                            },
+                            human_note="Periodic cleanup of unused thread mappings"
+                        )
 
                     return removed_count
 
@@ -493,7 +557,12 @@ class ThreadStorage:
             try:
                 # Run cleanup on close
                 self.cleanup_stale_threads()
-                self._logger.debug("Thread storage closed")
+                self._logger.debug(
+                    "thread_storage_closed",
+                    context={
+                        "db_path": str(self.db_path)
+                    }
+                )
             except (sqlite3.Error, OSError):
                 # Catch specific exceptions that might occur during cleanup
                 self._logger.exception("Error during storage cleanup")
