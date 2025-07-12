@@ -9,11 +9,15 @@ import json
 import logging
 import os
 import traceback
+import threading
+import time
+import gzip
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional, Union, Protocol, TypeVar, Callable, ParamSpec, cast, Any, Mapping, TYPE_CHECKING
 from typing import get_type_hints
+from collections import deque
 
 # Import type definitions
 from src.utils.astolfo_logger_types import (
@@ -29,6 +33,9 @@ from src.utils.astolfo_logger_types import (
     LoggerProtocol,
     P,
     T,
+    LogRotationConfig,
+    MemoryLogConfig,
+    AstolfoLoggerConfig,
 )
 
 
@@ -122,9 +129,13 @@ class AstolfoLog:
 
 
 class AstolfoLogger:
-    """Logger wrapper that provides structured logging for AI debugging."""
+    """Logger wrapper that provides structured logging for AI debugging.
     
-    def __init__(self, name: str, debug_level: int = 1):
+    Enhanced with log rotation, memory storage, and persistence features
+    inspired by vibe-logger's architecture.
+    """
+    
+    def __init__(self, name: str, debug_level: int = 1, config: Optional[AstolfoLoggerConfig] = None):
         """Initialize the logger.
         
         Args:
@@ -133,15 +144,199 @@ class AstolfoLogger:
                 1: Basic debug info
                 2: API communication details
                 3: All function inputs/outputs
+            config: Optional configuration override
         """
         self.logger = logging.getLogger(name)
         self.debug_level = debug_level
         self.session_id: Optional[str] = None
         self._start_times: dict[str, float] = {}
         
+        # Memory log storage
+        self._logs: deque[AstolfoLog] = deque(maxlen=1000)
+        self._logs_lock = threading.Lock()
+        
+        # Log rotation settings
+        self._rotation_config = LogRotationConfig(
+            max_file_size_mb=10,
+            max_files=5,
+            compress_old_files=True
+        )
+        
+        # Memory log settings
+        self._memory_config = MemoryLogConfig(
+            max_logs=1000,
+            auto_save=True,
+            save_interval_seconds=300  # 5 minutes
+        )
+        
+        # Apply custom config if provided
+        if config:
+            if 'rotation' in config:
+                self._rotation_config.update(config['rotation'])
+            if 'memory' in config:
+                self._memory_config.update(config['memory'])
+            if 'session_id' in config:
+                self.session_id = config['session_id']
+                
+        # Auto-save thread
+        self._auto_save_thread: Optional[threading.Thread] = None
+        self._stop_auto_save = threading.Event()
+        if self._memory_config['auto_save']:
+            self._start_auto_save()
+        
     def set_session_id(self, session_id: str) -> None:
         """Set the current session ID for all logs."""
         self.session_id = session_id
+        
+    def _start_auto_save(self) -> None:
+        """Start the auto-save thread."""
+        def auto_save_worker() -> None:
+            while not self._stop_auto_save.is_set():
+                self._stop_auto_save.wait(self._memory_config['save_interval_seconds'])
+                if not self._stop_auto_save.is_set():
+                    self.save_logs()
+                    
+        self._auto_save_thread = threading.Thread(target=auto_save_worker, daemon=True)
+        self._auto_save_thread.start()
+        
+    def stop(self) -> None:
+        """Stop the logger and save remaining logs."""
+        self._stop_auto_save.set()
+        if self._auto_save_thread:
+            self._auto_save_thread.join(timeout=5)
+        self.save_logs()
+        
+    def _rotate_log_file(self, log_file: Path) -> None:
+        """Rotate log file if it exceeds max size."""
+        if not log_file.exists():
+            return
+            
+        file_size_mb = log_file.stat().st_size / (1024 * 1024)
+        if file_size_mb < self._rotation_config['max_file_size_mb']:
+            return
+            
+        # Find next available rotation number
+        rotation_num = 1
+        while True:
+            rotated_file = log_file.with_suffix(f'.{rotation_num}.log')
+            if self._rotation_config['compress_old_files']:
+                rotated_file = rotated_file.with_suffix('.gz')
+            if not rotated_file.exists():
+                break
+            rotation_num += 1
+            
+        # Rotate the file
+        if self._rotation_config['compress_old_files']:
+            with open(log_file, 'rb') as f_in:
+                with gzip.open(rotated_file, 'wb') as f_out:
+                    f_out.write(f_in.read())
+            log_file.unlink()
+        else:
+            log_file.rename(rotated_file)
+            
+        # Clean up old files
+        self._cleanup_old_logs(log_file.parent, log_file.stem)
+        
+    def _cleanup_old_logs(self, log_dir: Path, base_name: str) -> None:
+        """Remove old log files beyond max_files limit."""
+        pattern = f"{base_name}.*.log*"
+        # Create a proper function with type annotation
+        def get_mtime(path: Path) -> float:
+            return path.stat().st_mtime
+        log_files = sorted(log_dir.glob(pattern), key=get_mtime, reverse=True)
+        
+        # Keep only max_files
+        for old_file in log_files[self._rotation_config['max_files']:]:
+            old_file.unlink()
+            
+    def add_log(self, log: AstolfoLog) -> None:
+        """Add a log entry to memory storage."""
+        with self._logs_lock:
+            self._logs.append(log)
+            
+    def get_logs(self, limit: Optional[int] = None) -> list[AstolfoLog]:
+        """Get logs from memory storage."""
+        with self._logs_lock:
+            logs = list(self._logs)
+            if limit:
+                return logs[-limit:]
+            return logs
+            
+    def save_logs(self, file_path: Optional[Path] = None) -> None:
+        """Save logs to file with rotation support."""
+        if not file_path:
+            log_dir = Path.home() / ".claude" / "hooks" / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            file_path = log_dir / f"astolfo_logs_{datetime.now(UTC).strftime('%Y-%m-%d')}.jsonl"
+            
+        # Check rotation before writing
+        self._rotate_log_file(file_path)
+        
+        # Write logs
+        with self._logs_lock:
+            logs_to_save = list(self._logs)
+            
+        if logs_to_save:
+            with open(file_path, 'a') as f:
+                for log in logs_to_save:
+                    f.write(log.to_json() + '\n')
+                    
+    def load_logs(self, file_path: Path) -> list[AstolfoLog]:
+        """Load logs from file."""
+        logs: list[AstolfoLog] = []
+        
+        if not file_path.exists():
+            return logs
+            
+        try:
+            with open(file_path, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        data = cast(JsonDict, json.loads(line))
+                        
+                        # Extract values with proper typing
+                        timestamp = str(data.get('timestamp', '')) if 'timestamp' in data else ''
+                        level = str(data.get('level', 'INFO')) if 'level' in data else 'INFO'
+                        event = str(data.get('event', '')) if 'event' in data else ''
+                        session_id = str(data['session_id']) if 'session_id' in data and data['session_id'] is not None else None
+                        correlation_id = str(data['correlation_id']) if 'correlation_id' in data and data['correlation_id'] is not None else None
+                        
+                        # Extract complex types
+                        context_raw = data.get('context', {})
+                        context = cast(dict[str, ContextValue], context_raw) if isinstance(context_raw, dict) else {}
+                        
+                        error_raw = data.get('error')
+                        error = cast(ErrorDict, error_raw) if error_raw and isinstance(error_raw, dict) else None
+                        
+                        ai_todo = str(data['ai_todo']) if 'ai_todo' in data and data['ai_todo'] is not None else None
+                        human_note = str(data['human_note']) if 'human_note' in data and data['human_note'] is not None else None
+                        astolfo_note = str(data['astolfo_note']) if 'astolfo_note' in data and data['astolfo_note'] is not None else None
+                        
+                        duration_ms_raw = data.get('duration_ms')
+                        duration_ms = int(duration_ms_raw) if duration_ms_raw is not None and isinstance(duration_ms_raw, (int, float)) else None
+                        
+                        memory_usage_raw = data.get('memory_usage')
+                        memory_usage = cast(MemoryDict, memory_usage_raw) if memory_usage_raw and isinstance(memory_usage_raw, dict) else None
+                        
+                        log = AstolfoLog(
+                            timestamp=timestamp,
+                            level=level,
+                            event=event,
+                            session_id=session_id,
+                            correlation_id=correlation_id,
+                            context=context,
+                            error=error,
+                            ai_todo=ai_todo,
+                            human_note=human_note,
+                            astolfo_note=astolfo_note,
+                            duration_ms=duration_ms,
+                            memory_usage=memory_usage
+                        )
+                        logs.append(log)
+        except Exception as e:
+            self.logger.error(f"Failed to load logs from {file_path}: {e}")
+            
+        return logs
         
     def _create_log(
         self,
@@ -199,6 +394,10 @@ class AstolfoLogger:
             duration_ms=final_duration_ms,
             memory_usage=final_memory_usage
         )
+        
+        # Add to memory storage
+        self.add_log(log)
+        
         return log
     
     def debug(self, *args: Union[str, int, float], **kwargs: Union[ContextValue, ContextDict, ErrorDict, MemoryDict]) -> None:
@@ -424,11 +623,12 @@ def get_debug_level() -> int:
         return 1
 
 
-def setup_astolfo_logger(name: str) -> AstolfoLogger:
+def setup_astolfo_logger(name: str, config: Optional[AstolfoLoggerConfig] = None) -> AstolfoLogger:
     """Set up an Astolfo logger instance.
     
     Args:
         name: Logger name (usually __name__)
+        config: Optional configuration override
         
     Returns:
         Configured AstolfoLogger instance
@@ -465,7 +665,23 @@ def setup_astolfo_logger(name: str) -> AstolfoLogger:
         logger.addHandler(console_handler)
         logger.setLevel(logging.ERROR)
     
-    return AstolfoLogger(name, debug_level)
+    # Create logger with enhanced features
+    astolfo_logger = AstolfoLogger(name, debug_level, config)
+    
+    # Log startup info
+    astolfo_logger.info(
+        "astolfo_logger_initialized",
+        context={
+            "name": name,
+            "debug_level": debug_level,
+            "memory_logs": astolfo_logger._memory_config['max_logs'],
+            "rotation_mb": astolfo_logger._rotation_config['max_file_size_mb']
+        },
+        human_note="AstolfoLogger initialized with vibelogger-inspired features",
+        ai_todo="Monitor logs for performance and debugging insights"
+    )
+    
+    return astolfo_logger
 
 
 # Example usage in decorators

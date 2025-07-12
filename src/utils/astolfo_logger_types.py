@@ -60,3 +60,24 @@ class LoggerProtocol(Protocol):
     def warning(self, message: str, **kwargs: ContextValue) -> None: ...
     def error(self, message: str, error: Optional[Exception] = None, **kwargs: ContextValue) -> None: ...
     def event(self, event_name: str, **context: ContextValue) -> None: ...
+
+# Configuration types
+class LogRotationConfig(TypedDict):
+    """Log rotation configuration."""
+    max_file_size_mb: int
+    max_files: int
+    compress_old_files: bool
+
+class MemoryLogConfig(TypedDict):
+    """Memory log configuration."""
+    max_logs: int
+    auto_save: bool
+    save_interval_seconds: int
+
+class AstolfoLoggerConfig(TypedDict, total=False):
+    """Complete logger configuration."""
+    debug_level: int
+    log_file: str
+    rotation: LogRotationConfig
+    memory: MemoryLogConfig
+    session_id: str
