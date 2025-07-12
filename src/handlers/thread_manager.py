@@ -7,7 +7,8 @@ caching, and lifecycle management for session-based threads.
 Enhanced with Python 3.13+ free-threaded mode support for better parallelism.
 """
 
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,7 +58,7 @@ except ImportError:
 
 
 def validate_thread_exists(
-    thread_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    thread_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> ThreadDetails | None:
     """Validate that a thread still exists and get its current status.
 
@@ -108,7 +109,7 @@ def find_existing_thread_by_name(
     thread_name: str,
     config: Config,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> ThreadDetails | None:
     """Find an existing thread by name in a channel.
 
@@ -165,7 +166,7 @@ def ensure_thread_is_usable(
     thread_details: ThreadDetails,
     config: Config,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> bool:
     """Ensure a thread is in a usable state (unarchived and unlocked).
 
@@ -230,7 +231,7 @@ def ensure_thread_is_usable(
 
 
 def _check_cached_thread(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Check in-memory cache for thread ID.
 
@@ -262,7 +263,7 @@ def _check_cached_thread(
 
 
 def _check_persistent_storage(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Check persistent storage for thread ID.
 
@@ -332,7 +333,7 @@ class ThreadInfo:
 def _store_thread_in_storage(
     thread_info: ThreadInfo,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> None:
     """Store thread information in persistent storage.
 
@@ -368,7 +369,7 @@ def _store_thread_in_storage(
 
 
 def _search_discord_for_thread(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Search Discord API for existing thread by name.
 
@@ -418,7 +419,7 @@ def _search_discord_for_thread(
     return thread_id
 
 
-def _create_new_thread(session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger) -> str | None:
+def _create_new_thread(session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger) -> str | None:
     """Create new thread for session.
 
     Args:
@@ -478,7 +479,7 @@ def _create_new_thread(session_id: str, config: Config, http_client: HTTPClient,
 
 
 def get_or_create_thread(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Get existing thread ID or create new thread for session using intelligent lookup.
 

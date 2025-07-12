@@ -4,7 +4,8 @@ This module handles sending messages to Discord via webhook or bot API,
 with support for threads, message splitting, and special event handling.
 """
 
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 import time
 from typing import Any, cast
 from src.core.http_client import DiscordEmbed
@@ -40,7 +41,7 @@ except ImportError:
 def send_to_discord(
     message: DiscordMessage,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
     http_client: HTTPClient,
     session_id: str = "",
     event_type: str = "",
@@ -168,7 +169,7 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
 def _send_single_message(
     message: DiscordMessage,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
     http_client: HTTPClient,
     session_id: str = "",
     event_type: str = "",
@@ -203,7 +204,7 @@ def _send_single_message(
 def _send_stop_or_notification_event(
     message: DiscordMessage,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
     http_client: HTTPClient,
     session_id: str,
     event_type: str,
@@ -276,7 +277,7 @@ def _send_stop_or_notification_event(
 def _send_to_thread(
     message: DiscordMessage,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
     http_client: HTTPClient,
     session_id: str = "",
 ) -> bool | None:

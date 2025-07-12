@@ -6,11 +6,12 @@ including full tool inputs and subagent messages.
 """
 
 import json
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 from pathlib import Path
 from typing import TypedDict, NotRequired, Literal, Union
 
-logger = logging.getLogger(__name__)
+logger = AstolfoLogger(__name__)
 
 
 class ToolUseContent(TypedDict):

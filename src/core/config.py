@@ -5,6 +5,8 @@ This module handles loading and validation of configuration from
 environment variables and .env files.
 """
 
+from src.utils.astolfo_logger import AstolfoLogger
+
 import logging
 import os
 import sys
@@ -407,7 +409,7 @@ class ConfigLoader:
             raise ConfigurationError("No Discord configuration found. Please set webhook URL or bot token/channel ID.")
 
 
-def setup_logging(debug: bool) -> logging.Logger:
+def setup_logging(debug: bool) -> AstolfoLogger:
     """Set up logging with optional debug mode.
 
     Args:
@@ -416,28 +418,15 @@ def setup_logging(debug: bool) -> logging.Logger:
     Returns:
         Configured logger instance
     """
-    logger = logging.getLogger(__name__)
+    logger = AstolfoLogger(__name__)
 
     if debug:
         log_dir = Path.home() / ".claude" / "hooks" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / f"discord_notifier_{datetime.now(UTC).strftime('%Y-%m-%d')}.log"
-
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format=LOG_FORMAT,
-            handlers=[
-                logging.FileHandler(log_file, mode="a"),
-                logging.StreamHandler(sys.stderr),
-            ],
-        )
-    else:
-        # Only log errors to stderr in non-debug mode
-        logging.basicConfig(
-            level=logging.ERROR,
-            format="%(levelname)s: %(message)s",
-            handlers=[logging.StreamHandler(sys.stderr)],
-        )
+        
+        # AstolfoLogger handles all logging configuration
+        logger.debug(f"Debug logging enabled, log file: {log_file}")
 
     return logger
 

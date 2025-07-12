@@ -9,6 +9,10 @@ import json
 from pathlib import Path
 
 from src.core.constants import TRUNCATION_SUFFIX, DiscordLimits, TruncationLimits
+from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
+
+# Initialize logger for this module
+logger = setup_astolfo_logger(__name__)
 
 
 def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX) -> str:

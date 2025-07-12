@@ -12,7 +12,8 @@ It also tests the deduplication functionality to prevent creating duplicate thre
 from __future__ import annotations
 
 import json
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 import sys
 import unittest
 from pathlib import Path
@@ -39,7 +40,7 @@ class TestArchivedThreadSearch(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures."""
-        self.logger = logging.getLogger("test")
+        self.logger = AstolfoLogger("test")
         self.logger.setLevel(logging.DEBUG)
 
         # Mock config
@@ -293,6 +294,6 @@ class TestArchivedThreadSearch(unittest.TestCase):
 
 if __name__ == "__main__":
     # Set up logging for tests
-    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    # BasicConfig removed - AstolfoLogger handles configurations - %(name)s - %(levelname)s - %(message)s")
 
     unittest.main()

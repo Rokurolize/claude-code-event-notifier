@@ -9,6 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, TypedDict, Union, cast
 
+from src.utils.astolfo_logger import AstolfoLogger
 from src.core.constants import (
     EVENT_COLORS,
     TOOL_EMOJIS,
@@ -114,9 +115,18 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     Returns:
         Discord embed with formatted pre-tool-use information
     """
+    logger = AstolfoLogger()
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+    
+    logger.info(
+        "Formatting PreToolUse event",
+        event_type="PreToolUse",
+        tool_name=tool_name,
+        session_id=session_id,
+        has_tool_input=bool(tool_input)
+    )
 
     # Get full session ID for transcript lookup
     full_session_id = str(event_data.get("session_id", ""))
@@ -177,6 +187,14 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     add_field(desc_parts, "Time", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
+    
+    logger.debug(
+        "PreToolUse embed created",
+        tool_name=tool_name,
+        description_length=len(embed["description"]) if embed["description"] else 0,
+        session_id=session_id
+    )
+    
     return embed
 
 
@@ -190,10 +208,20 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
     Returns:
         Discord embed with formatted post-tool-use information
     """
+    logger = AstolfoLogger()
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     tool_response = event_data.get("tool_response", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
+    
+    logger.info(
+        "Formatting PostToolUse event",
+        event_type="PostToolUse",
+        tool_name=tool_name,
+        session_id=session_id,
+        has_response=bool(tool_response),
+        exit_code=event_data.get("exit_code", -1)
+    )
 
     # Initialize embed with all required fields
     embed: DiscordEmbed = {
@@ -256,6 +284,14 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
     add_field(desc_parts, "Completed at", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
+    
+    logger.debug(
+        "PostToolUse embed created",
+        tool_name=tool_name,
+        description_length=len(embed["description"]) if embed["description"] else 0,
+        session_id=session_id
+    )
+    
     return embed
 
 
@@ -269,7 +305,15 @@ def format_notification(event_data: NotificationEventData | dict[str, object], s
     Returns:
         Discord embed with formatted notification
     """
+    logger = AstolfoLogger()
     message = event_data.get("message", "System notification")
+    
+    logger.info(
+        "Formatting Notification event",
+        event_type="Notification",
+        session_id=session_id,
+        message_preview=str(message)[:100]
+    )
 
     desc_parts: list[str] = [
         f"**Message:** {message}",
@@ -319,7 +363,15 @@ def format_stop(event_data: StopEventData | dict[str, object], session_id: str) 
     Returns:
         Discord embed with formatted stop event
     """
+    logger = AstolfoLogger()
     desc_parts: list[str] = []
+    
+    logger.info(
+        "Formatting Stop event",
+        event_type="Stop",
+        session_id=session_id,
+        has_transcript_path="transcript_path" in event_data
+    )
 
     add_field(desc_parts, "Session ID", session_id, code=True)
     add_field(desc_parts, "Ended at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
@@ -358,8 +410,16 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     Returns:
         Discord embed with formatted subagent stop event
     """
+    logger = AstolfoLogger()
     desc_parts: list[str] = []
     fields_content: list[tuple[str, str]] = []
+    
+    logger.info(
+        "Formatting SubagentStop event",
+        event_type="SubagentStop",
+        session_id=session_id,
+        subagent_id=event_data.get("subagent_id", "unknown")
+    )
 
     # Get full session ID for transcript lookup
     full_session_id = str(event_data.get("session_id", ""))
@@ -404,7 +464,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     # Create embed with fields
     description = "\n".join(desc_parts)
 
-    return create_embed_with_fields(
+    embed = create_embed_with_fields(
         title="🤖 Subagent Completed",
         description=description,
         fields_content=fields_content,
@@ -412,6 +472,15 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         timestamp=None,
         footer_text=None
     )
+    
+    logger.debug(
+        "SubagentStop embed created",
+        session_id=session_id,
+        field_count=len(fields_content),
+        has_messages=len(fields_content) > 0
+    )
+    
+    return embed
 
 
 def format_default_impl(
@@ -427,7 +496,15 @@ def format_default_impl(
     Returns:
         Discord embed with generic event formatting
     """
+    logger = AstolfoLogger()
     desc_parts: list[str] = []
+    
+    logger.warning(
+        "Formatting unknown event type",
+        event_type=event_type,
+        session_id=session_id,
+        data_keys=list(event_data.keys()) if event_data else []
+    )
     desc_parts.append(f"**Session:** `{session_id}`")
     desc_parts.append(f"**Event Type:** {event_type}")
 
@@ -476,9 +553,17 @@ def format_event(
     Returns:
         Discord message with formatted embed
     """
+    logger = AstolfoLogger()
     timestamp = datetime.now(UTC).isoformat()
     session_id_raw = event_data.get("session_id", "unknown")
     session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"
+    
+    logger.info(
+        "Formatting event",
+        event_type=event_type,
+        session_id=session_id,
+        formatter=formatter_func.__name__
+    )
 
     # Format the event using the appropriate formatter
     embed = formatter_func(event_data, session_id)
@@ -518,5 +603,19 @@ def format_event(
             display_message = "Session ended"
         # Include both mention and message for better Windows notification visibility
         message["content"] = f"<@{config['mention_user_id']}> {display_message}"
+        
+        logger.debug(
+            "Added user mention to message",
+            event_type=event_type,
+            user_id=config["mention_user_id"]
+        )
+
+    logger.debug(
+        "Event formatting complete",
+        event_type=event_type,
+        session_id=session_id,
+        has_mention=message["content"] is not None,
+        embed_title=embed.get("title", "")
+    )
 
     return message

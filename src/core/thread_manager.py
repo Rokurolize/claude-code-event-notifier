@@ -8,7 +8,8 @@ This module provides comprehensive thread management functionality including:
 - Persistent thread storage integration
 """
 
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 from pathlib import Path
 from typing import cast, Any
 
@@ -66,7 +67,7 @@ except ImportError:
 
 
 def validate_thread_exists(
-    thread_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    thread_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> DiscordThread | None:
     """Validate that a thread still exists and get its current status.
 
@@ -104,7 +105,7 @@ def validate_thread_exists(
 
 
 def _find_best_matching_thread(
-    threads: list[DiscordThread], thread_name: str, logger: logging.Logger
+    threads: list[DiscordThread], thread_name: str, logger: AstolfoLogger
 ) -> DiscordThread | None:
     """Find the best matching thread from a list of threads.
 
@@ -136,7 +137,7 @@ def _search_threads_with_error_handling(
     thread_name: str,
     bot_token: str,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> list[DiscordThread] | None:
     """Search for threads with comprehensive error handling.
 
@@ -166,7 +167,7 @@ def find_existing_thread_by_name(
     thread_name: str,
     config: Config,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> DiscordThread | None:
     """Find an existing thread by name in a channel.
 
@@ -212,7 +213,7 @@ def _try_unarchive_thread(
     thread_id: str,
     bot_token: str,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> bool:
     """Try to unarchive a thread with error handling.
 
@@ -245,7 +246,7 @@ def ensure_thread_is_usable(
     thread_details: DiscordThread,
     config: Config,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> bool:
     """Ensure a thread is usable by unarchiving if needed."""
     is_archived, is_locked = _check_thread_state(cast(dict[str, object], thread_details))
@@ -265,7 +266,7 @@ def ensure_thread_is_usable(
 
 
 def _check_cached_thread(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Check in-memory cache for thread and validate it."""
     if session_id not in SESSION_THREAD_CACHE:
@@ -287,7 +288,7 @@ def _check_cached_thread(
 
 
 def _check_persistent_storage(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Check persistent storage for thread and validate it."""
     if not THREAD_STORAGE_AVAILABLE:
@@ -340,7 +341,7 @@ def _store_thread_in_storage(
     thread_name: str,
     is_archived: bool,
     config: Config,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> None:
     """Store thread in persistent storage."""
     if not THREAD_STORAGE_AVAILABLE:
@@ -368,7 +369,7 @@ def _store_thread_in_storage(
 
 
 def _search_discord_for_thread(
-    session_id: str, thread_name: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, thread_name: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Search Discord API for existing thread by name."""
     channel_id = config.get("channel_id")
@@ -402,7 +403,7 @@ def _search_discord_for_thread(
     return thread_id
 
 
-def _handle_forum_channel_thread(config: Config, logger: logging.Logger) -> str | None:
+def _handle_forum_channel_thread(config: Config, logger: AstolfoLogger) -> str | None:
     """Handle thread creation for forum channels.
 
     Args:
@@ -425,7 +426,7 @@ def _create_text_channel_thread(
     thread_name: str,
     config: Config,
     http_client: HTTPClient,
-    logger: logging.Logger,
+    logger: AstolfoLogger,
 ) -> str | None:
     """Create a thread in a text channel.
 
@@ -460,7 +461,7 @@ def _create_text_channel_thread(
 
 
 def _create_new_thread(
-    session_id: str, thread_name: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, thread_name: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Create a new thread for the session."""
     logger.debug("No existing thread found, creating new thread: %s", thread_name)
@@ -488,7 +489,7 @@ def _create_new_thread(
 
 
 def get_or_create_thread(
-    session_id: str, config: Config, http_client: HTTPClient, logger: logging.Logger
+    session_id: str, config: Config, http_client: HTTPClient, logger: AstolfoLogger
 ) -> str | None:
     """Get existing thread ID or create new thread for session using intelligent lookup.
 

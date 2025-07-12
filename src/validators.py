@@ -5,6 +5,7 @@ configuration validators, and event data validators.
 """
 
 from typing import TypeGuard, cast, Any, TYPE_CHECKING
+from src.utils.astolfo_logger import setup_astolfo_logger
 
 # Try to import types from type_defs module first
 try:
@@ -39,6 +40,9 @@ try:
 except ImportError:
     # Fallback imports from discord_notifier if constants not available
     from discord_notifier import EventTypes, ToolNames  # type: ignore
+
+# Initialize logger for validation tracking
+logger = setup_astolfo_logger(__name__)
 
 
 # Type guard functions
@@ -154,7 +158,22 @@ class ConfigValidator:
             >>> config = {"bot_token": "token"}  # Missing channel_id
             >>> ConfigValidator.validate_credentials(config)  # False
         """
-        return bool(config.get("webhook_url") or (config.get("bot_token") and config.get("channel_id")))
+        has_webhook = bool(config.get("webhook_url"))
+        has_bot_credentials = bool(config.get("bot_token") and config.get("channel_id"))
+        
+        if not (has_webhook or has_bot_credentials):
+            logger.error(
+                "credential_validation_failed",
+                context={
+                    "has_webhook": has_webhook,
+                    "has_bot_token": bool(config.get("bot_token")),
+                    "has_channel_id": bool(config.get("channel_id"))
+                },
+                ai_todo="Either webhook_url or both bot_token and channel_id must be configured"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_thread_config(config: Config) -> bool:
@@ -200,11 +219,44 @@ class ConfigValidator:
             return True
 
         channel_type = cast("str", config.get("channel_type", "text"))
+        
         if channel_type == "forum":
-            return bool(config.get("webhook_url"))
+            if not config.get("webhook_url"):
+                logger.error(
+                    "thread_config_validation_failed",
+                    context={
+                        "channel_type": "forum",
+                        "reason": "Forum channels require webhook_url"
+                    },
+                    ai_todo="Configure webhook_url for forum channel thread creation"
+                )
+                return False
+            return True
+            
         if channel_type == "text":
-            return bool(config.get("bot_token") and config.get("channel_id"))
+            if not (config.get("bot_token") and config.get("channel_id")):
+                logger.error(
+                    "thread_config_validation_failed",
+                    context={
+                        "channel_type": "text",
+                        "has_bot_token": bool(config.get("bot_token")),
+                        "has_channel_id": bool(config.get("channel_id")),
+                        "reason": "Text channels require bot_token and channel_id"
+                    },
+                    ai_todo="Configure bot_token and channel_id for text channel thread creation"
+                )
+                return False
+            return True
+            
         # Invalid channel type
+        logger.error(
+            "thread_config_validation_failed",
+            context={
+                "channel_type": channel_type,
+                "reason": "Invalid channel type, must be 'forum' or 'text'"
+            },
+            ai_todo="Set channel_type to either 'forum' or 'text'"
+        )
         return False
 
     @staticmethod
@@ -247,7 +299,29 @@ class ConfigValidator:
         mention_user_id = config.get("mention_user_id")
         if mention_user_id:
             # Basic validation: Discord user IDs are numeric strings
-            return mention_user_id.isdigit() and len(mention_user_id) >= 17
+            if not mention_user_id.isdigit():
+                logger.error(
+                    "mention_config_validation_failed",
+                    context={
+                        "mention_user_id": mention_user_id,
+                        "reason": "Discord user ID must be numeric"
+                    },
+                    ai_todo="Provide a valid numeric Discord user ID"
+                )
+                return False
+                
+            if len(mention_user_id) < 17:
+                logger.error(
+                    "mention_config_validation_failed", 
+                    context={
+                        "mention_user_id_length": len(mention_user_id),
+                        "reason": "Discord user ID too short (must be at least 17 characters)"
+                    },
+                    ai_todo="Provide a valid Discord user ID (17-19 numeric characters)"
+                )
+                return False
+                
+            return True
         return True
 
     @staticmethod
@@ -299,7 +373,20 @@ class EventDataValidator:
     def validate_base_event_data(data: EventData) -> bool:
         """Validate base event data requirements."""
         required_fields = {"session_id", "hook_event_name"}
-        return all(field in data for field in required_fields)
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            logger.error(
+                "event_data_validation_failed",
+                context={
+                    "missing_fields": ", ".join(missing_fields),
+                    "provided_fields": ", ".join(data.keys()) if isinstance(data, dict) else "invalid_data_type"
+                },
+                ai_todo=f"Ensure event data includes required fields: {', '.join(required_fields)}"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_tool_event_data(data: EventData) -> bool:
@@ -308,7 +395,20 @@ class EventDataValidator:
             return False
 
         required_fields = {"tool_name", "tool_input"}
-        return all(field in data for field in required_fields)
+        missing_fields = [field for field in required_fields if field not in data]
+        
+        if missing_fields:
+            logger.error(
+                "tool_event_data_validation_failed",
+                context={
+                    "missing_fields": ", ".join(missing_fields),
+                    "event_type": "tool_event"
+                },
+                ai_todo=f"Tool events require fields: {', '.join(required_fields)}"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_notification_event_data(data: EventData) -> bool:
@@ -316,7 +416,18 @@ class EventDataValidator:
         if not EventDataValidator.validate_base_event_data(data):
             return False
 
-        return "message" in data
+        if "message" not in data:
+            logger.error(
+                "notification_event_data_validation_failed",
+                context={
+                    "reason": "Missing 'message' field",
+                    "event_type": "notification"
+                },
+                ai_todo="Notification events require a 'message' field"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_stop_event_data(data: EventData) -> bool:
@@ -332,22 +443,85 @@ class ToolInputValidator:
     def validate_bash_input(tool_input: ToolInput) -> bool:
         """Validate Bash tool input."""
         if not is_bash_tool_input(tool_input):
+            logger.error(
+                "bash_tool_input_validation_failed",
+                context={
+                    "reason": "Missing 'command' field",
+                    "tool": "Bash"
+                },
+                ai_todo="Bash tool requires a 'command' field in tool_input"
+            )
             return False
-        return isinstance(tool_input["command"], str)
+            
+        if not isinstance(tool_input["command"], str):
+            logger.error(
+                "bash_tool_input_validation_failed",
+                context={
+                    "reason": "Invalid command type",
+                    "command_type": type(tool_input["command"]).__name__,
+                    "tool": "Bash"
+                },
+                ai_todo="Bash tool 'command' field must be a string"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_file_input(tool_input: ToolInput) -> bool:
         """Validate file tool input."""
         if not is_file_tool_input(tool_input):
+            logger.error(
+                "file_tool_input_validation_failed",
+                context={
+                    "reason": "Missing 'file_path' field",
+                    "tool": "File operation"
+                },
+                ai_todo="File tools require a 'file_path' field in tool_input"
+            )
             return False
-        return isinstance(tool_input["file_path"], str)
+            
+        if not isinstance(tool_input["file_path"], str):
+            logger.error(
+                "file_tool_input_validation_failed",
+                context={
+                    "reason": "Invalid file_path type",
+                    "file_path_type": type(tool_input["file_path"]).__name__,
+                    "tool": "File operation"
+                },
+                ai_todo="File tool 'file_path' field must be a string"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_search_input(tool_input: ToolInput) -> bool:
         """Validate search tool input."""
         if not is_search_tool_input(tool_input):
+            logger.error(
+                "search_tool_input_validation_failed",
+                context={
+                    "reason": "Missing 'pattern' field",
+                    "tool": "Search operation"
+                },
+                ai_todo="Search tools require a 'pattern' field in tool_input"
+            )
             return False
-        return isinstance(tool_input["pattern"], str)
+            
+        if not isinstance(tool_input["pattern"], str):
+            logger.error(
+                "search_tool_input_validation_failed",
+                context={
+                    "reason": "Invalid pattern type",
+                    "pattern_type": type(tool_input["pattern"]).__name__,
+                    "tool": "Search operation"
+                },
+                ai_todo="Search tool 'pattern' field must be a string"
+            )
+            return False
+            
+        return True
 
     @staticmethod
     def validate_web_input(tool_input: ToolInput) -> bool:

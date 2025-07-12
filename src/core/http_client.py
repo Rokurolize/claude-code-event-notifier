@@ -6,7 +6,8 @@ supporting both webhook and bot authentication methods.
 """
 
 import json
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -127,7 +128,7 @@ class HTTPClient:
     All methods include proper error handling and retry logic.
     """
 
-    def __init__(self, logger: Union[logging.Logger, "AstolfoLogger"], timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, logger: Union[AstolfoLogger, "AstolfoLogger"], timeout: int = DEFAULT_TIMEOUT):
         """Initialize HTTP client.
 
         Args:

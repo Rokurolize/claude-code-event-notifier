@@ -2,14 +2,15 @@
 
 import asyncio
 import json
-import logging
+from src.utils.astolfo_logger import AstolfoLogger
+
 import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional, TypedDict, Union, cast
 import threading
 
-logger = logging.getLogger(__name__)
+logger = AstolfoLogger(__name__)
 
 
 # Type definitions for JSON-serializable data
