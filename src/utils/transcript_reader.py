@@ -8,12 +8,58 @@ including full tool inputs and subagent messages.
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, NotRequired, Literal, Union
 
 logger = logging.getLogger(__name__)
 
 
-def read_transcript_lines(transcript_path: str, max_lines: int = 1000) -> list[dict[str, Any]]:
+class ToolUseContent(TypedDict):
+    """Content structure for tool use in messages."""
+    type: Literal["tool_use"]
+    name: str
+    input: dict[str, str]  # Contains 'prompt' for Task tool
+
+
+class TextContent(TypedDict):
+    """Content structure for text in messages."""
+    type: Literal["text"]
+    text: str
+
+
+class ImageContent(TypedDict):
+    """Content structure for images in messages."""
+    type: Literal["image"]
+    image: dict[str, str]  # Contains image data
+
+
+# Union of all content types
+MessageContent = Union[ToolUseContent, TextContent, ImageContent]
+
+
+class Message(TypedDict):
+    """Structure of a message in the transcript."""
+    role: str
+    content: list[MessageContent]
+
+
+class TranscriptLine(TypedDict):
+    """Structure of a line in the transcript file."""
+    type: str
+    sessionId: str
+    timestamp: str
+    message: NotRequired[Message]
+    isSidechain: NotRequired[bool]
+
+
+class SubagentMessage(TypedDict):
+    """Processed subagent message structure."""
+    timestamp: str
+    type: str
+    role: str
+    content: str | None
+
+
+def read_transcript_lines(transcript_path: str, max_lines: int = 1000) -> list[TranscriptLine]:
     """Read the last N lines from a transcript.jsonl file.
 
     Args:
@@ -65,10 +111,10 @@ def read_transcript_lines(transcript_path: str, max_lines: int = 1000) -> list[d
                         lines.insert(0, line)
 
         # Parse JSON lines
-        parsed_lines: list[dict[str, Any]] = []
+        parsed_lines: list[TranscriptLine] = []
         for line in lines:
             try:
-                obj = json.loads(line)
+                obj: TranscriptLine = json.loads(line)
                 parsed_lines.append(obj)
             except json.JSONDecodeError:
                 logger.debug(f"Failed to parse JSON line: {line[:100]}...")
@@ -99,24 +145,30 @@ def get_full_task_prompt(transcript_path: str, session_id: str) -> str | None:
             continue
 
         # Check for assistant message with tool_use
-        if line.get("type") == "assistant" and line.get("message"):
+        if line.get("type") == "assistant" and "message" in line:
             message = line["message"]
-            if message.get("content"):
+            if "content" in message:
                 for content in message["content"]:
-                    if (content.get("type") == "tool_use" and
+                    # Type guard for tool use content
+                    if (isinstance(content, dict) and 
+                        content.get("type") == "tool_use" and
                         content.get("name") == "Task" and
-                        content.get("input")):
-
-                        prompt = content["input"].get("prompt")
-                        if prompt:
-                            logger.info(f"Found Task prompt with {len(prompt)} characters")
-                            return prompt
+                        "input" in content):
+                        
+                        # Cast to ToolUseContent for type safety
+                        tool_content = content  # Already validated structure
+                        input_dict = tool_content.get("input", {})
+                        if isinstance(input_dict, dict):
+                            prompt = input_dict.get("prompt")
+                            if isinstance(prompt, str):
+                                logger.info(f"Found Task prompt with {len(prompt)} characters")
+                                return prompt
 
     logger.debug("No Task tool prompt found in transcript")
     return None
 
 
-def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
+def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50) -> list[SubagentMessage]:
     """Extract subagent messages from transcript.
 
     Args:
@@ -129,19 +181,19 @@ def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50
     """
     lines = read_transcript_lines(transcript_path, max_lines=1000)
 
-    subagent_messages: list[dict[str, Any]] = []
+    subagent_messages: list[SubagentMessage] = []
 
     for line in lines:
         # Check if it's a sidechain (subagent) message
         if (line.get("isSidechain") and
             line.get("sessionId") == session_id and
-            line.get("message")):
+            "message" in line):
 
             message = line["message"]
             timestamp = line.get("timestamp", "")
 
             # Extract relevant information
-            msg_info = {
+            msg_info: SubagentMessage = {
                 "timestamp": timestamp,
                 "type": line.get("type", ""),
                 "role": message.get("role", ""),
@@ -149,16 +201,20 @@ def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50
             }
 
             # Extract content based on message structure
-            if message.get("content"):
+            if "content" in message:
                 content_list = message["content"]
                 if isinstance(content_list, list):
                     for content in content_list:
-                        if content.get("type") == "text":
-                            msg_info["content"] = content.get("text", "")
-                            break
-                        if content.get("type") == "tool_use":
-                            tool_name = content.get("name", "Unknown")
-                            msg_info["content"] = f"[Tool: {tool_name}]"
+                        if isinstance(content, dict):
+                            if content.get("type") == "text":
+                                text_value = content.get("text", "")
+                                if isinstance(text_value, str):
+                                    msg_info["content"] = text_value
+                                    break
+                            elif content.get("type") == "tool_use":
+                                tool_name = content.get("name", "Unknown")
+                                if isinstance(tool_name, str):
+                                    msg_info["content"] = f"[Tool: {tool_name}]"
 
             # Only add if we have content
             if msg_info["content"]:
@@ -169,4 +225,3 @@ def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50
 
     logger.info(f"Found {len(subagent_messages)} subagent messages")
     return subagent_messages
-

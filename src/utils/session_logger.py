@@ -6,9 +6,61 @@ import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional, TypedDict, Union, cast
+import threading
 
 logger = logging.getLogger(__name__)
+
+
+# Type definitions for JSON-serializable data
+JSONPrimitive = Union[str, int, float, bool, None]
+JSONValue = Union[JSONPrimitive, "JSONDict", "JSONList"]
+JSONDict = dict[str, JSONValue]
+JSONList = list[JSONValue]
+
+
+class EventData(TypedDict, total=False):
+    """Event data structure."""
+    sequence: int
+    timestamp: str
+    event_type: str
+    session_id: str
+    tool_name: str
+    file_path: str
+    command: str
+    output: str
+    error: str
+    start_time: str
+    end_time: str
+    duration: float
+    exit_code: int
+    cwd: str
+    environment: dict[str, str]
+
+
+class SessionMetadata(TypedDict):
+    """Session metadata structure."""
+    session_id: str
+    project_path: str
+    start_time: str
+    python_version: str
+    event_count: int
+    last_updated: Optional[str]
+
+
+class ProjectInfo(TypedDict):
+    """Project information structure."""
+    project_path: str
+    project_name: str
+    created_at: str
+
+
+class SessionInfo(TypedDict):
+    """Session information in project index."""
+    session_id: str
+    start_time: str
+    status: str
+    end_time: Optional[str]
 
 
 class SessionLogger:
@@ -34,10 +86,10 @@ class SessionLogger:
         self.privacy_filter = os.getenv("DISCORD_SESSION_LOG_PRIVACY_FILTER", "1") == "1"
 
         # Async queue for event buffering
-        self.event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=self.queue_size)
+        self.event_queue: asyncio.Queue[EventData] = asyncio.Queue(maxsize=self.queue_size)
         self.worker_task: Optional[asyncio.Task[None]] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[Any] = None  # threading.Thread
+        self._thread: Optional[threading.Thread] = None
 
         if self.enabled:
             self.session_dir = self._init_session_directory()
@@ -58,13 +110,14 @@ class SessionLogger:
         (session_dir / "subagents").mkdir(exist_ok=True)
 
         # Initialize metadata
-        metadata = {
-            "session_id": self.session_id,
-            "project_path": self.project_path,
-            "start_time": datetime.now(UTC).isoformat(),
-            "python_version": "3.13+",
-            "event_count": 0,
-        }
+        metadata = SessionMetadata(
+            session_id=self.session_id,
+            project_path=self.project_path,
+            start_time=datetime.now(UTC).isoformat(),
+            python_version="3.13+",
+            event_count=0,
+            last_updated=None,
+        )
 
         metadata_path = session_dir / "metadata.json"
         with open(metadata_path, "w") as f:
@@ -86,26 +139,30 @@ class SessionLogger:
         # Save project info if not exists
         project_info_path = index_dir / "project_info.json"
         if not project_info_path.exists():
-            project_info = {
-                "project_path": self.project_path,
-                "project_name": Path(self.project_path).name,
-                "created_at": datetime.now(UTC).isoformat(),
-            }
+            project_info = ProjectInfo(
+                project_path=self.project_path,
+                project_name=Path(self.project_path).name,
+                created_at=datetime.now(UTC).isoformat(),
+            )
             with open(project_info_path, "w") as f:
                 json.dump(project_info, f, indent=2)
 
         # Add session to sessions list
         sessions_path = index_dir / "sessions.json"
-        sessions = []
+        sessions: list[SessionInfo] = []
         if sessions_path.exists():
             with open(sessions_path, "r") as f:
-                sessions = json.load(f)
+                data = cast(Union[list[SessionInfo], JSONValue], json.load(f))
+                if isinstance(data, list):
+                    sessions = cast(list[SessionInfo], data)
 
-        sessions.append({
-            "session_id": self.session_id,
-            "start_time": datetime.now(UTC).isoformat(),
-            "status": "active",
-        })
+        session_info = SessionInfo(
+            session_id=self.session_id,
+            start_time=datetime.now(UTC).isoformat(),
+            status="active",
+            end_time=None,
+        )
+        sessions.append(session_info)
 
         with open(sessions_path, "w") as f:
             json.dump(sessions, f, indent=2)
@@ -116,8 +173,6 @@ class SessionLogger:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             # No event loop running, create one in a thread
-            import threading
-
             self._loop = asyncio.new_event_loop()
             self._thread = threading.Thread(target=self._run_event_loop, daemon=True)
             self._thread.start()
@@ -129,6 +184,8 @@ class SessionLogger:
 
     def _run_event_loop(self) -> None:
         """Run event loop in a separate thread."""
+        if self._loop is None:
+            return
         asyncio.set_event_loop(self._loop)
         self.worker_task = self._loop.create_task(self._process_events())
         self.worker_task.add_done_callback(self._worker_done_callback)
@@ -164,7 +221,7 @@ class SessionLogger:
                 # Log errors silently
                 logger.debug(f"Error processing event: {e}")
 
-    async def _write_event(self, event_data: dict[str, Any]) -> None:
+    async def _write_event(self, event_data: EventData) -> None:
         """Write an event to file.
 
         Args:
@@ -188,7 +245,7 @@ class SessionLogger:
         except Exception as e:
             logger.debug(f"Failed to write event: {e}")
 
-    def _write_json_file(self, path: Path, data: dict[str, Any]) -> None:
+    def _write_json_file(self, path: Path, data: EventData) -> None:
         """Write JSON file (sync function for executor).
 
         Args:
@@ -205,11 +262,24 @@ class SessionLogger:
 
             # Read existing metadata
             with open(metadata_path, "r") as f:
-                metadata = json.load(f)
-
-            # Update fields
-            metadata["event_count"] = self.sequence_number
-            metadata["last_updated"] = datetime.now(UTC).isoformat()
+                data = cast(Union[dict[str, JSONValue], JSONValue], json.load(f))
+                if isinstance(data, dict):
+                    # Extract typed values with defaults
+                    session_id = str(data.get("session_id", self.session_id))
+                    project_path = str(data.get("project_path", self.project_path))
+                    start_time = str(data.get("start_time", datetime.now(UTC).isoformat()))
+                    python_version = str(data.get("python_version", "3.13+"))
+                    
+                    metadata = SessionMetadata(
+                        session_id=session_id,
+                        project_path=project_path,
+                        start_time=start_time,
+                        python_version=python_version,
+                        event_count=self.sequence_number,
+                        last_updated=datetime.now(UTC).isoformat(),
+                    )
+                else:
+                    return
 
             # Write back
             with open(metadata_path, "w") as f:
@@ -218,7 +288,7 @@ class SessionLogger:
         except Exception:
             pass  # Ignore metadata update failures
 
-    async def _filter_sensitive_data(self, event_data: dict[str, Any]) -> dict[str, Any]:
+    async def _filter_sensitive_data(self, event_data: EventData) -> EventData:
         """Filter sensitive data from events if privacy mode is enabled.
 
         Args:
@@ -234,7 +304,7 @@ class SessionLogger:
         # TODO: Implement actual privacy filtering
         return event_data
 
-    async def log_event(self, event_type: str, event_data: dict[str, Any]) -> None:
+    async def log_event(self, event_type: str, event_data: EventData) -> None:
         """Log an event (non-blocking).
 
         Args:
@@ -250,15 +320,15 @@ class SessionLogger:
             filtered_data = await self._filter_sensitive_data(event_data)
 
             # Add metadata
-            enriched_event = {
-                "sequence": self.sequence_number + 1,
-                "timestamp": datetime.now(UTC).isoformat(),
-                "event_type": event_type,
+            enriched_event = EventData(
+                sequence=self.sequence_number + 1,
+                timestamp=datetime.now(UTC).isoformat(),
+                event_type=event_type,
                 **filtered_data,
-            }
+            )
 
             # If running in thread, use thread-safe method
-            if hasattr(self, "_loop") and hasattr(self, "_thread"):
+            if self._loop is not None and self._thread is not None:
                 logger.debug("Using thread-safe method to add event to queue")
                 self._loop.call_soon_threadsafe(lambda: asyncio.create_task(self._add_to_queue(enriched_event)))
             else:
@@ -275,7 +345,7 @@ class SessionLogger:
             # Silently ignore all errors
             pass
 
-    async def _add_to_queue(self, event: dict[str, Any]) -> None:
+    async def _add_to_queue(self, event: EventData) -> None:
         """Add event to queue (used for thread-safe operations)."""
         if self.event_queue.full():
             try:
@@ -290,10 +360,13 @@ class SessionLogger:
         self._shutdown = True
 
         # Stop thread event loop if running
-        if hasattr(self, "_loop") and hasattr(self, "_thread") and self._loop:
+        if self._loop is not None and self._thread is not None:
             # Cancel worker task in the thread's loop
-            if self.worker_task:
-                self._loop.call_soon_threadsafe(self.worker_task.cancel)
+            if self.worker_task is not None:
+                def cancel_task() -> None:
+                    if self.worker_task:
+                        self.worker_task.cancel()
+                self._loop.call_soon_threadsafe(cancel_task)
             self._loop.call_soon_threadsafe(self._loop.stop)
             self._thread.join(timeout=1.0)
         elif self.worker_task:
@@ -320,14 +393,34 @@ class SessionLogger:
 
         if sessions_path.exists():
             with open(sessions_path, "r") as f:
-                sessions = json.load(f)
+                data = cast(Union[list[dict[str, JSONValue]], JSONValue], json.load(f))
+                if isinstance(data, list):
+                    sessions: list[SessionInfo] = []
+                    # Update status for this session
+                    for item in data:
+                        if isinstance(item, dict):
+                            session_id = item.get("session_id")
+                            if isinstance(session_id, str) and session_id == self.session_id:
+                                start_time = item.get("start_time", "")
+                                updated_session = SessionInfo(
+                                    session_id=self.session_id,
+                                    start_time=str(start_time) if start_time else "",
+                                    status="complete",
+                                    end_time=datetime.now(UTC).isoformat(),
+                                )
+                                sessions.append(updated_session)
+                            elif isinstance(session_id, str):
+                                # Keep other sessions as-is
+                                start_time = item.get("start_time", "")
+                                status = item.get("status", "")
+                                end_time = item.get("end_time")
+                                session_info = SessionInfo(
+                                    session_id=session_id,
+                                    start_time=str(start_time) if start_time else "",
+                                    status=str(status) if status else "",
+                                    end_time=str(end_time) if end_time else None,
+                                )
+                                sessions.append(session_info)
 
-            # Update status for this session
-            for session in sessions:
-                if session["session_id"] == self.session_id:
-                    session["status"] = "complete"
-                    session["end_time"] = datetime.now(UTC).isoformat()
-                    break
-
-            with open(sessions_path, "w") as f:
-                json.dump(sessions, f, indent=2)
+                    with open(sessions_path, "w") as fw:
+                        json.dump(sessions, fw, indent=2)

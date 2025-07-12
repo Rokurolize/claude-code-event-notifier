@@ -122,7 +122,7 @@ def parse_event_list(event_list_str: str) -> list[str]:
             # This maintains the principle of graceful degradation
             pass
 
-    return cast("list[str]", valid_events)
+    return valid_events
 
 
 def should_process_event(event_type: str, config: Config) -> bool:
