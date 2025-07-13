@@ -41,6 +41,27 @@ DISCORD_CHANNEL_ID=your_channel_id_here
 DISCORD_DEBUG=1
 ```
 
+## Quality Assurance
+
+This project includes a comprehensive quality assurance system for production-grade reliability:
+
+```bash
+# Quick quality check (30 seconds)
+uv run --no-sync --python 3.13 python utils/quality_assurance/automation/instant_checker.py
+
+# Enhanced development checker
+uv run --no-sync --python 3.13 python utils/development_checker.py --enhanced
+
+# Complete quality gate validation
+uv run --no-sync --python 3.13 python utils/quality_assurance/unified_test_runner.py
+```
+
+**Quality Gates**: 4-level progressive validation (basic → production)
+**Test Coverage**: 62 comprehensive test suites across 6 categories
+**Automated Validation**: Real-time quality feedback during development
+
+See [CLAUDE.md](CLAUDE.md) for complete quality assurance documentation.
+
 ## Events Tracked
 
 - **PreToolUse** - Before any tool executes (blue)

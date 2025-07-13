@@ -4,9 +4,9 @@ This module contains TypedDict definitions for all tool input and response
 structures used in the Discord Notifier system.
 """
 
-from typing import TypedDict, NotRequired, Union
-from src.type_defs.base import PathAware
+from typing import NotRequired, TypedDict
 
+from src.type_defs.base import PathAware
 
 # ------------------------------------------------------------------------------
 # TOOL INPUT HIERARCHY
@@ -186,11 +186,26 @@ ToolResponse = (
 
 # Export all public types
 __all__ = [
-    'ToolInputBase', 'BashToolInput', 'FileEditOperation',
-    'FileToolInputBase', 'ReadToolInput', 'WriteToolInput',
-    'EditToolInput', 'MultiEditToolInput', 'ListToolInput',
-    'SearchToolInputBase', 'GlobToolInput', 'GrepToolInput',
-    'TaskToolInput', 'WebToolInput', 'FileToolInput', 'SearchToolInput',
-    'ToolInput', 'ToolResponseBase', 'BashToolResponse',
-    'FileOperationResponse', 'SearchResponse', 'ToolResponse'
+    "BashToolInput",
+    "BashToolResponse",
+    "EditToolInput",
+    "FileEditOperation",
+    "FileOperationResponse",
+    "FileToolInput",
+    "FileToolInputBase",
+    "GlobToolInput",
+    "GrepToolInput",
+    "ListToolInput",
+    "MultiEditToolInput",
+    "ReadToolInput",
+    "SearchResponse",
+    "SearchToolInput",
+    "SearchToolInputBase",
+    "TaskToolInput",
+    "ToolInput",
+    "ToolInputBase",
+    "ToolResponse",
+    "ToolResponseBase",
+    "WebToolInput",
+    "WriteToolInput"
 ]

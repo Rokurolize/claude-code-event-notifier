@@ -1,16 +1,16 @@
 """Type definitions for AstolfoLogger module."""
 
-from typing import TypedDict, Union, Optional, Protocol, TypeVar, ParamSpec, Callable
-from typing_extensions import TypeAlias, NotRequired
+from collections.abc import Callable
+from typing import NotRequired, ParamSpec, Protocol, TypedDict, TypeVar, Union
 
 # JSON type definitions
-JsonPrimitive: TypeAlias = Union[str, int, float, bool, None]
-JsonValue: TypeAlias = Union[JsonPrimitive, dict[str, "JsonValue"], list["JsonValue"]]
-JsonDict: TypeAlias = dict[str, JsonValue]
+type JsonPrimitive = Union[str, int, float, bool, None]
+type JsonValue = Union[JsonPrimitive, dict[str, "JsonValue"], list["JsonValue"]]
+type JsonDict = dict[str, JsonValue]
 
 # Context types
-ContextValue: TypeAlias = Union[str, int, float, bool, None, list[str]]
-ContextDict: TypeAlias = dict[str, ContextValue]
+type ContextValue = Union[str, int, float, bool, None, list[str]]
+type ContextDict = dict[str, ContextValue]
 
 # Error information
 class ErrorDict(TypedDict):
@@ -46,10 +46,10 @@ class LogDict(TypedDict, total=False):
     memory: MemoryDict
     performance: PerformanceDict
     tags: list[str]
-    
+
 # Function types
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 LoggableFunc = Callable[P, T]
 
 # Logger protocol
@@ -58,7 +58,7 @@ class LoggerProtocol(Protocol):
     def debug(self, message: str, **kwargs: ContextValue) -> None: ...
     def info(self, message: str, **kwargs: ContextValue) -> None: ...
     def warning(self, message: str, **kwargs: ContextValue) -> None: ...
-    def error(self, message: str, error: Optional[Exception] = None, **kwargs: ContextValue) -> None: ...
+    def error(self, message: str, error: Exception | None = None, **kwargs: ContextValue) -> None: ...
     def event(self, event_name: str, **context: ContextValue) -> None: ...
 
 # Configuration types

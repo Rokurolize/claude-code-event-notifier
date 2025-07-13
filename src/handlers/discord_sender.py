@@ -6,7 +6,7 @@ various methods including webhooks, bot API, and thread management.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from src.core.constants import DiscordLimits, EventTypes
 from src.core.exceptions import DiscordAPIError
@@ -15,7 +15,7 @@ from src.handlers.thread_manager import SESSION_THREAD_CACHE, get_or_create_thre
 from src.utils.astolfo_logger import AstolfoLogger
 
 if TYPE_CHECKING:
-    from src.core.http_client import DiscordEmbed, DiscordThreadMessage
+    from src.core.http_client import DiscordThreadMessage
 
 # Type alias for configuration
 Config = dict[str, str | int | bool]
@@ -112,7 +112,7 @@ def _send_mention_to_channel(
         webhook_url = ctx.config.get("webhook_url")
         if webhook_url and isinstance(webhook_url, str):
             return ctx.http_client.post_webhook(webhook_url, mention_message)
-        
+
         bot_token = ctx.config.get("bot_token")
         channel_id = ctx.config.get("channel_id")
         if bot_token and isinstance(bot_token, str) and channel_id:
@@ -306,55 +306,55 @@ def _handle_thread_messaging(
 
 def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
     """Split a message if its embed description exceeds Discord limits.
-    
+
     Args:
         message: Original Discord message with embeds
-        
+
     Returns:
         List of messages, split if necessary
     """
     if not message.get("embeds") or not message["embeds"]:
         return [message]
-    
+
     embed = message["embeds"][0]
     description = embed.get("description", "")
-    
+
     # If within limits, return as-is
     if not description or len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
         return [message]
-    
+
     # Split the description
     messages: list[DiscordMessage] = []
     remaining_desc = description
     part_num = 1
-    
+
     while remaining_desc:
         # Calculate how much we can fit
         chunk_size = DiscordLimits.MAX_DESCRIPTION_LENGTH
-        
+
         # For continuation messages, reserve space for part indicator
         if part_num > 1:
             chunk_size -= 50  # Space for "... (continued from previous message)"
-            
+
         # Find a good break point (prefer newline, then space)
         if len(remaining_desc) > chunk_size:
             # Look for newline near the end
-            newline_pos = remaining_desc.rfind('\n', chunk_size - 200, chunk_size)
+            newline_pos = remaining_desc.rfind("\n", chunk_size - 200, chunk_size)
             if newline_pos > 0:
                 chunk_size = newline_pos + 1
             else:
                 # Look for space
-                space_pos = remaining_desc.rfind(' ', chunk_size - 100, chunk_size)
+                space_pos = remaining_desc.rfind(" ", chunk_size - 100, chunk_size)
                 if space_pos > 0:
                     chunk_size = space_pos + 1
-        
+
         # Extract chunk
         chunk = remaining_desc[:chunk_size]
         remaining_desc = remaining_desc[chunk_size:]
-        
+
         # Create new message with modified embed
         new_embed = embed.copy()
-        
+
         if part_num == 1:
             # First part keeps original title
             new_embed["description"] = chunk
@@ -368,22 +368,22 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
                 new_embed["description"] = "... (continued from previous message)\n\n" + chunk + "\n\n... (continued in next message)"
             else:
                 new_embed["description"] = "... (continued from previous message)\n\n" + chunk
-            
+
             # Remove fields from continuation messages to save space
             new_embed["fields"] = None
-        
+
         # Remove footer from all but the last part
         if remaining_desc:
             new_embed["footer"] = None
             new_embed["timestamp"] = None
-        
+
         new_message: DiscordMessage = {
             "embeds": [new_embed],
             "content": message.get("content")
         }
         messages.append(new_message)
         part_num += 1
-    
+
     return messages
 
 
@@ -410,7 +410,7 @@ def send_to_discord(
     """
     # Split message if needed (for long content)
     messages = _split_embed_if_needed(message)
-    
+
     # If multiple messages, send them sequentially
     if len(messages) > 1:
         ctx.logger.info(
@@ -429,7 +429,7 @@ def send_to_discord(
             if i > 0:
                 import time
                 time.sleep(0.5)
-            
+
             # Send each part using the regular logic
             success = _send_single_message(msg, ctx, session_id, event_type)
             if not success:
@@ -445,7 +445,7 @@ def send_to_discord(
                     ai_todo="Check rate limits or connection issues when sending multiple messages"
                 )
         return all_success
-    
+
     # Single message, use regular logic
     return _send_single_message(message, ctx, session_id, event_type)
 
@@ -457,13 +457,13 @@ def _send_single_message(
     event_type: str = "",
 ) -> bool:
     """Send a single message to Discord (internal helper).
-    
+
     Args:
         message: Discord message to send
         ctx: Discord context
         session_id: Optional session ID for thread management
         event_type: Optional event type for special handling
-        
+
     Returns:
         bool: True if message was successfully sent
     """

@@ -4,10 +4,10 @@ This module contains TypedDict definitions for all event data structures
 used in the Discord Notifier system.
 """
 
-from typing import TypedDict, Union, Literal, NotRequired
+from typing import Literal, NotRequired
+
 from src.type_defs.base import SessionAware, TimestampedField
 from src.type_defs.tools import ToolInput, ToolResponse
-
 
 # ------------------------------------------------------------------------------
 # EVENT DATA HIERARCHY
@@ -82,8 +82,13 @@ EventData = (
 
 # Export all public types
 __all__ = [
-    'BaseEventData', 'ToolEventDataBase', 'PreToolUseEventData',
-    'PostToolUseEventData', 'NotificationEventData',
-    'StopEventDataBase', 'StopEventData', 'SubagentStopEventData',
-    'EventData'
+    "BaseEventData",
+    "EventData",
+    "NotificationEventData",
+    "PostToolUseEventData",
+    "PreToolUseEventData",
+    "StopEventData",
+    "StopEventDataBase",
+    "SubagentStopEventData",
+    "ToolEventDataBase"
 ]

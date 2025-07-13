@@ -26,7 +26,7 @@ from unittest.mock import MagicMock, patch
 src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from discord_notifier import SESSION_THREAD_CACHE
+from src.core.thread_manager import SESSION_THREAD_CACHE
 from src.core.config import ConfigLoader
 from src.core.http_client import HTTPClient
 from src.core.thread_manager import (
@@ -37,6 +37,7 @@ from src.core.thread_manager import (
 )
 from src.exceptions import ThreadStorageError
 from src.thread_storage import ThreadRecord, ThreadStorage
+from src.utils.astolfo_logger import AstolfoLogger
 
 
 class TestIntelligentThreadManagement(unittest.TestCase):
@@ -44,6 +45,9 @@ class TestIntelligentThreadManagement(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment."""
+        # Initialize structured logging for tests
+        self.logger = AstolfoLogger("thread_management_test")
+        
         # Clear session cache between tests
         SESSION_THREAD_CACHE.clear()
 
@@ -459,8 +463,29 @@ class TestIntelligentThreadManagement(unittest.TestCase):
 if __name__ == "__main__":
     # Check if Discord configuration is available for integration testing
     env_file = Path.home() / ".claude" / "hooks" / ".env.discord"
+    
+    # Initialize logger for main execution
+    logger = AstolfoLogger(component="thread_management_main", enable_debug=True)
+    
     if not env_file.exists():
         print("Warning: Discord configuration not found. Some tests may be skipped.")
         print(f"Create {env_file} for full integration testing.")
+        
+        # Log configuration warning with structured data
+        logger.warning("Discord configuration missing for integration tests", {
+            "config_file_path": str(env_file),
+            "impact": "some_tests_may_be_skipped",
+            "recommendation": "create_env_file_for_full_testing"
+        })
+    else:
+        logger.info("Discord configuration found for integration tests", {
+            "config_file_path": str(env_file)
+        })
 
+    # Log test execution start
+    logger.info("Starting intelligent thread management integration tests", {
+        "test_module": "test_intelligent_thread_management",
+        "verbosity": 2
+    })
+    
     unittest.main(verbosity=2)

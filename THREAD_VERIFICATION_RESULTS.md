@@ -2,7 +2,7 @@
 
 **Date:** 2025-07-07  
 **Test Duration:** ~10 minutes  
-**Webhook URL:** `https://discord.com/api/webhooks/1391303915022188544/2wVrqthPSKQmPceQ3rP-y-1rsbGX-hPFNml_H91ItYDKrHlUzTOWbkBOu7oMlCFDmK5z`
+**Webhook URL:** `https://discord.com/api/webhooks/REDACTED_WEBHOOK_ID/REDACTED_WEBHOOK_TOKEN`
 
 ## Summary
 

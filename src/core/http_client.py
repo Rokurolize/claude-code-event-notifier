@@ -6,20 +6,20 @@ supporting both webhook and bot authentication methods.
 """
 
 import json
-from src.utils.astolfo_logger import AstolfoLogger
-
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
-from http.client import HTTPResponse
-from typing import TYPE_CHECKING, Any, TypedDict, Union, cast, NotRequired
+from typing import TYPE_CHECKING, TypedDict, Union, cast
+
+from src.utils.astolfo_logger import AstolfoLogger
 
 from .constants import DEFAULT_TIMEOUT, DISCORD_API_BASE, USER_AGENT
 from .exceptions import DiscordAPIError
 
 if TYPE_CHECKING:
-    from src.utils.astolfo_logger import AstolfoLogger
+    from http.client import HTTPResponse
+
     from src.utils.astolfo_logger_types import JsonValue
 
 
@@ -138,18 +138,17 @@ class HTTPClient:
         self.logger = logger
         self.timeout = timeout
         self.headers_base = {"User-Agent": USER_AGENT}
-    
+
     def _convert_to_json_value(self, data: object) -> "JsonValue":
         """Convert data to JsonValue type recursively."""
         if data is None or isinstance(data, (str, int, float, bool)):
             return data
-        elif isinstance(data, dict):
+        if isinstance(data, dict):
             return {k: self._convert_to_json_value(v) for k, v in data.items()}
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return [self._convert_to_json_value(item) for item in data]
-        else:
-            # For any other type, convert to string
-            return str(data)
+        # For any other type, convert to string
+        return str(data)
 
     def post_webhook(self, url: str, data: DiscordMessage) -> bool:
         """Send message via Discord webhook.
@@ -218,43 +217,43 @@ class HTTPClient:
         """
         # Check if using AstolfoLogger
         from src.utils.astolfo_logger import AstolfoLogger
-        
+
         # Start timing if using AstolfoLogger
         start_time = datetime.now(UTC)
-        
+
         try:
             json_data = json.dumps(data).encode("utf-8")
-            
+
             # Log request if using AstolfoLogger
             if isinstance(self.logger, AstolfoLogger):
                 # Convert data to JsonValue type
                 json_data_for_log = self._convert_to_json_value(data)
                 self.logger.log_api_request("POST", url, headers, json_data_for_log)
-            
+
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
-                
+
                 # Calculate duration
                 duration_ms = int((datetime.now(UTC) - start_time).total_seconds() * 1000)
-                
+
                 # Log response
                 if isinstance(self.logger, AstolfoLogger):
                     # Try to read response body for debugging (if small)
                     response_data = None
                     try:
-                        response_body = http_response.read().decode('utf-8')
+                        response_body = http_response.read().decode("utf-8")
                         response_data = json.loads(response_body) if response_body else None  # type: ignore[misc]
                     except:
                         response_data = None
-                    
+
                     self.logger.log_api_response(url, status, response_data, duration_ms)  # type: ignore[misc]
                 else:
                     self.logger.debug("%s response: %s", api_name, status)
-                
+
                 if callable(success_check):
                     return bool(success_check(status))
                 return bool(status == success_check)
@@ -318,7 +317,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Forum Thread Creation response: %s", status)
 
@@ -367,7 +366,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Text Thread Creation response: %s", status)
 
@@ -416,7 +415,7 @@ class HTTPClient:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Get Channel Info response: %s", status)
 
@@ -476,7 +475,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("List Active Threads response: %s", status)
 
@@ -531,7 +530,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Get Thread Details response: %s", status)
 
@@ -587,7 +586,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Unarchive Thread response: %s", status)
 
@@ -644,7 +643,7 @@ class HTTPClient:
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("Archive Thread response: %s", status)
 
@@ -699,13 +698,13 @@ class HTTPClient:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("List Public Archived Threads response: %s", status)
 
                 if 200 <= status < 300:
                     response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
-                    threads = cast(list[DiscordThread], response_data.get("threads", []))  # type: ignore[misc]
+                    threads = cast("list[DiscordThread]", response_data.get("threads", []))  # type: ignore[misc]
                     has_more = bool(response_data.get("has_more", False))  # type: ignore[misc]
                     return threads, has_more
                 return [], False
@@ -758,13 +757,13 @@ class HTTPClient:
             req = urllib.request.Request(url, headers=headers)  # noqa: S310
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # type: ignore[misc] # noqa: S310
                 # Cast to HTTPResponse for proper typing
-                http_response = cast(HTTPResponse, response)
+                http_response = cast("HTTPResponse", response)
                 status: int = http_response.status
                 self.logger.debug("List Private Archived Threads response: %s", status)
 
                 if 200 <= status < 300:
                     response_data = json.loads(http_response.read().decode("utf-8"))  # type: ignore[misc]
-                    threads = cast(list[DiscordThread], response_data.get("threads", []))  # type: ignore[misc]
+                    threads = cast("list[DiscordThread]", response_data.get("threads", []))  # type: ignore[misc]
                     has_more = bool(response_data.get("has_more", False))  # type: ignore[misc]
                     return threads, has_more
                 return [], False

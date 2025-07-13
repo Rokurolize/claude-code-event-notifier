@@ -23,12 +23,10 @@ __all__ = [
     # Logging
     "AstolfoLog",
     "AstolfoLogger",
-    "get_debug_level",
-    "log_function_execution",
-    "setup_astolfo_logger",
     # Validation
     "EventDataValidator",
     "ToolInputValidator",
+    "get_debug_level",
     "is_bash_tool",
     "is_file_tool",
     "is_notification_event_data",
@@ -36,4 +34,6 @@ __all__ = [
     "is_stop_event_data",
     "is_tool_event_data",
     "is_valid_event_type",
+    "log_function_execution",
+    "setup_astolfo_logger",
 ]

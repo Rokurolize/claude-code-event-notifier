@@ -9,10 +9,15 @@ Following Kent Beck's TDD approach:
 
 import sys
 import unittest
+import time
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.utils.astolfo_logger import AstolfoLogger
+
+logger = AstolfoLogger(__name__)
 
 
 class TestExceptionImports(unittest.TestCase):
@@ -20,6 +25,9 @@ class TestExceptionImports(unittest.TestCase):
     
     def test_exceptions_importable(self):
         """例外クラスをexceptions.pyからインポートできることを確認"""
+        start_time = time.time()
+        logger.info("Testing exceptions import", {"test_method": "test_exceptions_importable"})
+        
         try:
             from src.exceptions import (
                 DiscordNotifierError, ConfigurationError,
@@ -35,9 +43,37 @@ class TestExceptionImports(unittest.TestCase):
             self.assertTrue(issubclass(InvalidEventTypeError, DiscordNotifierError))
             self.assertTrue(issubclass(ThreadManagementError, DiscordNotifierError))
             self.assertTrue(issubclass(ThreadStorageError, DiscordNotifierError))
+            
+            logger.info("Exceptions import test passed", {
+                "duration": time.time() - start_time,
+                "base_exception": "DiscordNotifierError",
+                "derived_exceptions": [
+                    "ConfigurationError", "DiscordAPIError", "EventProcessingError",
+                    "InvalidEventTypeError", "ThreadManagementError", "ThreadStorageError"
+                ],
+                "inheritance_verified": True
+            })
         except ImportError as e:
+            logger.error("Exceptions import failed", {
+                "error": str(e),
+                "duration": time.time() - start_time
+            })
             self.fail(f"Failed to import exceptions: {e}")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    start_time = time.time()
+    logger.info("Starting exceptions integration test suite", {"test_file": __file__})
+    
+    try:
+        print("=== Exceptions Integration Tests ===")
+        unittest.main()
+        logger.info("Exceptions test suite completed successfully", {
+            "duration": time.time() - start_time
+        })
+    except Exception as e:
+        logger.error("Exceptions test suite failed", {
+            "error": str(e),
+            "duration": time.time() - start_time
+        })
+        raise

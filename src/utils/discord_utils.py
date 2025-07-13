@@ -5,7 +5,6 @@ including parsing, event filtering, and formatting helpers.
 """
 
 from pathlib import Path
-from typing import cast
 
 # Try to import types
 try:
@@ -13,11 +12,8 @@ try:
 except ImportError:
     from discord_notifier import Config  # type: ignore
 
-# Try to import validators
-try:
-    from src.validators import is_valid_event_type
-except ImportError:
-    from discord_notifier import is_valid_event_type  # type: ignore
+# Import validators from correct location
+from src.utils.validation import is_valid_event_type
 
 # Try to import exceptions
 try:
@@ -90,7 +86,7 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
         - ValueError: Line parsing issues (malformed KEY=VALUE pairs)
         - Both result in ConfigurationError being raised
     """
-    logger.debug(f"Parsing environment file", file_path=str(file_path))
+    logger.debug("Parsing environment file", file_path=str(file_path))
     env_vars: dict[str, str] = {}
 
     try:
@@ -104,16 +100,16 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
                     key = key.strip()
                     value = value.strip().strip('"').strip("'")
                     env_vars[key] = value
-                    logger.debug(f"Parsed environment variable", key=key, has_value=bool(value))
-            
-            logger.info(f"Successfully parsed environment file", 
-                       file_path=str(file_path), 
+                    logger.debug("Parsed environment variable", key=key, has_value=bool(value))
+
+            logger.info("Successfully parsed environment file",
+                       file_path=str(file_path),
                        total_lines=line_count,
                        parsed_vars=len(env_vars))
     except (OSError, ValueError) as e:
-        logger.error(f"Failed to parse environment file", 
-                    file_path=str(file_path), 
-                    error_type=type(e).__name__, 
+        logger.exception("Failed to parse environment file",
+                    file_path=str(file_path),
+                    error_type=type(e).__name__,
                     error_msg=str(e))
         raise ConfigurationError(f"Error reading {file_path}: {e}") from e
 
@@ -145,8 +141,8 @@ def parse_event_list(event_list_str: str) -> list[str]:
         logger.debug("Empty event list string provided")
         return []
 
-    logger.debug(f"Parsing event list", event_list_str=event_list_str)
-    
+    logger.debug("Parsing event list", event_list_str=event_list_str)
+
     # Split and clean up event names
     events = [event.strip() for event in event_list_str.split(",")]
     valid_events = []
@@ -156,17 +152,17 @@ def parse_event_list(event_list_str: str) -> list[str]:
     for event in events:
         if event and is_valid_event_type(event):
             valid_events.append(event)
-            logger.debug(f"Valid event type found", event=event)
+            logger.debug(f"Valid event type found: {event}")
         elif event:  # Non-empty but invalid
             invalid_events.append(event)
-            logger.warning(f"Invalid event type filtered out", event=event)
+            logger.warning(f"Invalid event type filtered out: {event}")
 
-    logger.info(f"Event list parsed", 
+    logger.info("Event list parsed",
                total_events=len(events),
                valid_events=len(valid_events),
                invalid_events=len(invalid_events),
                valid_list=valid_events)
-    
+
     return valid_events
 
 
@@ -202,8 +198,8 @@ def should_process_event(event_type: str, config: Config) -> bool:
     """
     enabled_events = config.get("enabled_events")
     disabled_events = config.get("disabled_events")
-    
-    logger.debug(f"Checking if event should be processed", 
+
+    logger.debug("Checking if event should be processed",
                 event_type=event_type,
                 has_enabled_filter=bool(enabled_events),
                 has_disabled_filter=bool(disabled_events))
@@ -211,7 +207,7 @@ def should_process_event(event_type: str, config: Config) -> bool:
     # If enabled_events is configured, only process events in that list
     if enabled_events:
         should_process = event_type in enabled_events
-        logger.info(f"Event filtering decision (enabled list)",
+        logger.info("Event filtering decision (enabled list)",
                    event_type=event_type,
                    should_process=should_process,
                    enabled_events=enabled_events)
@@ -220,18 +216,18 @@ def should_process_event(event_type: str, config: Config) -> bool:
     # If disabled_events is configured, skip events in that list
     if disabled_events:
         should_process = event_type not in disabled_events
-        logger.info(f"Event filtering decision (disabled list)",
+        logger.info("Event filtering decision (disabled list)",
                    event_type=event_type,
                    should_process=should_process,
                    disabled_events=disabled_events)
         return should_process
 
     # Default: process all events
-    logger.info(f"Event filtering decision (no filters)",
+    logger.info("Event filtering decision (no filters)",
                event_type=event_type,
                should_process=True)
     return True
 
 
 # Export all public functions
-__all__ = ['parse_env_file', 'parse_event_list', 'should_process_event']
+__all__ = ["parse_env_file", "parse_event_list", "should_process_event"]

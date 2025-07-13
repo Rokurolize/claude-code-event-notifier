@@ -60,170 +60,86 @@ Version:
 
 # Python version check - must be first before any imports that might fail
 import sys
-if sys.version_info < (3, 13):
-    print(f"ERROR: This project requires Python 3.13 or higher. You are using Python {sys.version}", file=sys.stderr)
-    print("Please run with: uv run --no-sync --python 3.13 python src/discord_notifier.py", file=sys.stderr)
-    sys.exit(1)
 
 # Add parent directory to Python path when run as a script
 from pathlib import Path
+
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import contextlib
 import json
-import logging
 import os
-import urllib.error
-import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 # TypeGuard and NotRequired are now available in Python 3.12+ typing module
-from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Final,
     Literal,
-    NotRequired,
     Protocol,
-    TypedDict,
-    TypeGuard,
-    Union,
     cast,
 )
 
-from src.thread_storage import ThreadStorage
-
-from src.utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
-
-from src.core.http_client import HTTPClient
-
-from src.utils.session_logger import SessionLogger
-
-from src.formatters.base import (
-    truncate_string,
-    format_file_path,
-    get_truncation_suffix,
-    add_field,
-    format_json_field,
+# Import constants and enums
+from src.constants import (
+    ENV_HOOK_EVENT,
+    EVENT_COLORS,
+    DiscordColors,
+    DiscordLimits,
+    EventTypes,
 )
-
-from src.validators import (
-    ConfigValidator, EventDataValidator, ToolInputValidator,
-    is_tool_event_data, is_notification_event_data, is_stop_event_data,
-    is_bash_tool_input, is_file_tool_input, is_search_tool_input,
-    is_valid_event_type, is_bash_tool, is_file_tool, is_search_tool,
-    is_list_tool,
-)
-
-from src.utils_helpers import (
-    truncate_string as utils_truncate_string,
-    format_file_path as utils_format_file_path,
-    SESSION_THREAD_CACHE,
-)
-
 from src.core.config_loader import ConfigLoader
-
-from src.utils.discord_utils import (
-    parse_env_file, parse_event_list, should_process_event
-)
-
-from src.handlers.event_registry import FormatterRegistry
-
-from src.core.thread_manager import (
-    validate_thread_exists,
-    find_existing_thread_by_name,
-    ensure_thread_is_usable,
-    get_or_create_thread,
-    _check_thread_state,
-    _try_unarchive_thread,
-)
-
+from src.core.http_client import HTTPClient
 from src.core.message_sender import (
     send_to_discord,
-    _split_embed_if_needed,
-    _send_single_message,
-    _send_stop_or_notification_event,
-    _send_to_thread,
-    _send_to_regular_channel,
-)
-from src.core.http_client import DiscordMessage as HTTPClientDiscordMessage
-
-from src.formatters.tool_formatters import (
-    format_bash_pre_use as tool_format_bash_pre_use,
-    format_file_operation_pre_use as tool_format_file_operation_pre_use,
-    format_search_tool_pre_use as tool_format_search_tool_pre_use,
-    format_task_pre_use as tool_format_task_pre_use,
-    format_web_fetch_pre_use as tool_format_web_fetch_pre_use,
-    format_unknown_tool_pre_use as tool_format_unknown_tool_pre_use,
-    format_bash_post_use as tool_format_bash_post_use,
-    format_read_operation_post_use as tool_format_read_operation_post_use,
-    format_write_operation_post_use as tool_format_write_operation_post_use,
-    format_task_post_use as tool_format_task_post_use,
-    format_web_fetch_post_use as tool_format_web_fetch_post_use,
-    format_unknown_tool_post_use as tool_format_unknown_tool_post_use,
-)
-
-from src.formatters.event_formatters import (
-    format_pre_tool_use,
-    format_post_tool_use,
-    format_notification,
-    format_stop,
-    format_subagent_stop,
 )
 
 # Import custom exceptions
 from src.exceptions import (
-    DiscordNotifierError, ConfigurationError, DiscordAPIError,
-    EventProcessingError, InvalidEventTypeError,
-    ThreadManagementError, ThreadStorageError
+    ConfigurationError,
+    EventProcessingError,
 )
-# Import constants and enums
-from src.constants import (
-    ToolNames, EventTypes, TruncationLimits, DiscordLimits,
-    DiscordColors, EVENT_TYPE_COLORS, EVENT_COLORS, TOOL_EMOJIS,
-    ENV_WEBHOOK_URL, ENV_BOT_TOKEN, ENV_CHANNEL_ID, ENV_DEBUG,
-    ENV_USE_THREADS, ENV_CHANNEL_TYPE, ENV_THREAD_PREFIX,
-    ENV_MENTION_USER_ID, ENV_ENABLED_EVENTS, ENV_DISABLED_EVENTS,
-    ENV_THREAD_STORAGE_PATH, ENV_THREAD_CLEANUP_DAYS, ENV_HOOK_EVENT,
-    USER_AGENT, DEFAULT_TIMEOUT, TRUNCATION_SUFFIX,
-    THREAD_CACHE_EXPIRY, CONFIG_FILE_NAME
+from src.formatters.base import (
+    truncate_string,
 )
+from src.handlers.event_registry import FormatterRegistry
 
 # Import base types from new module
-from src.type_defs.base import BaseField, TimestampedField, SessionAware, PathAware
-# Import Discord types from new module
-from src.type_defs.discord import (
-    DiscordFooter, DiscordFieldBase, DiscordField,
-    DiscordEmbedBase, DiscordEmbed, DiscordMessageBase,
-    DiscordMessage, DiscordChannel, DiscordThread,
-    DiscordThreadMessage
-)
 # Import config types from new module
 from src.type_defs.config import (
-    DiscordCredentials, ThreadConfiguration,
-    NotificationConfiguration, EventFilterConfiguration,
-    Config
-)
-# Import tool types from new module
-from src.type_defs.tools import (
-    ToolInputBase, BashToolInput, FileEditOperation,
-    FileToolInputBase, ReadToolInput, WriteToolInput,
-    EditToolInput, MultiEditToolInput, ListToolInput,
-    SearchToolInputBase, GlobToolInput, GrepToolInput,
-    TaskToolInput, WebToolInput, FileToolInput, SearchToolInput,
-    ToolInput, ToolResponseBase, BashToolResponse,
-    FileOperationResponse, SearchResponse, ToolResponse
-)
-# Import event types from new module
-from src.type_defs.events import (
-    BaseEventData, ToolEventDataBase, PreToolUseEventData,
-    PostToolUseEventData, NotificationEventData,
-    StopEventDataBase, StopEventData, SubagentStopEventData,
-    EventData
+    Config,
 )
 
+# Import datetime utilities
+from src.utils.datetime_utils import get_discord_embed_timestamp, get_completed_at_display
+
+# Import Discord types from new module
+from src.type_defs.discord import (
+    DiscordEmbed,
+    DiscordMessage,
+)
+
+# Import event types from new module
+from src.type_defs.events import (
+    EventData,
+)
+
+# Import tool types from new module
+from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
+from src.utils.discord_utils import should_process_event
+from src.utils.session_logger import SessionLogger
+from src.utils.validation import (
+    is_valid_event_type,
+)
+
+if TYPE_CHECKING:
+    from src.core.http_client import DiscordMessage as HTTPClientDiscordMessage
+    from src.formatters.event_formatters import NotificationEventData as FormatterNotificationEventData
+    from src.formatters.event_formatters import StopEventData as FormatterStopEventData
+    from src.formatters.event_formatters import SubagentStopEventData as FormatterSubagentStopEventData
+    from src.formatters.event_formatters import ToolEventData as FormatterToolEventData
+    from src.type_defs.discord import DiscordEmbed as TypeDefDiscordEmbed
 
 # Type aliases for better code clarity
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
@@ -248,9 +164,9 @@ class EventFormatter(Protocol):
         """Format event data into Discord embed."""
         ...
 
-def setup_logging(debug: bool) -> Union[logging.Logger, AstolfoLogger]:
+def setup_logging(debug: bool) -> AstolfoLogger:
     """Set up logging with optional debug mode."""
-    print(f"[DEBUG] Using AstolfoLogger", file=sys.stderr)
+    print("[DEBUG] Using AstolfoLogger", file=sys.stderr)
     print(f"[DEBUG] Debug level will be: {os.environ.get('DISCORD_DEBUG_LEVEL', '1')}", file=sys.stderr)
     return setup_astolfo_logger(__name__)
 
@@ -261,7 +177,7 @@ def format_event(
     config: Config,
 ) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits."""
-    timestamp = datetime.now(UTC).isoformat()
+    timestamp = get_discord_embed_timestamp()
     session_id_raw = event_data.get("session_id", "unknown")
     session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"
 
@@ -270,20 +186,16 @@ def format_event(
     # Cast to the expected type for the formatter
     from typing import cast as typing_cast
     if event_type in ["PreToolUse", "PostToolUse"]:
-        from src.formatters.event_formatters import ToolEventData as FormatterToolEventData
-        embed = formatter(typing_cast(FormatterToolEventData, event_data), session_id)
+        embed = formatter(typing_cast("FormatterToolEventData", event_data), session_id)
     elif event_type == "Notification":
-        from src.formatters.event_formatters import NotificationEventData as FormatterNotificationEventData
-        embed = formatter(typing_cast(FormatterNotificationEventData, event_data), session_id)
+        embed = formatter(typing_cast("FormatterNotificationEventData", event_data), session_id)
     elif event_type == "Stop":
-        from src.formatters.event_formatters import StopEventData as FormatterStopEventData
-        embed = formatter(typing_cast(FormatterStopEventData, event_data), session_id)
+        embed = formatter(typing_cast("FormatterStopEventData", event_data), session_id)
     elif event_type == "SubagentStop":
-        from src.formatters.event_formatters import SubagentStopEventData as FormatterSubagentStopEventData
-        embed = formatter(typing_cast(FormatterSubagentStopEventData, event_data), session_id)
+        embed = formatter(typing_cast("FormatterSubagentStopEventData", event_data), session_id)
     else:
         # For unknown event types, cast to generic dict format
-        embed = formatter(cast(dict[str, Any], event_data), session_id)
+        embed = formatter(cast("dict[str, Any]", event_data), session_id)
 
     # Enforce Discord's length limits
     if "title" in embed and embed["title"] and len(embed["title"]) > DiscordLimits.MAX_TITLE_LENGTH:
@@ -304,8 +216,7 @@ def format_event(
     embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
 
     # Create message with embeds - cast to expected type
-    from src.type_defs.discord import DiscordEmbed as TypeDefDiscordEmbed
-    message: DiscordMessage = {"embeds": [cast(TypeDefDiscordEmbed, embed)]}
+    message: DiscordMessage = {"embeds": [cast("TypeDefDiscordEmbed", embed)]}
 
     # Add user mention for Notification and Stop events if configured
     if event_type in [
@@ -344,7 +255,7 @@ def main() -> None:
                             os.environ[key] = value
         except Exception:
             pass  # Ignore errors to not block Claude Code
-    
+
     # Load configuration
     config = ConfigLoader.load()
     logger = setup_logging(config["debug"])
@@ -367,7 +278,7 @@ def main() -> None:
 
         # Get event type from environment
         event_type = os.environ.get(ENV_HOOK_EVENT, "Unknown")
-        
+
         # Session logging integration (non-blocking)
         session_logging_enabled = os.getenv("DISCORD_ENABLE_SESSION_LOGGING", "0")
         logger.debug(f"DISCORD_ENABLE_SESSION_LOGGING = {session_logging_enabled}")
@@ -381,10 +292,10 @@ def main() -> None:
                     if session_id not in _session_loggers:
                         logger.debug(f"Creating new SessionLogger for {session_id}")
                         _session_loggers[session_id] = SessionLogger(
-                            session_id, 
+                            session_id,
                             os.getcwd()
                         )
-                    
+
                     # Log event asynchronously
                     if session_id in _session_loggers:
                         # Enrich event data with Claude Code specifics
@@ -393,7 +304,7 @@ def main() -> None:
                             "parent_uuid": event_data.get("parent_uuid"),
                             "is_sidechain": event_data.get("is_sidechain", False),
                         }
-                        
+
                         # Fire-and-forget pattern
                         import asyncio
                         try:
@@ -401,7 +312,7 @@ def main() -> None:
                         except RuntimeError:
                             loop = asyncio.new_event_loop()
                             asyncio.set_event_loop(loop)
-                        
+
                         # Create task and ignore result
                         task = loop.create_task(
                             _session_loggers[session_id].log_event(
@@ -410,29 +321,25 @@ def main() -> None:
                         )
                         # Prevent uncaught exception warnings
                         task.add_done_callback(lambda t: None)
-                        
+
             except Exception:
                 # Silently ignore all session logging errors
                 pass
 
         # Check if this event should be processed based on filtering configuration
         if not should_process_event(event_type, config):
-            if isinstance(logger, AstolfoLogger):
-                logger.debug(
-                    "event_filtered",
-                    context={"event_type": event_type},
-                    ai_todo="Event was filtered out by user configuration"
-                )
-            else:
-                logger.debug("Event %s filtered out by configuration", event_type)
+            logger.debug(
+                "event_filtered",
+                context={"event_type": event_type},
+                ai_todo="Event was filtered out by user configuration"
+            )
             sys.exit(0)  # Exit gracefully without processing
 
         # Set session ID for AstolfoLogger
-        if isinstance(logger, AstolfoLogger):
-            session_id = event_data.get("session_id", "")
-            if session_id:
-                logger.set_session_id(session_id)
-            
+        session_id = event_data.get("session_id", "")
+        if session_id:
+            logger.set_session_id(session_id)
+
             logger.info(
                 "processing_event",
                 context={
@@ -457,32 +364,23 @@ def main() -> None:
         # Format and send message
         message = format_event(event_type, event_data, formatter_registry, config)
         session_id = event_data.get("session_id", "")
-        # Create a logging.Logger adapter for send_to_discord
-        if isinstance(logger, AstolfoLogger):
-            logger_for_send = logger.logger  # Use the internal logger
-        else:
-            logger_for_send = logger
+        # Use AstolfoLogger's internal logger for send_to_discord compatibility
+        logger_for_send = logger.logger  # AstolfoLogger's internal standard logger
         # Cast to the expected type for send_to_discord
-        success = send_to_discord(cast(HTTPClientDiscordMessage, message), config, logger_for_send, http_client, session_id, event_type)
+        success = send_to_discord(cast("HTTPClientDiscordMessage", message), config, logger_for_send, http_client, session_id, event_type)
 
         if success:
-            if isinstance(logger, AstolfoLogger):
-                logger.info(
-                    "notification_sent",
-                    context={"event_type": event_type, "session_id": session_id},
-                    ai_todo="Notification sent successfully to Discord"
-                )
-            else:
-                logger.info("%s notification sent successfully", event_type)
+            logger.info(
+                "notification_sent",
+                context={"event_type": event_type, "session_id": session_id},
+                ai_todo="Notification sent successfully to Discord"
+            )
         else:
-            if isinstance(logger, AstolfoLogger):
-                logger.error(
-                    "notification_failed",
-                    context={"event_type": event_type, "session_id": session_id},
-                    ai_todo="Failed to send notification. Check Discord configuration and API errors"
-                )
-            else:
-                logger.error("Failed to send %s notification", event_type)
+            logger.error(
+                "notification_failed",
+                context={"event_type": event_type, "session_id": session_id},
+                ai_todo="Failed to send notification. Check Discord configuration and API errors"
+            )
 
     except json.JSONDecodeError:
         logger.exception("JSON decode error")
@@ -501,19 +399,17 @@ def main() -> None:
             import time
             # Give async tasks a moment to complete
             time.sleep(0.1)
-            
+
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-            
+
             # Close all loggers
             for session_logger in _session_loggers.values():
-                try:
+                with contextlib.suppress(Exception):
                     loop.run_until_complete(session_logger.close())
-                except Exception:
-                    pass
 
     # Always exit 0 to not block Claude Code
     sys.exit(0)

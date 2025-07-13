@@ -5,9 +5,8 @@ environment variables and .env files.
 """
 
 import os
-import sys
 from pathlib import Path
-from typing import cast, Literal
+from typing import Literal, cast
 
 # Import AstolfoLogger for structured logging
 try:
@@ -26,18 +25,34 @@ except ImportError:
 # Try to import constants
 try:
     from src.constants import (
-        ENV_WEBHOOK_URL, ENV_BOT_TOKEN, ENV_CHANNEL_ID, ENV_DEBUG,
-        ENV_USE_THREADS, ENV_CHANNEL_TYPE, ENV_THREAD_PREFIX,
-        ENV_MENTION_USER_ID, ENV_ENABLED_EVENTS, ENV_DISABLED_EVENTS,
-        ENV_THREAD_STORAGE_PATH, ENV_THREAD_CLEANUP_DAYS,
+        ENV_BOT_TOKEN,
+        ENV_CHANNEL_ID,
+        ENV_CHANNEL_TYPE,
+        ENV_DEBUG,
+        ENV_DISABLED_EVENTS,
+        ENV_ENABLED_EVENTS,
+        ENV_MENTION_USER_ID,
+        ENV_THREAD_CLEANUP_DAYS,
+        ENV_THREAD_PREFIX,
+        ENV_THREAD_STORAGE_PATH,
+        ENV_USE_THREADS,
+        ENV_WEBHOOK_URL,
     )
 except ImportError:
     # Fallback imports if constants not available
     from discord_notifier import (  # type: ignore
-        ENV_WEBHOOK_URL, ENV_BOT_TOKEN, ENV_CHANNEL_ID, ENV_DEBUG,
-        ENV_USE_THREADS, ENV_CHANNEL_TYPE, ENV_THREAD_PREFIX,
-        ENV_MENTION_USER_ID, ENV_ENABLED_EVENTS, ENV_DISABLED_EVENTS,
-        ENV_THREAD_STORAGE_PATH, ENV_THREAD_CLEANUP_DAYS,
+        ENV_BOT_TOKEN,
+        ENV_CHANNEL_ID,
+        ENV_CHANNEL_TYPE,
+        ENV_DEBUG,
+        ENV_DISABLED_EVENTS,
+        ENV_ENABLED_EVENTS,
+        ENV_MENTION_USER_ID,
+        ENV_THREAD_CLEANUP_DAYS,
+        ENV_THREAD_PREFIX,
+        ENV_THREAD_STORAGE_PATH,
+        ENV_USE_THREADS,
+        ENV_WEBHOOK_URL,
     )
 
 # Try to import exceptions
@@ -56,21 +71,21 @@ except ImportError:
         """Parse .env file into a dictionary."""
         env_vars = {}
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path) as f:
                 for line in f:
                     line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
                         env_vars[key.strip()] = value.strip().strip('"\'')
         except Exception as e:
             raise ConfigurationError(f"Failed to parse .env file: {e}")
         return env_vars
-    
+
     def parse_event_list(event_list_str: str) -> list[str]:
         """Parse comma-separated event list."""
         if not event_list_str.strip():
             return []
-        events = [e.strip() for e in event_list_str.split(',') if e.strip()]
+        events = [e.strip() for e in event_list_str.split(",") if e.strip()]
         return events if events else []
 
 
@@ -93,7 +108,7 @@ DEFAULT_CONFIG: Config = {
 
 class ConfigLoader:
     """Configuration loader with validation."""
-    
+
     # Initialize logger for config loading
     _logger = AstolfoLogger(name="ConfigLoader") if AstolfoLogger else None
 
@@ -102,7 +117,7 @@ class ConfigLoader:
         """Get default configuration."""
         if ConfigLoader._logger:
             ConfigLoader._logger.debug("Creating default configuration")
-        
+
         # Return a deep copy to avoid mutation
         return {
             "webhook_url": DEFAULT_CONFIG["webhook_url"],
@@ -127,7 +142,7 @@ class ConfigLoader:
                 "Updating config from dictionary",
                 {"env_vars_count": len(env_vars), "keys": list(env_vars.keys())}
             )
-        
+
         if ENV_WEBHOOK_URL in env_vars:
             value = env_vars[ENV_WEBHOOK_URL]
             config["webhook_url"] = value if value else None
@@ -220,7 +235,7 @@ class ConfigLoader:
         """Load Discord configuration with clear precedence: env vars override file config."""
         if ConfigLoader._logger:
             ConfigLoader._logger.info("Starting configuration load")
-        
+
         # 1. Start with defaults
         config = ConfigLoader._get_default_config()
 
@@ -244,13 +259,12 @@ class ConfigLoader:
                         "Failed to load .env file",
                         {"path": str(env_file), "error": str(e)}
                     )
-                pass
 
         # 3. Environment variables override file config
         if ConfigLoader._logger:
             ConfigLoader._logger.debug("Loading from environment variables")
         ConfigLoader._update_config_from_environment(config)
-        
+
         if ConfigLoader._logger:
             # Log final configuration (without sensitive values)
             sanitized_config = {
@@ -279,7 +293,7 @@ class ConfigLoader:
         """Validate configuration."""
         if ConfigLoader._logger:
             ConfigLoader._logger.debug("Validating configuration")
-        
+
         if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
             error_msg = "No Discord configuration found. Please set webhook URL or bot token/channel ID."
             if ConfigLoader._logger:
@@ -288,10 +302,10 @@ class ConfigLoader:
                     {"error": error_msg}
                 )
             raise ConfigurationError(error_msg)
-        
+
         if ConfigLoader._logger:
             ConfigLoader._logger.info("Configuration validation passed")
 
 
 # Export all public items
-__all__ = ['ConfigLoader', 'DEFAULT_CONFIG']
+__all__ = ["DEFAULT_CONFIG", "ConfigLoader"]

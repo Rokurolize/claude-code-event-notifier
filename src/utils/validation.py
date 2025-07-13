@@ -13,7 +13,6 @@ from typing import TypeGuard
 from src.core.constants import EventType, EventTypes, ToolNames
 from src.utils.astolfo_logger import AstolfoLogger
 
-
 # Initialize logger for this module
 logger = AstolfoLogger(__name__)
 
@@ -287,7 +286,7 @@ class EventDataValidator:
         required_fields = {"session_id", "hook_event_name"}
         result = all(field in data for field in required_fields)
         missing_fields = required_fields - set(data.keys())
-        
+
         logger.debug(
             "Validated base event data",
             extra={
@@ -316,7 +315,7 @@ class EventDataValidator:
         required_fields = {"tool_name", "tool_input"}
         result = all(field in data for field in required_fields)
         missing_fields = required_fields - set(data.keys())
-        
+
         logger.debug(
             "Validated tool event data",
             extra={
@@ -390,7 +389,7 @@ class ToolInputValidator:
         has_command = "command" in tool_input
         is_string = isinstance(tool_input.get("command"), str) if has_command else False
         result = has_command and is_string
-        
+
         logger.debug(
             "Validated Bash tool input",
             extra={
@@ -415,7 +414,7 @@ class ToolInputValidator:
         has_file_path = "file_path" in tool_input
         is_string = isinstance(tool_input.get("file_path"), str) if has_file_path else False
         result = has_file_path and is_string
-        
+
         logger.debug(
             "Validated file tool input",
             extra={
@@ -440,7 +439,7 @@ class ToolInputValidator:
         has_pattern = "pattern" in tool_input
         is_string = isinstance(tool_input.get("pattern"), str) if has_pattern else False
         result = has_pattern and is_string
-        
+
         logger.debug(
             "Validated search tool input",
             extra={
@@ -466,9 +465,9 @@ class ToolInputValidator:
         url_is_string = isinstance(tool_input.get("url"), str) if has_url else False
         has_prompt = "prompt" in tool_input
         prompt_is_string = isinstance(tool_input.get("prompt"), str) if has_prompt else False
-        
+
         result = has_url and url_is_string and has_prompt and prompt_is_string
-        
+
         logger.debug(
             "Validated web tool input",
             extra={

@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+from src.utils.astolfo_logger import AstolfoLogger
 from src.utils.session_logger import SessionLogger
+
+# Initialize AstolfoLogger for test tracking  
+astolfo_logger = AstolfoLogger(__name__)
 
 
 class TestSessionLogger(unittest.TestCase):
@@ -17,6 +21,10 @@ class TestSessionLogger(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
+        astolfo_logger.debug("Setting up SessionLogger tests", {
+            "test_class": self.__class__.__name__,
+            "test_module": "session_logger"
+        })
         # Create temporary directory for tests
         self.temp_dir = tempfile.mkdtemp()
         self.original_home = os.environ.get('HOME')
@@ -43,12 +51,21 @@ class TestSessionLogger(unittest.TestCase):
             
     def test_initialization_enabled(self):
         """Test SessionLogger initialization when enabled."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_initialization_enabled", {
+            "test_method": "test_initialization_enabled",
+            "session_id": self.session_id
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
-        self.assertTrue(logger.enabled)
-        self.assertEqual(logger.session_id, self.session_id)
-        self.assertEqual(logger.project_path, self.project_path)
-        self.assertEqual(logger.sequence_number, 0)
+        self.assertTrue(session_logger.enabled)
+        self.assertEqual(session_logger.session_id, self.session_id)
+        self.assertEqual(session_logger.project_path, self.project_path)
+        self.assertEqual(session_logger.sequence_number, 0)
+        
+        astolfo_logger.info("Completed test_initialization_enabled", {
+            "result": "success",
+            "session_logger_enabled": session_logger.enabled
+        })
         
         # Check if directories were created
         base_dir = Path(self.temp_dir) / ".claude" / "hooks" / "session_logs"
@@ -73,11 +90,19 @@ class TestSessionLogger(unittest.TestCase):
         
     def test_initialization_disabled(self):
         """Test SessionLogger initialization when disabled."""
+        astolfo_logger.debug("Starting test_initialization_disabled", {
+            "test_method": "test_initialization_disabled"
+        })
         os.environ['DISCORD_ENABLE_SESSION_LOGGING'] = '0'
         
-        logger = SessionLogger(self.session_id, self.project_path)
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
-        self.assertFalse(logger.enabled)
+        self.assertFalse(session_logger.enabled)
+        
+        astolfo_logger.info("Completed test_initialization_disabled", {
+            "result": "success",
+            "session_logger_enabled": session_logger.enabled
+        })
         
         # Check that directories were NOT created
         base_dir = Path(self.temp_dir) / ".claude" / "hooks" / "session_logs"
@@ -87,7 +112,10 @@ class TestSessionLogger(unittest.TestCase):
         
     def test_project_index_creation(self):
         """Test project index creation and updates."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_project_index_creation", {
+            "test_method": "test_project_index_creation"
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         # Check project index
         import hashlib
@@ -118,9 +146,17 @@ class TestSessionLogger(unittest.TestCase):
         self.assertEqual(sessions[0]['session_id'], self.session_id)
         self.assertEqual(sessions[0]['status'], 'active')
         
+        astolfo_logger.info("Completed test_project_index_creation", {
+            "result": "success",
+            "project_index_created": True
+        })
+        
     def test_log_event_async(self):
         """Test async event logging."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_log_event_async", {
+            "test_method": "test_log_event_async"
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         # Create event data
         event_data = {
@@ -131,7 +167,7 @@ class TestSessionLogger(unittest.TestCase):
         
         # Run async test
         async def test():
-            await logger.log_event("PreToolUse", event_data)
+            await session_logger.log_event("PreToolUse", event_data)
             # Give worker time to process
             await asyncio.sleep(0.1)
             
@@ -152,16 +188,24 @@ class TestSessionLogger(unittest.TestCase):
         self.assertEqual(saved_event['sequence'], 1)
         self.assertIn('timestamp', saved_event)
         
+        astolfo_logger.info("Completed test_log_event_async", {
+            "result": "success",
+            "event_logged": True
+        })
+        
     def test_log_event_disabled(self):
         """Test that events are not logged when disabled."""
+        astolfo_logger.debug("Starting test_log_event_disabled", {
+            "test_method": "test_log_event_disabled"
+        })
         os.environ['DISCORD_ENABLE_SESSION_LOGGING'] = '0'
-        logger = SessionLogger(self.session_id, self.project_path)
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         event_data = {"test": "data"}
         
         # Run async test
         async def test():
-            await logger.log_event("TestEvent", event_data)
+            await session_logger.log_event("TestEvent", event_data)
             await asyncio.sleep(0.1)
             
         asyncio.run(test())
@@ -170,17 +214,25 @@ class TestSessionLogger(unittest.TestCase):
         base_dir = Path(self.temp_dir) / ".claude" / "hooks" / "session_logs"
         self.assertFalse((base_dir / "sessions" / self.session_id).exists())
         
+        astolfo_logger.info("Completed test_log_event_disabled", {
+            "result": "success",
+            "disabled_correctly": True
+        })
+        
     def test_queue_overflow_handling(self):
         """Test handling of queue overflow."""
+        astolfo_logger.debug("Starting test_queue_overflow_handling", {
+            "test_method": "test_queue_overflow_handling"
+        })
         # Set small queue size
         os.environ['DISCORD_SESSION_LOG_QUEUE_SIZE'] = '2'
         
-        logger = SessionLogger(self.session_id, self.project_path)
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         # Fill queue beyond capacity
         async def test():
             for i in range(5):
-                await logger.log_event("TestEvent", {"index": i})
+                await session_logger.log_event("TestEvent", {"index": i})
             # Give worker time to process
             await asyncio.sleep(0.5)
             
@@ -193,12 +245,20 @@ class TestSessionLogger(unittest.TestCase):
         # Should have processed some events (exact count depends on timing)
         self.assertGreater(len(event_files), 0)
         
+        astolfo_logger.info("Completed test_queue_overflow_handling", {
+            "result": "success",
+            "events_processed": len(event_files)
+        })
+        
     def test_worker_crash_recovery(self):
         """Test that worker recovers from crashes."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_worker_crash_recovery", {
+            "test_method": "test_worker_crash_recovery"
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         # Mock _write_event to raise an exception
-        original_write = logger._write_event
+        original_write = session_logger._write_event
         call_count = 0
         
         async def failing_write(event_data):
@@ -208,13 +268,13 @@ class TestSessionLogger(unittest.TestCase):
                 raise Exception("Test exception")
             return await original_write(event_data)
             
-        logger._write_event = failing_write
+        session_logger._write_event = failing_write
         
         # Log events
         async def test():
-            await logger.log_event("TestEvent1", {"test": 1})
+            await session_logger.log_event("TestEvent1", {"test": 1})
             await asyncio.sleep(0.2)  # Wait for crash and recovery
-            await logger.log_event("TestEvent2", {"test": 2})
+            await session_logger.log_event("TestEvent2", {"test": 2})
             await asyncio.sleep(0.2)  # Wait for processing
             
         asyncio.run(test())
@@ -226,15 +286,23 @@ class TestSessionLogger(unittest.TestCase):
         # Should have at least one event (the second one)
         self.assertGreater(len(event_files), 0)
         
+        astolfo_logger.info("Completed test_worker_crash_recovery", {
+            "result": "success",
+            "recovery_tested": True
+        })
+        
     def test_close_cleanup(self):
         """Test resource cleanup on close."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_close_cleanup", {
+            "test_method": "test_close_cleanup"
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         # Log an event
         async def test():
-            await logger.log_event("TestEvent", {"test": "data"})
+            await session_logger.log_event("TestEvent", {"test": "data"})
             await asyncio.sleep(0.1)
-            await logger.close()
+            await session_logger.close()
             
         asyncio.run(test())
         
@@ -251,27 +319,43 @@ class TestSessionLogger(unittest.TestCase):
         self.assertEqual(session['status'], 'complete')
         self.assertIn('end_time', session)
         
+        astolfo_logger.info("Completed test_close_cleanup", {
+            "result": "success",
+            "cleanup_verified": True
+        })
+        
     def test_environment_variable_configuration(self):
         """Test configuration via environment variables."""
+        astolfo_logger.debug("Starting test_environment_variable_configuration", {
+            "test_method": "test_environment_variable_configuration"
+        })
         os.environ['DISCORD_SESSION_LOG_BUFFER_SIZE'] = '20'
         os.environ['DISCORD_SESSION_LOG_FLUSH_INTERVAL'] = '10.0'
         os.environ['DISCORD_SESSION_LOG_QUEUE_SIZE'] = '500'
         os.environ['DISCORD_SESSION_LOG_PRIVACY_FILTER'] = '0'
         
-        logger = SessionLogger(self.session_id, self.project_path)
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
-        self.assertEqual(logger.buffer_size, 20)
-        self.assertEqual(logger.flush_interval, 10.0)
-        self.assertEqual(logger.queue_size, 500)
-        self.assertFalse(logger.privacy_filter)
+        self.assertEqual(session_logger.buffer_size, 20)
+        self.assertEqual(session_logger.flush_interval, 10.0)
+        self.assertEqual(session_logger.queue_size, 500)
+        self.assertFalse(session_logger.privacy_filter)
+        
+        astolfo_logger.info("Completed test_environment_variable_configuration", {
+            "result": "success",
+            "env_vars_tested": 4
+        })
         
     def test_concurrent_event_logging(self):
         """Test concurrent event logging from multiple coroutines."""
-        logger = SessionLogger(self.session_id, self.project_path)
+        astolfo_logger.debug("Starting test_concurrent_event_logging", {
+            "test_method": "test_concurrent_event_logging"
+        })
+        session_logger = SessionLogger(self.session_id, self.project_path)
         
         async def log_events(prefix: str, count: int):
             for i in range(count):
-                await logger.log_event("TestEvent", {
+                await session_logger.log_event("TestEvent", {
                     "source": prefix,
                     "index": i
                 })
@@ -286,7 +370,7 @@ class TestSessionLogger(unittest.TestCase):
             ]
             await asyncio.gather(*tasks)
             await asyncio.sleep(1.0)  # Wait longer for processing
-            await logger.close()  # Properly close the logger
+            await session_logger.close()  # Properly close the logger
             
         asyncio.run(test())
         
@@ -308,6 +392,12 @@ class TestSessionLogger(unittest.TestCase):
                     
             # Check sequences are unique (no duplicates)
             self.assertEqual(len(sequences), len(set(sequences)))
+            
+        astolfo_logger.info("Completed test_concurrent_event_logging", {
+            "result": "success",
+            "concurrent_tasks": 3,
+            "events_per_task": 5
+        })
 
 
 if __name__ == "__main__":

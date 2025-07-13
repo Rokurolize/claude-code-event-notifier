@@ -51,10 +51,10 @@ def list_active_threads() -> None:
                 print(f"  - {thread['name']} (ID: {thread['id']})")
 
     except urllib.error.HTTPError as e:
-        logger.error("HTTP error occurred", code=e.code, reason=e.reason)
+        logger.exception("HTTP error occurred", code=e.code, reason=e.reason)
         print(f"Error: HTTP {e.code} - {e.reason}")
     except (urllib.error.URLError, json.JSONDecodeError) as e:
-        logger.error("Request or JSON parsing error", error=str(e))
+        logger.exception("Request or JSON parsing error", error=str(e))
         print(f"Error: {e}")
 
 

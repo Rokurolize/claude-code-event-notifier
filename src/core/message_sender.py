@@ -4,11 +4,13 @@ This module handles sending messages to Discord via webhook or bot API,
 with support for threads, message splitting, and special event handling.
 """
 
+import time
+from typing import TYPE_CHECKING, cast
+
 from src.utils.astolfo_logger import AstolfoLogger
 
-import time
-from typing import Any, cast
-from src.core.http_client import DiscordEmbed
+if TYPE_CHECKING:
+    from src.core.http_client import DiscordEmbed
 
 # Try to import types
 try:
@@ -19,16 +21,16 @@ except ImportError:
 
 # Try to import HTTPClient and its types
 try:
-    from src.core.http_client import HTTPClient, DiscordMessage
+    from src.core.http_client import DiscordMessage, HTTPClient
 except ImportError:
-    from discord_notifier import HTTPClient, DiscordMessage  # type: ignore
+    from discord_notifier import DiscordMessage, HTTPClient  # type: ignore
 
 # Try to import constants
 try:
-    from src.constants import EventTypes, DiscordLimits
+    from src.constants import DiscordLimits, EventTypes
     from src.core.constants import DISCORD_API_BASE
 except ImportError:
-    from discord_notifier import EventTypes, DiscordLimits  # type: ignore
+    from discord_notifier import DiscordLimits, EventTypes  # type: ignore
     DISCORD_API_BASE = "https://discord.com/api/v10"  # type: ignore[misc]
 
 # Try to import thread manager
@@ -55,7 +57,7 @@ def send_to_discord(
     """
     # Split message if needed (for long content)
     messages = _split_embed_if_needed(message)
-    
+
     # If multiple messages, send them sequentially
     if len(messages) > 1:
         logger.info("Splitting long message into %d parts", len(messages))
@@ -64,70 +66,70 @@ def send_to_discord(
             # Add small delay between messages to avoid rate limiting
             if i > 0:
                 time.sleep(0.5)
-            
+
             # Send each part using the regular logic
             success = _send_single_message(msg, config, logger, http_client, session_id, event_type)
             if not success:
                 all_success = False
                 logger.error("Failed to send message part %d", i + 1)
         return all_success
-    
+
     # Single message, use regular logic
     return _send_single_message(message, config, logger, http_client, session_id, event_type)
 
 
 def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
     """Split a message if its embed description exceeds Discord limits.
-    
+
     Args:
         message: Original Discord message with embeds
-        
+
     Returns:
         List of messages, split if necessary
     """
     if not message.get("embeds") or not message["embeds"]:
         return [message]
-    
+
     embed = message["embeds"][0]
     description = embed.get("description", "")
-    
+
     # If within limits, return as-is
     if description is None or len(description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
         return [message]
-    
+
     # Split the description
     messages: list[DiscordMessage] = []
     remaining_desc = description
     part_num = 1
-    
+
     while remaining_desc:
         # Calculate how much we can fit
         chunk_size = DiscordLimits.MAX_DESCRIPTION_LENGTH
-        
+
         # For continuation messages, reserve space for part indicator
         if part_num > 1:
             chunk_size -= 50  # Space for "... (continued from previous message)"
-            
+
         # Find a good break point (prefer newline, then space)
         if len(remaining_desc) > chunk_size:
             # Look for newline near the end
-            newline_pos = remaining_desc.rfind('\n', chunk_size - 200, chunk_size)
+            newline_pos = remaining_desc.rfind("\n", chunk_size - 200, chunk_size)
             if newline_pos > 0:
                 chunk_size = newline_pos + 1
             else:
                 # Look for space
-                space_pos = remaining_desc.rfind(' ', chunk_size - 100, chunk_size)
+                space_pos = remaining_desc.rfind(" ", chunk_size - 100, chunk_size)
                 if space_pos > 0:
                     chunk_size = space_pos + 1
-        
+
         # Extract chunk
         chunk = remaining_desc[:chunk_size]
         remaining_desc = remaining_desc[chunk_size:]
-        
+
         # Create new message with modified embed
         # Convert to regular dict to allow field deletion
         new_embed = dict(embed)
-        
+
         if part_num == 1:
             # First part keeps original title
             new_embed["description"] = chunk
@@ -142,27 +144,24 @@ def _split_embed_if_needed(message: DiscordMessage) -> list[DiscordMessage]:
             if remaining_desc:
                 desc = str(new_embed.get("description", ""))
                 new_embed["description"] = desc + "\n\n... (continued in next message)"
-            
+
             # Remove fields from continuation messages to save space
-            if "fields" in new_embed:
-                del new_embed["fields"]
-        
+            new_embed.pop("fields", None)
+
         # Remove footer from all but the last part
         if remaining_desc:
-            if "footer" in new_embed:
-                del new_embed["footer"]
-            if "timestamp" in new_embed:
-                del new_embed["timestamp"]
-        
+            new_embed.pop("footer", None)
+            new_embed.pop("timestamp", None)
+
         # Cast back to DiscordEmbed after modifications
-        final_embed = cast(DiscordEmbed, new_embed)
+        final_embed = cast("DiscordEmbed", new_embed)
         new_message: DiscordMessage = {
             "embeds": [final_embed],
             "content": message.get("content", "")
         }
         messages.append(new_message)
         part_num += 1
-    
+
     return messages
 
 
@@ -175,7 +174,7 @@ def _send_single_message(
     event_type: str = "",
 ) -> bool:
     """Send a single message to Discord (internal helper).
-    
+
     Args:
         message: Discord message to send
         config: Configuration
@@ -183,7 +182,7 @@ def _send_single_message(
         http_client: HTTP client for Discord API
         session_id: Optional session ID for thread management
         event_type: Optional event type for special handling
-        
+
     Returns:
         bool: True if message was successfully sent
     """
@@ -210,7 +209,7 @@ def _send_stop_or_notification_event(
     event_type: str,
 ) -> bool:
     """Handle special Stop/Notification event sending with dual messages.
-    
+
     Args:
         message: Discord message to send
         config: Configuration
@@ -218,7 +217,7 @@ def _send_stop_or_notification_event(
         http_client: HTTP client for Discord API
         session_id: Session ID for thread management
         event_type: Event type (Stop or Notification)
-        
+
     Returns:
         bool: True if message was successfully sent
     """
@@ -245,18 +244,17 @@ def _send_stop_or_notification_event(
         logger.warning("No thread found/created for Stop/Notification event in session %s", session_id)
 
     # 2. Send mention-only message to main channel
-    main_channel_success = False
     if message.get("content"):  # Only if there's a mention
         mention_only_message: DiscordMessage = {
             "content": message["content"],
             "embeds": []
         }
         if config["webhook_url"]:
-            main_channel_success = http_client.post_webhook(
+            http_client.post_webhook(
                 config["webhook_url"], mention_only_message
             )
         elif config["bot_token"] and config["channel_id"]:
-            main_channel_success = http_client.post_bot_api(
+            http_client.post_bot_api(
                 f"{DISCORD_API_BASE}/channels/{config['channel_id']}/messages",
                 mention_only_message,
                 config["bot_token"]
@@ -282,14 +280,14 @@ def _send_to_thread(
     session_id: str = "",
 ) -> bool | None:
     """Try to send message to a thread.
-    
+
     Args:
         message: Discord message to send
         config: Configuration
         logger: Logger instance
         http_client: HTTP client for Discord API
         session_id: Session ID for thread lookup
-        
+
     Returns:
         bool if message was sent (True) or failed (False)
         None if thread messaging is not applicable
@@ -323,12 +321,12 @@ def _send_to_regular_channel(
     message: DiscordMessage, config: Config, http_client: HTTPClient
 ) -> bool:
     """Send message to regular Discord channel.
-    
+
     Args:
         message: Discord message to send
         config: Configuration
         http_client: HTTP client for Discord API
-        
+
     Returns:
         bool: True if message was successfully sent
     """
@@ -355,10 +353,10 @@ def _send_to_regular_channel(
 
 # Export all public functions
 __all__ = [
-    'send_to_discord',
-    '_split_embed_if_needed',
-    '_send_single_message',
-    '_send_stop_or_notification_event',
-    '_send_to_thread',
-    '_send_to_regular_channel',
+    "_send_single_message",
+    "_send_stop_or_notification_event",
+    "_send_to_regular_channel",
+    "_send_to_thread",
+    "_split_embed_if_needed",
+    "send_to_discord",
 ]

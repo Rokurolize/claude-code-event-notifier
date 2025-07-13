@@ -9,11 +9,16 @@ Following Kent Beck's TDD approach:
 
 import sys
 import unittest
+import time
 from pathlib import Path
 from enum import Enum
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.utils.astolfo_logger import AstolfoLogger
+
+logger = AstolfoLogger(__name__)
 
 
 class TestConstantsImports(unittest.TestCase):
@@ -21,6 +26,9 @@ class TestConstantsImports(unittest.TestCase):
     
     def test_enums_importable(self):
         """EnumをConstants.pyからインポートできることを確認"""
+        start_time = time.time()
+        logger.info("Testing enums import", {"test_method": "test_enums_importable"})
+        
         try:
             from src.constants import ToolNames, EventTypes
             # Enumが存在することを確認
@@ -29,32 +37,71 @@ class TestConstantsImports(unittest.TestCase):
             # 代表的な値が存在することを確認
             self.assertIn('BASH', ToolNames.__members__)
             self.assertIn('PRE_TOOL_USE', EventTypes.__members__)
+            
+            logger.info("Enums import test passed", {
+                "duration": time.time() - start_time,
+                "enums_tested": ["ToolNames", "EventTypes"],
+                "members_verified": ["BASH", "PRE_TOOL_USE"]
+            })
         except ImportError as e:
+            logger.error("Enums import failed", {
+                "error": str(e),
+                "duration": time.time() - start_time
+            })
             self.fail(f"Failed to import enums: {e}")
     
     def test_limit_constants_importable(self):
         """制限定数をConstants.pyからインポートできることを確認"""
+        start_time = time.time()
+        logger.info("Testing limit constants import", {"test_method": "test_limit_constants_importable"})
+        
         try:
             from src.constants import TruncationLimits, DiscordLimits
             # クラスが存在することを確認
             self.assertTrue(hasattr(TruncationLimits, 'DEFAULT'))
             self.assertTrue(hasattr(DiscordLimits, 'EMBED_DESCRIPTION_MAX'))
+            
+            logger.info("Limit constants import test passed", {
+                "duration": time.time() - start_time,
+                "constants_tested": ["TruncationLimits", "DiscordLimits"],
+                "attributes_verified": ["DEFAULT", "EMBED_DESCRIPTION_MAX"]
+            })
         except ImportError as e:
+            logger.error("Limit constants import failed", {
+                "error": str(e),
+                "duration": time.time() - start_time
+            })
             self.fail(f"Failed to import limit constants: {e}")
     
     def test_color_constants_importable(self):
         """色定数をConstants.pyからインポートできることを確認"""
+        start_time = time.time()
+        logger.info("Testing color constants import", {"test_method": "test_color_constants_importable"})
+        
         try:
             from src.constants import DiscordColors, EVENT_TYPE_COLORS, TOOL_EMOJIS
             # クラスと辞書が存在することを確認
             self.assertTrue(hasattr(DiscordColors, 'SUCCESS'))
             self.assertIsInstance(EVENT_TYPE_COLORS, dict)
             self.assertIsInstance(TOOL_EMOJIS, dict)
+            
+            logger.info("Color constants import test passed", {
+                "duration": time.time() - start_time,
+                "constants_tested": ["DiscordColors", "EVENT_TYPE_COLORS", "TOOL_EMOJIS"],
+                "types_verified": ["class", "dict", "dict"]
+            })
         except ImportError as e:
+            logger.error("Color constants import failed", {
+                "error": str(e),
+                "duration": time.time() - start_time
+            })
             self.fail(f"Failed to import color constants: {e}")
     
     def test_env_constants_importable(self):
         """環境変数名をConstants.pyからインポートできることを確認"""
+        start_time = time.time()
+        logger.info("Testing environment constants import", {"test_method": "test_env_constants_importable"})
+        
         try:
             from src.constants import (
                 ENV_WEBHOOK_URL, ENV_BOT_TOKEN, ENV_CHANNEL_ID,
@@ -64,9 +111,33 @@ class TestConstantsImports(unittest.TestCase):
             self.assertIsInstance(ENV_WEBHOOK_URL, str)
             self.assertIsInstance(CONFIG_FILE_NAME, str)
             self.assertIsInstance(THREAD_CACHE_EXPIRY, (int, float))
+            
+            logger.info("Environment constants import test passed", {
+                "duration": time.time() - start_time,
+                "constants_tested": ["ENV_WEBHOOK_URL", "ENV_BOT_TOKEN", "ENV_CHANNEL_ID", "THREAD_CACHE_EXPIRY", "CONFIG_FILE_NAME"],
+                "types_verified": ["str", "str", "str", "number", "str"]
+            })
         except ImportError as e:
+            logger.error("Environment constants import failed", {
+                "error": str(e),
+                "duration": time.time() - start_time
+            })
             self.fail(f"Failed to import env constants: {e}")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    start_time = time.time()
+    logger.info("Starting constants integration test suite", {"test_file": __file__})
+    
+    try:
+        print("=== Constants Integration Tests ===")
+        unittest.main()
+        logger.info("Constants test suite completed successfully", {
+            "duration": time.time() - start_time
+        })
+    except Exception as e:
+        logger.error("Constants test suite failed", {
+            "error": str(e),
+            "duration": time.time() - start_time
+        })
+        raise

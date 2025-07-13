@@ -7,7 +7,6 @@ including both pre-use and post-use formatting of tool inputs and outputs.
 
 from typing import TypedDict
 
-from src.utils.astolfo_logger import AstolfoLogger
 from src.core.constants import ToolNames, TruncationLimits
 from src.formatters.base import (
     add_field,
@@ -16,6 +15,7 @@ from src.formatters.base import (
     get_truncation_suffix,
     truncate_string,
 )
+from src.utils.astolfo_logger import AstolfoLogger
 from src.utils.validation import is_list_tool
 
 # Initialize logger for this module
@@ -108,7 +108,7 @@ def format_bash_pre_use(tool_input: BashToolInput) -> list[str]:
         List of formatted description parts
     """
     logger.debug("Formatting Bash tool pre-use", tool="Bash", input_keys=list(tool_input.keys()))
-    
+
     desc_parts: list[str] = []
     command: str = tool_input.get("command", "")
     desc: str = tool_input.get("description", "")
@@ -137,7 +137,7 @@ def format_file_operation_pre_use(tool_name: str, tool_input: FileOperationInput
         List of formatted description parts
     """
     logger.debug("Formatting file operation pre-use", tool=tool_name, input_keys=list(tool_input.keys()))
-    
+
     desc_parts: list[str] = []
     file_path: str = tool_input.get("file_path", "")
 
@@ -196,7 +196,7 @@ def format_search_tool_pre_use(tool_name: str, tool_input: SearchToolInput) -> l
         List of formatted description parts
     """
     logger.debug("Formatting search tool pre-use", tool=tool_name, input_keys=list(tool_input.keys()))
-    
+
     desc_parts: list[str] = []
     pattern: str = tool_input.get("pattern", "")
     add_field(desc_parts, "Pattern", pattern, code=True)
@@ -228,7 +228,7 @@ def format_task_pre_use(tool_input: TaskToolInput) -> list[str]:
         List of formatted description parts
     """
     logger.debug("Formatting Task tool pre-use", input_keys=list(tool_input.keys()))
-    
+
     desc_parts: list[str] = []
     desc_raw = tool_input.get("description", "")
     desc = str(desc_raw) if desc_raw else ""
@@ -259,7 +259,7 @@ def format_web_fetch_pre_use(tool_input: WebFetchInput) -> list[str]:
         List of formatted description parts
     """
     logger.debug("Formatting WebFetch tool pre-use", input_keys=list(tool_input.keys()))
-    
+
     desc_parts: list[str] = []
     url: str = tool_input.get("url", "")
     prompt: str = tool_input.get("prompt", "")
@@ -305,7 +305,7 @@ def format_bash_post_use(tool_input: BashToolInput, tool_response: ToolResponse)
         List of formatted description parts
     """
     logger.debug("Formatting Bash tool post-use", response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     command: str = truncate_string(tool_input.get("command", ""), TruncationLimits.COMMAND_PREVIEW)
@@ -349,7 +349,7 @@ def format_read_operation_post_use(
         List of formatted description parts
     """
     logger.debug("Formatting read operation post-use", tool=tool_name, response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     if tool_name == ToolNames.READ.value:
@@ -399,7 +399,7 @@ def format_write_operation_post_use(tool_input: FileOperationInput, tool_respons
         List of formatted description parts
     """
     logger.debug("Formatting write operation post-use", response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     file_path = format_file_path(tool_input.get("file_path", ""))
@@ -439,7 +439,7 @@ def format_task_post_use(tool_input: TaskToolInput, tool_response: ToolResponse)
         List of formatted description parts
     """
     logger.debug("Formatting Task tool post-use", response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     desc = tool_input.get("description", "")
@@ -467,7 +467,7 @@ def format_web_fetch_post_use(tool_input: WebFetchInput, tool_response: ToolResp
         List of formatted description parts
     """
     logger.debug("Formatting WebFetch tool post-use", response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     url: str = tool_input.get("url", "")
@@ -497,7 +497,7 @@ def format_unknown_tool_post_use(tool_response: ToolResponse) -> list[str]:
         List of formatted description parts
     """
     logger.warning("Formatting unknown tool post-use", response_type=type(tool_response).__name__)
-    
+
     desc_parts: list[str] = []
 
     if isinstance(tool_response, dict):

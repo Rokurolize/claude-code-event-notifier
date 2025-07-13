@@ -16,6 +16,10 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src import discord_notifier
+from src.utils.astolfo_logger import AstolfoLogger
+
+# Initialize AstolfoLogger for test tracking
+logger = AstolfoLogger(__name__)
 
 
 class TestRuntimeTypeValidation(unittest.TestCase):
@@ -388,6 +392,11 @@ DISCORD_JUST_QUOTES='""'
 
             assert "Error reading" in str(exc_info.value)
             assert "File not found" in str(exc_info.value)
+            
+        logger.info("Completed test_parse_env_file_io_error_handling", {
+            "result": "success",
+            "io_errors_tested": "FileNotFoundError, PermissionError"
+        })
 
         # Test permission denied
         with patch("builtins.open", side_effect=PermissionError("Permission denied")):
@@ -408,6 +417,11 @@ DISCORD_JUST_QUOTES='""'
                 discord_notifier.parse_env_file(Path("invalid_encoding"))
 
             assert "Error reading" in str(exc_info.value)
+            
+        logger.info("Completed test_parse_env_file_encoding_issues", {
+            "result": "success",
+            "encoding_error_handled": True
+        })
 
 
 class TestConfigurationExceptionHandling(unittest.TestCase):

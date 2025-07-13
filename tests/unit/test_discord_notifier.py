@@ -11,12 +11,112 @@ import unittest
 import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, mock_open, patch
+from typing import Union, Optional, Any, Dict, List
 
 import pytest
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src import discord_notifier
+from src.utils.astolfo_logger_types import ContextValue, ContextDict, ErrorDict, MemoryDict
+
+
+class MockAstolfoLogger:
+    """Mock version of AstolfoLogger for testing.
+    
+    Provides the same interface as AstolfoLogger but with Mock behavior
+    to capture and verify logging calls in tests.
+    """
+    
+    def __init__(self, name: str):
+        self.name = name
+        self.session_id: Optional[str] = None
+        
+        # Mock methods with call tracking
+        self.debug = Mock()
+        self.info = Mock()
+        self.warning = Mock()
+        self.error = Mock()
+        self.exception = Mock()
+        
+        # Extended methods for AstolfoLogger compatibility
+        self.start_operation = Mock()
+        self.end_operation = Mock(return_value=100)  # Default duration
+        self.log_function_call = Mock()
+        self.log_function_result = Mock()
+        self.log_api_request = Mock()
+        self.log_api_response = Mock()
+        self.log_handover = Mock()
+        self.set_session_id = Mock()
+        
+        # Memory and log management
+        self.add_log = Mock()
+        self.get_logs = Mock(return_value=[])
+        self.save_logs = Mock()
+        self.load_logs = Mock(return_value=[])
+        self.stop = Mock()
+        
+        # Debug level for compatibility
+        self.debug_level = 1
+        
+    def assert_debug_called_with(self, event: str, **kwargs: Any) -> None:
+        """Assert debug was called with specific parameters."""
+        if kwargs:
+            self.debug.assert_called_with(event, **kwargs)
+        else:
+            self.debug.assert_called_with(event)
+            
+    def assert_error_called_with_exception(self, event: str, exception_type: type) -> None:
+        """Assert error was called with an exception of specific type."""
+        # Check if error was called with exception parameter
+        calls = self.error.call_args_list
+        found = False
+        for call in calls:
+            args, kwargs = call
+            if args and args[0] == event and 'exception' in kwargs:
+                if isinstance(kwargs['exception'], exception_type):
+                    found = True
+                    break
+        assert found, f"Expected error() to be called with event '{event}' and exception of type {exception_type.__name__}"
+        
+    def get_log_calls(self, level: str) -> List[Any]:
+        """Get all calls to a specific log level."""
+        if level == 'debug':
+            return self.debug.call_args_list
+        elif level == 'info':
+            return self.info.call_args_list
+        elif level == 'warning':
+            return self.warning.call_args_list
+        elif level == 'error':
+            return self.error.call_args_list
+        elif level == 'exception':
+            return self.exception.call_args_list
+        else:
+            return []
+            
+    def was_called(self, level: str) -> bool:
+        """Check if a specific log level was called."""
+        if level == 'debug':
+            return self.debug.called
+        elif level == 'info':
+            return self.info.called
+        elif level == 'warning':
+            return self.warning.called
+        elif level == 'error':
+            return self.error.called
+        elif level == 'exception':
+            return self.exception.called
+        else:
+            return False
+            
+    def reset_mock(self) -> None:
+        """Reset all mock call counts and history."""
+        for attr in ['debug', 'info', 'warning', 'error', 'exception',
+                     'start_operation', 'end_operation', 'log_function_call',
+                     'log_function_result', 'log_api_request', 'log_api_response',
+                     'log_handover', 'set_session_id', 'add_log', 'get_logs',
+                     'save_logs', 'load_logs', 'stop']:
+            getattr(self, attr).reset_mock()
 
 
 class TestConfigLoading(unittest.TestCase):
@@ -194,7 +294,7 @@ class TestDiscordSending(unittest.TestCase):
             "thread_prefix": "Session",
             "mention_user_id": None,
         }
-        self.logger = Mock()
+        self.logger = MockAstolfoLogger("test_discord_sending")
 
     @patch("urllib.request.urlopen")
     def test_send_webhook_success(self, mock_urlopen: MagicMock) -> None:
@@ -260,6 +360,11 @@ class TestDiscordSending(unittest.TestCase):
         # Logger errors are in HTTPClient, not in discord_notifier
         # We should check that both methods were attempted
         assert mock_urlopen.call_count == 2
+        
+        # Verify that the logger was used to log errors
+        # HTTPClient should have logged the failures
+        assert self.logger.was_called('error') or self.logger.was_called('exception'), \
+            "Expected logger to record error/exception when both send methods fail"
 
     def _create_mock_response(self, status: int) -> MagicMock:
         """Helper to create mock HTTP response."""
@@ -267,6 +372,90 @@ class TestDiscordSending(unittest.TestCase):
         mock_response.status = status
         mock_response.__enter__.return_value = mock_response
         return mock_response
+
+
+class TestMockAstolfoLogger(unittest.TestCase):
+    """Test MockAstolfoLogger functionality."""
+    
+    def setUp(self) -> None:
+        """Set up test logger."""
+        self.logger = MockAstolfoLogger("test_mock_logger")
+        
+    def test_basic_logging_methods(self) -> None:
+        """Test that all basic logging methods are available."""
+        # Test all standard logging levels
+        self.logger.debug("debug message")
+        self.logger.info("info message")
+        self.logger.warning("warning message")
+        self.logger.error("error message")
+        self.logger.exception("exception message")
+        
+        # Verify calls were captured
+        self.logger.debug.assert_called_with("debug message")
+        self.logger.info.assert_called_with("info message")
+        self.logger.warning.assert_called_with("warning message")
+        self.logger.error.assert_called_with("error message")
+        self.logger.exception.assert_called_with("exception message")
+        
+    def test_astolfo_specific_methods(self) -> None:
+        """Test AstolfoLogger-specific methods."""
+        # Test extended logging methods
+        self.logger.log_api_request("GET", "https://api.example.com", {}, None)
+        self.logger.log_api_response("https://api.example.com", 200, {}, 100)
+        self.logger.log_function_call("test_func", {"arg1": "value1"})
+        self.logger.log_function_result("test_func", "result", 150)
+        
+        # Verify calls
+        self.logger.log_api_request.assert_called_once()
+        self.logger.log_api_response.assert_called_once()
+        self.logger.log_function_call.assert_called_once()
+        self.logger.log_function_result.assert_called_once()
+        
+    def test_operation_timing(self) -> None:
+        """Test operation timing methods."""
+        self.logger.start_operation("test_op")
+        duration = self.logger.end_operation("test_op")
+        
+        self.logger.start_operation.assert_called_with("test_op")
+        self.logger.end_operation.assert_called_with("test_op")
+        assert duration == 100  # Default mock return value
+        
+    def test_helper_methods(self) -> None:
+        """Test helper assertion methods."""
+        # Call some logging methods
+        self.logger.debug("test_event", context={"key": "value"})
+        self.logger.error("error_event", exception=ValueError("test error"))
+        
+        # Test was_called helper
+        assert self.logger.was_called('debug')
+        assert self.logger.was_called('error')
+        assert not self.logger.was_called('info')
+        
+        # Test get_log_calls helper
+        debug_calls = self.logger.get_log_calls('debug')
+        error_calls = self.logger.get_log_calls('error')
+        
+        assert len(debug_calls) == 1
+        assert len(error_calls) == 1
+        
+        # Test reset_mock
+        self.logger.reset_mock()
+        assert not self.logger.was_called('debug')
+        assert not self.logger.was_called('error')
+        
+    def test_session_management(self) -> None:
+        """Test session ID management."""
+        self.logger.set_session_id("test_session_123")
+        self.logger.set_session_id.assert_called_with("test_session_123")
+        
+        # Test memory management
+        self.logger.save_logs()
+        self.logger.load_logs("/path/to/logs")
+        self.logger.stop()
+        
+        self.logger.save_logs.assert_called_once()
+        self.logger.load_logs.assert_called_with("/path/to/logs")
+        self.logger.stop.assert_called_once()
 
 
 class TestMainFunction(unittest.TestCase):

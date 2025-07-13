@@ -4,7 +4,7 @@ This module contains TypedDict definitions for all configuration
 structures used in the Discord Notifier system.
 """
 
-from typing import TypedDict, Literal
+from typing import Literal, TypedDict
 
 
 class DiscordCredentials(TypedDict):
@@ -50,7 +50,9 @@ class Config(
 
 # Export all public types
 __all__ = [
-    'DiscordCredentials', 'ThreadConfiguration',
-    'NotificationConfiguration', 'EventFilterConfiguration',
-    'Config'
+    "Config",
+    "DiscordCredentials",
+    "EventFilterConfiguration",
+    "NotificationConfiguration",
+    "ThreadConfiguration"
 ]

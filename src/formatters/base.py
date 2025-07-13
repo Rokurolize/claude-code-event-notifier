@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from src.core.constants import TRUNCATION_SUFFIX, DiscordLimits, TruncationLimits
-from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
+from src.utils.astolfo_logger import setup_astolfo_logger
 
 # Initialize logger for this module
 logger = setup_astolfo_logger(__name__)

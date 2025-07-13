@@ -55,13 +55,13 @@ class FormatterRegistry:
         """Initialize the formatter registry with default formatters."""
         self._logger = AstolfoLogger(__name__)
         self._formatters: dict[str, Callable[[EventData, str], DiscordEmbed]] = {
-            EventTypes.PRE_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_pre_tool_use),
-            EventTypes.POST_TOOL_USE.value: cast(Callable[[EventData, str], DiscordEmbed], format_post_tool_use),
-            EventTypes.NOTIFICATION.value: cast(Callable[[EventData, str], DiscordEmbed], format_notification),
-            EventTypes.STOP.value: cast(Callable[[EventData, str], DiscordEmbed], format_stop),
-            EventTypes.SUBAGENT_STOP.value: cast(Callable[[EventData, str], DiscordEmbed], format_subagent_stop),
+            EventTypes.PRE_TOOL_USE.value: cast("Callable[[EventData, str], DiscordEmbed]", format_pre_tool_use),
+            EventTypes.POST_TOOL_USE.value: cast("Callable[[EventData, str], DiscordEmbed]", format_post_tool_use),
+            EventTypes.NOTIFICATION.value: cast("Callable[[EventData, str], DiscordEmbed]", format_notification),
+            EventTypes.STOP.value: cast("Callable[[EventData, str], DiscordEmbed]", format_stop),
+            EventTypes.SUBAGENT_STOP.value: cast("Callable[[EventData, str], DiscordEmbed]", format_subagent_stop),
         }
-        
+
         self._logger.info(
             "FormatterRegistry initialized",
             {
@@ -99,7 +99,7 @@ class FormatterRegistry:
                 }
             )
             return self._formatters[event_type]
-        
+
         self._logger.warning(
             "No formatter found for event type, using default",
             {
@@ -108,7 +108,7 @@ class FormatterRegistry:
             }
         )
         # Return a lambda that captures the event_type for unknown events
-        return lambda event_data, session_id: format_default_impl(event_type, cast(dict[str, str | int | float | bool], event_data), session_id)
+        return lambda event_data, session_id: format_default_impl(event_type, cast("dict[str, str | int | float | bool]", event_data), session_id)
 
     def register(
         self,
@@ -129,9 +129,9 @@ class FormatterRegistry:
         """
         was_replaced = event_type in self._formatters
         old_formatter = self._formatters.get(event_type)
-        
+
         self._formatters[event_type] = formatter
-        
+
         if was_replaced:
             self._logger.warning(
                 "Replaced existing formatter",

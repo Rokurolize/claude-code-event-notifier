@@ -4,7 +4,7 @@ This module contains the foundational TypedDict definitions that form
 the base of the type hierarchy used throughout the Discord Notifier system.
 """
 
-from typing import TypedDict, NotRequired
+from typing import NotRequired, TypedDict
 
 
 class BaseField(TypedDict):
@@ -97,4 +97,4 @@ class PathAware(BaseField):
 
 
 # Export all public types
-__all__ = ['BaseField', 'TimestampedField', 'SessionAware', 'PathAware']
+__all__ = ["BaseField", "PathAware", "SessionAware", "TimestampedField"]

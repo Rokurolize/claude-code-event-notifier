@@ -4,22 +4,25 @@ This module contains all custom exception classes used throughout
 the Discord Notifier system.
 """
 
-from typing import Optional, Dict, Callable, TypeVar, ParamSpec, Union, Any, cast
 import traceback
-from pathlib import Path
+from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import wraps
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, Union, cast
 
 from src.utils.astolfo_logger import AstolfoLogger
-from src.utils.astolfo_logger_types import AstolfoLoggerConfig
+
+if TYPE_CHECKING:
+    from src.utils.astolfo_logger_types import AstolfoLoggerConfig
 
 # Type variables for generic functions
-P = ParamSpec('P')
-T = TypeVar('T')
+P = ParamSpec("P")
+T = TypeVar("T")
 
 # Type alias for context values
-ContextValue = Union[str, int, float, bool, None, Dict[str, Any]]
-ContextDict = Dict[str, ContextValue]
+ContextValue = Union[str, int, float, bool, None, dict[str, Any]]
+ContextDict = dict[str, ContextValue]
 
 
 class DiscordNotifierError(Exception):
@@ -36,9 +39,9 @@ class DiscordNotifierError(Exception):
         except DiscordNotifierError as e:
             logger.error("Discord notifier error: %s", e)
     """
-    
-    _logger: Optional[AstolfoLogger] = None
-    
+
+    _logger: AstolfoLogger | None = None
+
     @classmethod
     def get_logger(cls) -> AstolfoLogger:
         """Get or create the exception logger instance."""
@@ -60,22 +63,22 @@ class DiscordNotifierError(Exception):
                 config=config
             )
         return cls._logger
-    
+
     def __init__(self, message: str, **context: ContextValue):
         """Initialize exception with message and optional context.
-        
+
         Args:
             message: Exception message
             **context: Additional context to log with the exception
         """
         super().__init__(message)
-        self.context: ContextDict = cast(ContextDict, context)
+        self.context: ContextDict = cast("ContextDict", context)
         self._log_exception()
-    
+
     def _log_exception(self) -> None:
         """Log the exception with full context."""
         logger = self.get_logger()
-        
+
         # Build exception context
         exc_context = {
             "exception_type": self.__class__.__name__,
@@ -83,7 +86,7 @@ class DiscordNotifierError(Exception):
             "traceback": traceback.format_exc(),
             **self.context
         }
-        
+
         # Log with appropriate level based on exception type
         if isinstance(self, ConfigurationError):
             logger.error(
@@ -240,9 +243,9 @@ class ThreadManagementError(DiscordNotifierError):
         self.thread_id = thread_id
         context = {}
         if session_id:
-            context['session_id'] = session_id
+            context["session_id"] = session_id
         if thread_id:
-            context['thread_id'] = thread_id
+            context["thread_id"] = thread_id
         super().__init__(message, **context)
 
 
@@ -273,30 +276,29 @@ class ThreadStorageError(DiscordNotifierError):
         self.operation = operation
         context = {}
         if operation:
-            context['operation'] = operation
+            context["operation"] = operation
         super().__init__(message, **context)
 
 
 # Utility functions for exception handling
 
-def log_and_reraise(func: Callable[P, T]) -> Callable[P, T]:
+def log_and_reraise[**P, T](func: Callable[P, T]) -> Callable[P, T]:
     """Decorator to log exceptions before re-raising them.
-    
+
     This decorator ensures that any DiscordNotifierError raised from the
     decorated function is logged with full context before being re-raised.
-    
+
     Example:
         @log_and_reraise
         def process_event(event_data: dict) -> None:
             if not event_data.get('session_id'):
                 raise EventProcessingError("Missing session_id")
     """
-    from functools import wraps
-    from typing import Callable, TypeVar, ParamSpec
-    
-    P = ParamSpec('P')
-    T = TypeVar('T')
-    
+    from typing import ParamSpec, TypeVar
+
+    P = ParamSpec("P")
+    T = TypeVar("T")
+
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         try:
@@ -307,60 +309,65 @@ def log_and_reraise(func: Callable[P, T]) -> Callable[P, T]:
         except Exception as e:
             # Convert to DiscordNotifierError and log
             logger = DiscordNotifierError.get_logger()
-            logger.error(
+            logger.exception(
                 f"Unexpected error in {func.__name__}: {e}",
                 function=func.__name__,
                 error_type="unexpected",
                 traceback=traceback.format_exc()
             )
             raise
-    
+
     return wrapper
 
 
 def create_exception_context(
-    event_data: Optional[Dict[str, ContextValue]] = None,
-    session_id: Optional[str] = None,
+    event_data: dict[str, ContextValue] | None = None,
+    session_id: str | None = None,
     **additional_context: ContextValue
 ) -> ContextDict:
     """Create a rich context dictionary for exception logging.
-    
+
     Args:
         event_data: Optional event data dictionary
         session_id: Optional session ID
         **additional_context: Any additional context to include
-    
+
     Returns:
         Dictionary with all relevant context for debugging
     """
     import os
-    
+
     context: ContextDict = {
         "timestamp": datetime.now(UTC).isoformat(),
         "process_id": os.getpid(),
     }
-    
+
     if event_data:
         context["event_data"] = event_data
         context["event_type"] = event_data.get("type", "unknown")
-    
+
     if session_id:
         context["session_id"] = session_id
-    
+
     # Add environment context
     context["claude_hook_event"] = os.environ.get("CLAUDE_HOOK_EVENT")
     context["discord_debug"] = os.environ.get("DISCORD_DEBUG", "0") == "1"
-    
+
     # Add any additional context
     context.update(additional_context)
-    
+
     return context
 
 
 # Export all public exceptions and utilities
 __all__ = [
-    'DiscordNotifierError', 'ConfigurationError', 'DiscordAPIError',
-    'EventProcessingError', 'InvalidEventTypeError',
-    'ThreadManagementError', 'ThreadStorageError',
-    'log_and_reraise', 'create_exception_context'
+    "ConfigurationError",
+    "DiscordAPIError",
+    "DiscordNotifierError",
+    "EventProcessingError",
+    "InvalidEventTypeError",
+    "ThreadManagementError",
+    "ThreadStorageError",
+    "create_exception_context",
+    "log_and_reraise"
 ]

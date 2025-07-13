@@ -6,12 +6,27 @@ including full tool inputs and subagent messages.
 """
 
 import json
+import threading
+import time
+from pathlib import Path
+from typing import Literal, NotRequired, TypedDict, Union
+
 from src.utils.astolfo_logger import AstolfoLogger
 
-from pathlib import Path
-from typing import TypedDict, NotRequired, Literal, Union
-
 logger = AstolfoLogger(__name__)
+
+
+# Global file locks to prevent concurrent access to the same transcript
+_file_locks: dict[str, threading.Lock] = {}
+_file_locks_lock = threading.Lock()
+
+
+def _get_file_lock(file_path: str) -> threading.Lock:
+    """Get or create a lock for the specified file path."""
+    with _file_locks_lock:
+        if file_path not in _file_locks:
+            _file_locks[file_path] = threading.Lock()
+        return _file_locks[file_path]
 
 
 class ToolUseContent(TypedDict):
@@ -61,7 +76,7 @@ class SubagentMessage(TypedDict):
 
 
 def read_transcript_lines(transcript_path: str, max_lines: int = 1000) -> list[TranscriptLine]:
-    """Read the last N lines from a transcript.jsonl file.
+    """Read the last N lines from a transcript.jsonl file with file locking.
 
     Args:
         transcript_path: Path to the transcript.jsonl file
@@ -70,61 +85,96 @@ def read_transcript_lines(transcript_path: str, max_lines: int = 1000) -> list[T
     Returns:
         List of parsed JSON objects from the transcript
     """
-    try:
-        path = Path(transcript_path)
-        if not path.exists():
-            logger.warning(f"Transcript file not found: {transcript_path}")
+    # Get file-specific lock to prevent concurrent access
+    file_lock = _get_file_lock(transcript_path)
+    
+    logger.debug(
+        "Acquiring file lock for transcript reading",
+        context={
+            "transcript_path": transcript_path,
+            "max_lines": max_lines,
+            "lock_id": id(file_lock)
+        }
+    )
+    
+    with file_lock:
+        logger.debug(
+            "File lock acquired, starting transcript read",
+            context={"transcript_path": transcript_path}
+        )
+        
+        try:
+            path = Path(transcript_path)
+            if not path.exists():
+                logger.warning(
+                    "Transcript file not found",
+                    context={"transcript_path": transcript_path}
+                )
+                return []
+
+            # Read lines from the end for efficiency
+            lines: list[str] = []
+            with path.open("rb") as f:
+                # Seek to end and read backwards
+                f.seek(0, 2)  # Go to end of file
+                file_size = f.tell()
+
+                # Read chunks from the end
+                chunk_size = 8192
+                position = file_size
+                buffer = ""
+
+                while position > 0 and len(lines) < max_lines:
+                    read_size = min(chunk_size, position)
+                    position -= read_size
+                    f.seek(position)
+
+                    chunk = f.read(read_size).decode("utf-8", errors="ignore")
+                    buffer = chunk + buffer
+
+                    # Split by newlines
+                    buffer_lines = buffer.split("\n")
+
+                    # Keep the incomplete line for next iteration
+                    if position > 0:
+                        buffer = buffer_lines[0]
+                        buffer_lines = buffer_lines[1:]
+                    else:
+                        buffer = ""
+
+                    # Add complete lines
+                    for line in reversed(buffer_lines):
+                        if line.strip() and len(lines) < max_lines:
+                            lines.insert(0, line)
+
+            # Parse JSON lines
+            parsed_lines: list[TranscriptLine] = []
+            for line in lines:
+                try:
+                    obj: TranscriptLine = json.loads(line)
+                    parsed_lines.append(obj)
+                except json.JSONDecodeError:
+                    logger.debug(
+                        "Failed to parse JSON line",
+                        context={"line_preview": line[:100]}
+                    )
+            
+            logger.debug(
+                "File lock released, transcript read completed",
+                context={
+                    "transcript_path": transcript_path,
+                    "lines_read": len(parsed_lines)
+                }
+            )
+            return parsed_lines
+
+        except Exception as e:
+            logger.exception(
+                "Error reading transcript file",
+                exception=e,
+                context={"transcript_path": transcript_path}
+            )
             return []
-
-        # Read lines from the end for efficiency
-        lines: list[str] = []
-        with open(path, "rb") as f:
-            # Seek to end and read backwards
-            f.seek(0, 2)  # Go to end of file
-            file_size = f.tell()
-
-            # Read chunks from the end
-            chunk_size = 8192
-            position = file_size
-            buffer = ""
-
-            while position > 0 and len(lines) < max_lines:
-                read_size = min(chunk_size, position)
-                position -= read_size
-                f.seek(position)
-
-                chunk = f.read(read_size).decode("utf-8", errors="ignore")
-                buffer = chunk + buffer
-
-                # Split by newlines
-                buffer_lines = buffer.split("\n")
-
-                # Keep the incomplete line for next iteration
-                if position > 0:
-                    buffer = buffer_lines[0]
-                    buffer_lines = buffer_lines[1:]
-                else:
-                    buffer = ""
-
-                # Add complete lines
-                for line in reversed(buffer_lines):
-                    if line.strip() and len(lines) < max_lines:
-                        lines.insert(0, line)
-
-        # Parse JSON lines
-        parsed_lines: list[TranscriptLine] = []
-        for line in lines:
-            try:
-                obj: TranscriptLine = json.loads(line)
-                parsed_lines.append(obj)
-            except json.JSONDecodeError:
-                logger.debug(f"Failed to parse JSON line: {line[:100]}...")
-
-        return parsed_lines
-
-    except Exception as e:
-        logger.error(f"Error reading transcript file: {e}")
-        return []
 
 
 def get_full_task_prompt(transcript_path: str, session_id: str) -> str | None:
@@ -151,18 +201,21 @@ def get_full_task_prompt(transcript_path: str, session_id: str) -> str | None:
             if "content" in message:
                 for content in message["content"]:
                     # Type guard for tool use content
-                    if (isinstance(content, dict) and 
+                    if (isinstance(content, dict) and
                         content.get("type") == "tool_use" and
                         content.get("name") == "Task" and
                         "input" in content):
-                        
+
                         # Cast to ToolUseContent for type safety
                         tool_content = content  # Already validated structure
                         input_dict = tool_content.get("input", {})
                         if isinstance(input_dict, dict):
                             prompt = input_dict.get("prompt")
                             if isinstance(prompt, str):
-                                logger.info(f"Found Task prompt with {len(prompt)} characters")
+                                logger.info(
+                                    "Found Task prompt",
+                                    context={"prompt_length": len(prompt)}
+                                )
                                 return prompt
 
     logger.debug("No Task tool prompt found in transcript")
@@ -215,7 +268,27 @@ def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50
                             elif content.get("type") == "tool_use":
                                 tool_name = content.get("name", "Unknown")
                                 if isinstance(tool_name, str):
-                                    msg_info["content"] = f"[Tool: {tool_name}]"
+                                    # Special handling for Task tools - extract the actual prompt
+                                    if tool_name == "Task" and "input" in content:
+                                        input_dict = content.get("input", {})
+                                        if isinstance(input_dict, dict):
+                                            prompt = input_dict.get("prompt")
+                                            if isinstance(prompt, str):
+                                                # Use the actual prompt content instead of generic label
+                                                msg_info["content"] = prompt
+                                                logger.debug(
+                                                    "Extracted Task tool prompt for subagent",
+                                                    context={
+                                                        "session_id": session_id,
+                                                        "prompt_length": len(prompt),
+                                                        "timestamp": timestamp
+                                                    }
+                                                )
+                                                break  # Found the prompt, break from content loop
+
+                                    # Fallback to generic tool label for non-Task tools or failed extraction
+                                    if msg_info["content"] is None:
+                                        msg_info["content"] = f"[Tool: {tool_name}]"
 
             # Only add if we have content
             if msg_info["content"]:
@@ -224,5 +297,30 @@ def get_subagent_messages(transcript_path: str, session_id: str, limit: int = 50
                 if len(subagent_messages) >= limit:
                     break
 
-    logger.info(f"Found {len(subagent_messages)} subagent messages")
+    logger.info(
+        "Found subagent messages",
+        context={"messages_count": len(subagent_messages)}
+    )
     return subagent_messages
+
+
+def get_subagent_messages_with_task_prompts(transcript_path: str, session_id: str, limit: int = 50) -> list[SubagentMessage]:
+    """Extract subagent messages from transcript, including Task tool prompts.
+    
+    This function is an alias for get_subagent_messages, which already includes
+    Task tool prompt extraction functionality.
+
+    Args:
+        transcript_path: Path to the transcript.jsonl file
+        session_id: Current session ID to match
+        limit: Maximum number of messages to return
+
+    Returns:
+        List of subagent messages with metadata, including extracted Task tool prompts
+    """
+    logger.debug("get_subagent_messages_with_task_prompts called", {
+        "transcript_path": transcript_path,
+        "session_id": session_id,
+        "limit": limit
+    })
+    return get_subagent_messages(transcript_path, session_id, limit)

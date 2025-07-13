@@ -8,12 +8,32 @@ duplicate thread creation is properly prevented.
 import tempfile
 from pathlib import Path
 
+# Add project root and src directory to path
+project_root = Path(__file__).parent.parent.parent
+import sys
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
+
 # Import the modules
 from src.thread_storage import ThreadStorage
+from utils.astolfo_logger import setup_astolfo_logger
+
+# Initialize logger for test execution
+logger = setup_astolfo_logger(__name__)
 
 
 def _test_store_thread(storage, session_id, thread_id, channel_id, thread_name):
     """Test storing a thread."""
+    logger.debug(
+        "store_thread_start",
+        context={
+            "session_id": session_id,
+            "thread_id": thread_id,
+            "channel_id": channel_id,
+            "thread_name": thread_name
+        },
+        ai_todo="Store thread in ThreadStorage and verify success"
+    )
     print(f"  📝 Storing thread: {session_id} -> {thread_id}")
 
     success = storage.store_thread(
@@ -26,8 +46,27 @@ def _test_store_thread(storage, session_id, thread_id, channel_id, thread_name):
 
     if success:
         print("  ✅ Thread stored successfully")
+        logger.info(
+            "store_thread_success",
+            context={
+                "session_id": session_id,
+                "thread_id": thread_id,
+                "operation": "store_thread"
+            },
+            astolfo_note="Thread stored successfully in ThreadStorage",
+            ai_todo="Thread record created in SQLite database"
+        )
     else:
         print("  ❌ Failed to store thread")
+        logger.error(
+            "store_thread_failed",
+            context={
+                "session_id": session_id,
+                "thread_id": thread_id,
+                "operation": "store_thread"
+            },
+            ai_todo="Investigate why thread storage failed"
+        )
     return success
 
 
@@ -92,6 +131,16 @@ def _test_remove_thread(storage, session_id):
 
 def test_basic_storage_operations():
     """Test basic ThreadStorage operations."""
+    logger.info(
+        "test_start",
+        context={
+            "test_function": "test_basic_storage_operations",
+            "test_type": "thread_storage_basic",
+            "operations": ["store", "retrieve", "search", "update", "remove"]
+        },
+        astolfo_note="Starting basic ThreadStorage operations test",
+        ai_todo="Test all CRUD operations for thread persistence"
+    )
     print("🧪 Testing basic ThreadStorage operations...")
 
     # Create temporary database
@@ -127,6 +176,16 @@ def test_basic_storage_operations():
         if not _test_remove_thread(storage, session_id):
             return False
 
+    logger.info(
+        "test_complete",
+        context={
+            "test_function": "test_basic_storage_operations",
+            "status": "success",
+            "all_operations_passed": True
+        },
+        astolfo_note="All basic ThreadStorage operations completed successfully",
+        ai_todo="Basic CRUD operations working correctly"
+    )
     return True
 
 
@@ -232,6 +291,20 @@ def test_persistence_across_instances():
 
 def main():
     """Run all tests."""
+    logger.info(
+        "test_suite_start",
+        context={
+            "test_suite": "Thread Persistence Tests",
+            "total_tests": 3,
+            "test_functions": [
+                "test_basic_storage_operations",
+                "test_multiple_sessions", 
+                "test_persistence_across_instances"
+            ]
+        },
+        astolfo_note="Starting comprehensive ThreadStorage test suite",
+        ai_todo="Execute all thread persistence tests and verify functionality"
+    )
     print("🚀 Running Thread Persistence Tests\n")
 
     tests = [

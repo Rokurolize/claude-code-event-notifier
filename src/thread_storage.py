@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from src.type_guards import is_valid_snowflake
-from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
+from src.utils.astolfo_logger import setup_astolfo_logger
 
 
 class ThreadStats(TypedDict):
@@ -156,7 +156,7 @@ class ThreadStorage:
                 ai_todo="Ensure session_id is a valid string before storage operations"
             )
             return False
-            
+
         if not thread_id or not is_valid_snowflake(thread_id):
             self._logger.warning(
                 "thread_storage_invalid_input",
@@ -167,7 +167,7 @@ class ThreadStorage:
                 ai_todo="Verify thread_id is a valid Discord snowflake ID"
             )
             return False
-            
+
         if not channel_id or not is_valid_snowflake(channel_id):
             self._logger.warning(
                 "thread_storage_invalid_input",
@@ -406,7 +406,7 @@ class ThreadStorage:
                                 ai_todo="Check database integrity or migration issues"
                             )
                             continue
-                    
+
                     return results
 
             except sqlite3.Error:
@@ -526,7 +526,7 @@ class ThreadStorage:
                         active: int = row[2] or 0
                         oldest: str | None = row[3]
                         recent: str | None = row[4]
-                        
+
                         return ThreadStats(
                             total_threads=total,
                             archived_threads=archived,

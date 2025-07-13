@@ -4,11 +4,10 @@ This module contains general utility functions for string manipulation,
 file path formatting, and thread management.
 """
 
-import os
 from pathlib import Path
-from typing import Any, TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-from src.utils.astolfo_logger import setup_astolfo_logger, AstolfoLogger
+from src.utils.astolfo_logger import AstolfoLogger, setup_astolfo_logger
 
 if TYPE_CHECKING:
     from src.core.http_client import HTTPClient
@@ -81,14 +80,14 @@ def truncate_string(text: str, max_length: int, suffix: str = TRUNCATION_SUFFIX)
             "needs_truncation": len(text) > max_length
         }
     )
-    
+
     if len(text) <= max_length:
         logger.debug(
             "truncate_string_no_truncation",
             context={"text_length": len(text), "max_length": max_length}
         )
         return text
-    
+
     truncated = text[: max_length - len(suffix)] + suffix
     logger.debug(
         "truncate_string_truncated",
@@ -142,7 +141,7 @@ def format_file_path(file_path: str) -> str:
             "is_empty": not file_path
         }
     )
-    
+
     if not file_path:
         logger.debug("format_file_path_empty_path")
         return ""
@@ -150,7 +149,7 @@ def format_file_path(file_path: str) -> str:
     try:
         path = Path(file_path)
         cwd = Path.cwd()
-        
+
         logger.debug(
             "format_file_path_processing",
             context={
@@ -250,7 +249,7 @@ def ensure_thread_is_usable(
     """
     thread_id = thread_details.get("id", "unknown")
     thread_name = thread_details.get("name", "unknown")
-    
+
     logger.debug(
         "ensure_thread_is_usable_called",
         context={
@@ -259,12 +258,12 @@ def ensure_thread_is_usable(
             "channel_id": channel_id
         }
     )
-    
+
     # Check if thread is archived
     metadata = thread_details.get("thread_metadata", {})
     is_archived = metadata.get("archived", False)
     is_locked = metadata.get("locked", False)
-    
+
     logger.debug(
         "ensure_thread_is_usable_metadata",
         context={
@@ -273,7 +272,7 @@ def ensure_thread_is_usable(
             "is_locked": is_locked
         }
     )
-    
+
     if is_archived:
         if is_locked:
             logger.warning(
@@ -284,16 +283,16 @@ def ensure_thread_is_usable(
                 }
             )
             return False
-            
+
         # Try to unarchive the thread
         try:
             logger.debug(
                 "ensure_thread_is_usable_unarchiving",
                 context={"thread_id": thread_id}
             )
-            
+
             result = http_client.unarchive_thread(thread_id, bot_token)
-            
+
             logger.debug(
                 "ensure_thread_is_usable_unarchived",
                 context={
@@ -301,10 +300,10 @@ def ensure_thread_is_usable(
                     "success": result
                 }
             )
-            
+
             return result
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "ensure_thread_is_usable_unarchive_failed",
                 exception=e,
                 context={
@@ -313,7 +312,7 @@ def ensure_thread_is_usable(
                 }
             )
             return False
-    
+
     logger.debug(
         "ensure_thread_is_usable_active",
         context={"thread_id": thread_id}
@@ -323,6 +322,10 @@ def ensure_thread_is_usable(
 
 # Export all public utilities
 __all__ = [
-    'truncate_string', 'format_file_path', 'ensure_thread_is_usable',
-    'SESSION_THREAD_CACHE', 'ThreadMetadata', 'ThreadDetails'
+    "SESSION_THREAD_CACHE",
+    "ThreadDetails",
+    "ThreadMetadata",
+    "ensure_thread_is_usable",
+    "format_file_path",
+    "truncate_string"
 ]

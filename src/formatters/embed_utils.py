@@ -6,10 +6,10 @@ Discord's various size limits while maximizing content display.
 """
 
 
-from src.utils.astolfo_logger import AstolfoLogger
 from src.core.constants import DiscordLimits
 from src.core.http_client import DiscordEmbed
 from src.formatters.base import split_long_text, truncate_string
+from src.utils.astolfo_logger import AstolfoLogger
 
 logger = AstolfoLogger(__name__)
 
@@ -23,7 +23,7 @@ def create_embed_with_fields(
     footer_text: str | None = None
 ) -> DiscordEmbed:
     """Create a Discord embed with automatic field splitting for long content.
-    
+
     Args:
         title: Embed title
         description: Main description (will be truncated if too long)
@@ -31,10 +31,10 @@ def create_embed_with_fields(
         color: Embed color
         timestamp: ISO format timestamp
         footer_text: Footer text
-        
+
     Returns:
         DiscordEmbed with properly formatted fields
-        
+
     Note:
         - Description is truncated to 4096 chars
         - Field values are split if they exceed 1024 chars
@@ -48,7 +48,7 @@ def create_embed_with_fields(
         "has_timestamp": timestamp is not None,
         "has_footer": footer_text is not None
     })
-    
+
     # Ensure description doesn't exceed limit
     if len(description) > DiscordLimits.MAX_DESCRIPTION_LENGTH:
         logger.warning("Description exceeds Discord limit, truncating", {
@@ -129,7 +129,7 @@ def create_embed_with_fields(
         "final_field_count": field_count,
         "truncated": field_count < len(fields_content)
     })
-    
+
     return embed
 
 
@@ -141,14 +141,14 @@ def split_description_to_embeds(
     footer_text: str | None = None
 ) -> list[DiscordEmbed]:
     """Split a long description into multiple embeds if needed.
-    
+
     Args:
         title: Base title for embeds
         long_description: Description that may exceed Discord limits
         color: Embed color
         timestamp: ISO format timestamp
         footer_text: Footer text
-        
+
     Returns:
         List of embeds, each within Discord's size limits
     """
@@ -158,7 +158,7 @@ def split_description_to_embeds(
         "max_length": DiscordLimits.MAX_DESCRIPTION_LENGTH,
         "needs_split": len(long_description) > DiscordLimits.MAX_DESCRIPTION_LENGTH
     })
-    
+
     embeds: list[DiscordEmbed] = []
 
     if len(long_description) <= DiscordLimits.MAX_DESCRIPTION_LENGTH:
@@ -175,7 +175,7 @@ def split_description_to_embeds(
 
     # Split into multiple embeds
     parts = split_long_text(long_description, "Content", DiscordLimits.MAX_DESCRIPTION_LENGTH - 100)
-    
+
     logger.info("Splitting long description into multiple embeds", {
         "total_parts": len(parts),
         "max_embeds": 10,

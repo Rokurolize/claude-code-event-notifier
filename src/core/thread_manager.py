@@ -8,10 +8,10 @@ This module provides comprehensive thread management functionality including:
 - Persistent thread storage integration
 """
 
-from src.utils.astolfo_logger import AstolfoLogger
-
 from pathlib import Path
-from typing import cast, Any
+from typing import cast
+
+from src.utils.astolfo_logger import AstolfoLogger
 
 # Try to import types
 try:
@@ -44,8 +44,10 @@ except ImportError:
 # Try to import utils
 try:
     from src.utils_helpers import (
-        ensure_thread_is_usable as utils_ensure_thread_is_usable,
         SESSION_THREAD_CACHE,
+    )
+    from src.utils_helpers import (
+        ensure_thread_is_usable as utils_ensure_thread_is_usable,
     )
     UTILS_HELPERS_AVAILABLE = True
 except ImportError:
@@ -203,7 +205,7 @@ def _check_thread_state(thread_details: dict[str, object]) -> tuple[bool, bool]:
     Returns:
         Tuple of (is_archived, is_locked)
     """
-    thread_metadata: dict[str, object] = cast(dict[str, object], thread_details.get("thread_metadata", {}))
+    thread_metadata: dict[str, object] = cast("dict[str, object]", thread_details.get("thread_metadata", {}))
     is_archived = bool(thread_metadata.get("archived", False))
     is_locked = bool(thread_metadata.get("locked", False))
     return is_archived, is_locked
@@ -249,19 +251,19 @@ def ensure_thread_is_usable(
     logger: AstolfoLogger,
 ) -> bool:
     """Ensure a thread is usable by unarchiving if needed."""
-    is_archived, is_locked = _check_thread_state(cast(dict[str, object], thread_details))
-    
+    is_archived, is_locked = _check_thread_state(cast("dict[str, object]", thread_details))
+
     if is_locked:
         logger.warning("Thread %s is locked and cannot be used", thread_details["id"])
         return False
-    
+
     if is_archived:
         bot_token = config.get("bot_token")
         if bot_token:
             return _try_unarchive_thread(thread_details["id"], bot_token, http_client, logger)
         logger.warning("Thread %s is archived but no bot token available to unarchive", thread_details["id"])
         return False
-    
+
     return True
 
 
@@ -346,7 +348,7 @@ def _store_thread_in_storage(
     """Store thread in persistent storage."""
     if not THREAD_STORAGE_AVAILABLE:
         return
-        
+
     try:
         storage_path = None
         thread_storage_path = config.get("thread_storage_path")
@@ -394,8 +396,8 @@ def _search_discord_for_thread(
 
     # Store in persistent storage for future use
     # existing_thread might have thread_metadata
-    thread_data = cast(dict[str, object], existing_thread)
-    thread_metadata = cast(dict[str, object], thread_data.get("thread_metadata", {}))
+    thread_data = cast("dict[str, object]", existing_thread)
+    thread_metadata = cast("dict[str, object]", thread_data.get("thread_metadata", {}))
     is_archived = bool(thread_metadata.get("archived", False))
     _store_thread_in_storage(session_id, thread_id, channel_id, thread_name, is_archived, config, logger)
     logger.info("Discovered and restored existing thread %s for session %s", thread_id, session_id)
@@ -469,12 +471,11 @@ def _create_new_thread(
     try:
         if config["channel_type"] == "forum":
             return _handle_forum_channel_thread(config, logger)
-        elif config["channel_type"] == "text":
+        if config["channel_type"] == "text":
             return _create_text_channel_thread(session_id, thread_name, config, http_client, logger)
-        else:
-            # Unknown channel type
-            logger.warning("Unknown channel type: %s", config.get("channel_type"))  # type: ignore[unreachable]
-            return None
+        # Unknown channel type
+        logger.warning("Unknown channel type: %s", config.get("channel_type"))  # type: ignore[unreachable]
+        return None
 
     except DiscordAPIError:
         logger.exception("Discord API error creating thread for session %s", session_id)
@@ -526,10 +527,10 @@ def get_or_create_thread(
 
 # Export all public functions
 __all__ = [
-    'validate_thread_exists',
-    'find_existing_thread_by_name',
-    'ensure_thread_is_usable',
-    'get_or_create_thread',
-    '_check_thread_state',
-    '_try_unarchive_thread',
+    "_check_thread_state",
+    "_try_unarchive_thread",
+    "ensure_thread_is_usable",
+    "find_existing_thread_by_name",
+    "get_or_create_thread",
+    "validate_thread_exists",
 ]

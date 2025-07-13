@@ -4,8 +4,8 @@ This module defines common type aliases used throughout the codebase
 to improve type safety and reduce mypy errors.
 """
 
-from typing import Dict, List, Optional, Union, TypedDict, NotRequired
-from typing_extensions import TypeAlias
+from typing import NotRequired, TypedDict, Union
+
 from src.utils.astolfo_logger import AstolfoLogger
 
 # Initialize logger for module
@@ -13,48 +13,48 @@ _logger = AstolfoLogger(__name__)
 _logger.debug("Loading type aliases module")
 
 # JSON Primitive Types
-JSONPrimitive: TypeAlias = Union[str, int, float, bool, None]
-JSONValue: TypeAlias = Union[JSONPrimitive, Dict[str, "JSONValue"], List["JSONValue"]]
-JSONDict: TypeAlias = Dict[str, JSONValue]
-JSONList: TypeAlias = List[JSONValue]
+type JSONPrimitive = Union[str, int, float, bool, None]
+type JSONValue = Union[JSONPrimitive, dict[str, "JSONValue"], list["JSONValue"]]
+type JSONDict = dict[str, JSONValue]
+type JSONList = list[JSONValue]
 
 # Discord API Types
-DiscordEmbed: TypeAlias = Dict[str, Union[str, int, List[Dict[str, Union[str, bool]]]]]
-DiscordMessage: TypeAlias = Dict[str, Union[str, List[DiscordEmbed], None]]
-DiscordThread: TypeAlias = Dict[str, Union[str, int, bool, Dict[str, Union[bool, int]]]]
-DiscordChannel: TypeAlias = Dict[str, Union[str, int]]
-DiscordWebhookPayload: TypeAlias = DiscordMessage
+type DiscordEmbed = dict[str, Union[str, int, list[dict[str, Union[str, bool]]]]]
+type DiscordMessage = dict[str, Union[str, list[DiscordEmbed], None]]
+type DiscordThread = dict[str, Union[str, int, bool, dict[str, Union[bool, int]]]]
+type DiscordChannel = dict[str, Union[str, int]]
+type DiscordWebhookPayload = DiscordMessage
 
 # Event Data Types
-EventData: TypeAlias = Dict[str, Union[str, int, float, bool, Dict[str, Union[str, int, float, bool]]]]
-ToolData: TypeAlias = Dict[str, Union[str, int, float, bool, List[str], Dict[str, str]]]
-FormatterResult: TypeAlias = DiscordEmbed
+type EventData = dict[str, Union[str, int, float, bool, dict[str, Union[str, int, float, bool]]]]
+type ToolData = dict[str, Union[str, int, float, bool, list[str], dict[str, str]]]
+type FormatterResult = DiscordEmbed
 
 # Configuration Types
-ConfigDict: TypeAlias = Dict[str, Union[str, int, bool, List[str], None]]
-FilterConfig: TypeAlias = Dict[str, bool]
-ThreadConfig: TypeAlias = Dict[str, Union[str, bool, int]]
+type ConfigDict = dict[str, Union[str, int, bool, list[str], None]]
+type FilterConfig = dict[str, bool]
+type ThreadConfig = dict[str, Union[str, bool, int]]
 
 # HTTP Response Types
-HTTPResponse: TypeAlias = Dict[str, Union[str, int, Dict[str, str]]]
-HTTPHeaders: TypeAlias = Dict[str, str]
+type HTTPResponse = dict[str, Union[str, int, dict[str, str]]]
+type HTTPHeaders = dict[str, str]
 
 # Session Types
-SessionData: TypeAlias = Dict[str, Union[str, int, float, List[str]]]
-SessionMetadata: TypeAlias = Dict[str, Union[str, int, float]]
+type SessionData = dict[str, Union[str, int, float, list[str]]]
+type SessionMetadata = dict[str, Union[str, int, float]]
 
 # Thread Storage Types
-ThreadRecord: TypeAlias = Dict[str, Union[str, int]]
-ThreadMetadata: TypeAlias = Dict[str, Union[str, int, bool]]
+type ThreadRecord = dict[str, Union[str, int]]
+type ThreadMetadata = dict[str, Union[str, int, bool]]
 
 # Logger Types
-LogRecord: TypeAlias = Dict[str, Union[str, int, float, bool, None]]
-LogContext: TypeAlias = Dict[str, Union[str, int, float, bool, List[str]]]
+type LogRecord = dict[str, Union[str, int, float, bool, None]]
+type LogContext = dict[str, Union[str, int, float, bool, list[str]]]
 
 # Formatter Types
-EmbedField: TypeAlias = Dict[str, Union[str, bool]]
-EmbedAuthor: TypeAlias = Dict[str, str]
-EmbedFooter: TypeAlias = Dict[str, str]
+type EmbedField = dict[str, Union[str, bool]]
+type EmbedAuthor = dict[str, str]
+type EmbedFooter = dict[str, str]
 
 # Tool Result Types
 class ToolResult(TypedDict):
@@ -71,10 +71,10 @@ class EventDataTyped(TypedDict, total=False):
     session_id: str
     timestamp: str
     tool: str
-    arguments: Dict[str, Union[str, int, float, bool, List[str], Dict[str, str]]]
+    arguments: dict[str, Union[str, int, float, bool, list[str], dict[str, str]]]
     result: ToolResult
     message: str
-    params: Dict[str, Union[str, int, float, bool, List[str]]]
+    params: dict[str, Union[str, int, float, bool, list[str]]]
 
 # Discord Embed Structure
 class DiscordEmbedTyped(TypedDict, total=False):
@@ -82,7 +82,7 @@ class DiscordEmbedTyped(TypedDict, total=False):
     title: str
     description: str
     color: int
-    fields: List[EmbedField]
+    fields: list[EmbedField]
     author: EmbedAuthor
     footer: EmbedFooter
     timestamp: str
@@ -95,8 +95,8 @@ class ConfigTyped(TypedDict, total=False):
     bot_token: str
     channel_id: str
     use_threads: bool
-    enabled_events: List[str]
-    disabled_events: List[str]
+    enabled_events: list[str]
+    disabled_events: list[str]
     mention_user_id: str
     debug: bool
     thread_name_prefix: str

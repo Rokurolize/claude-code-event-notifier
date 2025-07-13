@@ -7,9 +7,9 @@ creating Discord embeds with appropriate formatting for each event.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from src.utils.datetime_utils import get_completed_at_display, format_user_datetime
 from typing import TYPE_CHECKING, TypedDict, Union, cast
 
-from src.utils.astolfo_logger import AstolfoLogger
 from src.core.constants import (
     EVENT_COLORS,
     TOOL_EMOJIS,
@@ -19,7 +19,7 @@ from src.core.constants import (
     TruncationLimits,
 )
 from src.core.http_client import DiscordEmbed, DiscordMessage
-from src.formatters.base import add_field, format_json_field, split_long_text, truncate_string
+from src.formatters.base import add_field, format_json_field, truncate_string
 from src.formatters.embed_utils import create_embed_with_fields
 from src.formatters.tool_formatters import (
     format_bash_post_use,
@@ -28,13 +28,13 @@ from src.formatters.tool_formatters import (
     format_read_operation_post_use,
     format_search_tool_pre_use,
     format_task_post_use,
-    format_task_pre_use,
     format_unknown_tool_post_use,
     format_unknown_tool_pre_use,
     format_web_fetch_post_use,
     format_web_fetch_pre_use,
     format_write_operation_post_use,
 )
+from src.utils.astolfo_logger import AstolfoLogger
 from src.utils.transcript_reader import get_full_task_prompt, get_subagent_messages
 from src.utils.validation import (
     is_bash_tool,
@@ -119,7 +119,7 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
     tool_name = event_data.get("tool_name", "Unknown")
     tool_input = event_data.get("tool_input", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
-    
+
     logger.info(
         "Formatting PreToolUse event",
         event_type="PreToolUse",
@@ -159,17 +159,17 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
         task_input_typed = cast("TaskToolInput", tool_input)
         task_desc = str(task_input_typed.get("description", ""))
         task_prompt = str(task_input_typed.get("prompt", ""))
-        
+
         if task_desc:
             add_field(desc_parts, "Task", task_desc)
-            
+
         # Try to get full prompt from transcript if available
         transcript_path_raw = event_data.get("transcript_path")
         if transcript_path_raw and isinstance(transcript_path_raw, str):
             full_prompt = get_full_task_prompt(transcript_path_raw, full_session_id)
             if full_prompt:
                 task_prompt = full_prompt
-                
+
         # Add prompt to description if it exists
         if task_prompt:
             # Separate the prompt with a clear header
@@ -183,18 +183,18 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
         desc_parts.extend(format_unknown_tool_pre_use(simple_input))
 
     # Add timestamp
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = get_completed_at_display()
     add_field(desc_parts, "Time", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
-    
+
     logger.debug(
         "PreToolUse embed created",
         tool_name=tool_name,
         description_length=len(embed["description"]) if embed["description"] else 0,
         session_id=session_id
     )
-    
+
     return embed
 
 
@@ -213,7 +213,7 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
     tool_input = event_data.get("tool_input", {})
     tool_response = event_data.get("tool_response", {})
     emoji = TOOL_EMOJIS.get(tool_name, "⚡")
-    
+
     logger.info(
         "Formatting PostToolUse event",
         event_type="PostToolUse",
@@ -280,18 +280,18 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
         desc_parts.extend(format_unknown_tool_post_use(cast("ToolFormatterResponse", tool_response)))
 
     # Add execution time
-    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = get_completed_at_display()
     add_field(desc_parts, "Completed at", timestamp)
 
     embed["description"] = "\n".join(desc_parts)
-    
+
     logger.debug(
         "PostToolUse embed created",
         tool_name=tool_name,
         description_length=len(embed["description"]) if embed["description"] else 0,
         session_id=session_id
     )
-    
+
     return embed
 
 
@@ -307,7 +307,7 @@ def format_notification(event_data: NotificationEventData | dict[str, object], s
     """
     logger = AstolfoLogger(__name__)
     message = event_data.get("message", "System notification")
-    
+
     logger.info(
         "Formatting Notification event",
         event_type="Notification",
@@ -318,7 +318,7 @@ def format_notification(event_data: NotificationEventData | dict[str, object], s
     desc_parts: list[str] = [
         f"**Message:** {message}",
         f"**Session:** `{session_id}`",
-        f"**Time:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S')}",
+        f"**Time:** {get_completed_at_display()}",
     ]
 
     # Add any additional data from the event
@@ -365,7 +365,7 @@ def format_stop(event_data: StopEventData | dict[str, object], session_id: str) 
     """
     logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
-    
+
     logger.info(
         "Formatting Stop event",
         event_type="Stop",
@@ -374,7 +374,7 @@ def format_stop(event_data: StopEventData | dict[str, object], session_id: str) 
     )
 
     add_field(desc_parts, "Session ID", session_id, code=True)
-    add_field(desc_parts, "Ended at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
+    add_field(desc_parts, "Ended at", get_completed_at_display())
 
     # Add transcript path if available
     transcript_path_raw = event_data.get("transcript_path", "")
@@ -413,7 +413,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
     fields_content: list[tuple[str, str]] = []
-    
+
     logger.info(
         "Formatting SubagentStop event",
         event_type="SubagentStop",
@@ -421,11 +421,23 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         subagent_id=event_data.get("subagent_id", "unknown")
     )
 
-    # Get full session ID for transcript lookup
+    # Get full session ID for transcript lookup with validation
     full_session_id = str(event_data.get("session_id", ""))
+    
+    # ⚠️ CRITICAL FIX: Validate session ID to prevent prompt mixing
+    if not full_session_id or full_session_id.strip() == "":
+        logger.warning(
+            "Empty session_id in SubagentStop event - cannot retrieve messages",
+            context={
+                "display_session_id": session_id,
+                "subagent_id": event_data.get("subagent_id", "unknown"),
+                "event_data_keys": list(event_data.keys())
+            }
+        )
+        full_session_id = None  # Explicitly set to None to skip transcript reading
 
     add_field(desc_parts, "Session", session_id, code=True)
-    add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
+    add_field(desc_parts, "Completed at", get_completed_at_display())
 
     # Add subagent details
     if "subagent_id" in event_data:
@@ -447,19 +459,63 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         tools = event_data.get("tools_used", 0)
         add_field(desc_parts, "Tools Used", str(tools))
 
-    # Try to get subagent messages from transcript
+    # Try to get subagent messages from transcript with contamination detection
     transcript_path_raw = event_data.get("transcript_path")
-    if transcript_path_raw and isinstance(transcript_path_raw, str):
+    if transcript_path_raw and isinstance(transcript_path_raw, str) and full_session_id:
+        logger.debug(
+            "Retrieving subagent messages",
+            context={
+                "transcript_path": transcript_path_raw,
+                "session_id": full_session_id,
+                "display_session": session_id
+            }
+        )
+        
         subagent_msgs = get_subagent_messages(transcript_path_raw, full_session_id, limit=50)
         if subagent_msgs:
+            # ⚠️ CONTAMINATION DETECTION: Check for cross-session content
+            expected_subagent = event_data.get("subagent_id", "").lower()
+            contamination_keywords = ["監査アストルフォ", "コードアストルフォ", "テストアストルフォ", "実装アストルフォ"]
+            
             # Add messages as separate fields for better readability
             for i, msg in enumerate(subagent_msgs):
                 # Extract content safely
                 content = msg.get("content")
                 if content is not None and isinstance(content, str):
+                    
+                    # Check for contamination
+                    for keyword in contamination_keywords:
+                        if keyword in content and keyword.lower() not in expected_subagent:
+                            logger.error(
+                                "PROMPT_MIXING_DETECTED",
+                                context={
+                                    "session_id": full_session_id,
+                                    "display_session": session_id,
+                                    "expected_subagent": expected_subagent,
+                                    "contamination_keyword": keyword,
+                                    "contaminated_content": content[:200],
+                                    "message_index": i
+                                }
+                            )
+                            # Add warning to the content to make contamination visible
+                            content = f"⚠️ [CONTAMINATION DETECTED: {keyword}] {content}"
+                    
                     # Each message becomes a field
                     field_name = f"Message {i+1}"
                     fields_content.append((field_name, content))
+        else:
+            logger.debug(
+                "No subagent messages found",
+                context={
+                    "session_id": full_session_id,
+                    "transcript_path": transcript_path_raw
+                }
+            )
+    elif not full_session_id:
+        logger.info(
+            "Skipping transcript reading due to invalid session_id",
+            context={"display_session": session_id}
+        )
 
     # Create embed with fields
     description = "\n".join(desc_parts)
@@ -472,14 +528,14 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         timestamp=None,
         footer_text=None
     )
-    
+
     logger.debug(
         "SubagentStop embed created",
         session_id=session_id,
         field_count=len(fields_content),
         has_messages=len(fields_content) > 0
     )
-    
+
     return embed
 
 
@@ -498,7 +554,7 @@ def format_default_impl(
     """
     logger = AstolfoLogger(__name__)
     desc_parts: list[str] = []
-    
+
     logger.warning(
         "Formatting unknown event type",
         event_type=event_type,
@@ -554,10 +610,10 @@ def format_event(
         Discord message with formatted embed
     """
     logger = AstolfoLogger(__name__)
-    timestamp = datetime.now(UTC).isoformat()
+    timestamp = format_user_datetime()
     session_id_raw = event_data.get("session_id", "unknown")
     session_id = str(session_id_raw)[:8] if session_id_raw else "unknown"
-    
+
     logger.info(
         "Formatting event",
         event_type=event_type,
@@ -603,7 +659,7 @@ def format_event(
             display_message = "Session ended"
         # Include both mention and message for better Windows notification visibility
         message["content"] = f"<@{config['mention_user_id']}> {display_message}"
-        
+
         logger.debug(
             "Added user mention to message",
             event_type=event_type,

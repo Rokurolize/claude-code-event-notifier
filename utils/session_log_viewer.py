@@ -6,60 +6,61 @@ session logs created by the Discord notifier.
 """
 
 import argparse
+import builtins
+import contextlib
 import json
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Optional
-import time
-import os
-import sys
 
 # Simplified logging setup for CLI tool
 import logging
+import os
+import sys
+import time
+from pathlib import Path
+
 
 def setup_minimal_logger(name: str):
     """Create a minimal logger instance for CLI usage."""
     logger = logging.getLogger(name)
-    
+
     # Simple console handler for errors only
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
         logger.addHandler(handler)
         logger.setLevel(logging.ERROR)
-    
+
     return SimpleLogger(logger)
 
 class SimpleLogger:
     """Simplified logger for CLI tool usage."""
     def __init__(self, logger):
         self.logger = logger
-        
-    def debug(self, event: str, **kwargs):
+
+    def debug(self, event: str, **kwargs) -> None:
         # In production, we can enable this via DISCORD_DEBUG environment variable
         if os.environ.get("DISCORD_DEBUG", "0") == "1":
-            context = kwargs.get('context', {})
-            ai_todo = kwargs.get('ai_todo', '')
+            context = kwargs.get("context", {})
+            ai_todo = kwargs.get("ai_todo", "")
             print(f"DEBUG: {event} | Context: {context} | AI Todo: {ai_todo}")
-        
-    def info(self, event: str, **kwargs):
+
+    def info(self, event: str, **kwargs) -> None:
         # Performance information for large operations
-        duration_ms = kwargs.get('duration_ms')
+        duration_ms = kwargs.get("duration_ms")
         if duration_ms and duration_ms > 1000:  # Log if operation takes > 1 second
             print(f"INFO: {event} completed in {duration_ms}ms")
-        
-    def warning(self, event: str, **kwargs):
-        if 'exception' in kwargs:
+
+    def warning(self, event: str, **kwargs) -> None:
+        if "exception" in kwargs:
             self.logger.warning(f"{event}: {kwargs.get('exception', '')}")
         else:
             self.logger.warning(event)
-            
-    def error(self, event: str, **kwargs):
-        if 'exception' in kwargs:
+
+    def error(self, event: str, **kwargs) -> None:
+        if "exception" in kwargs:
             self.logger.error(f"{event}: {kwargs.get('exception', '')}")
         else:
             self.logger.error(event)
-            
+
     def stop(self):
         pass  # No cleanup needed
 
@@ -70,7 +71,7 @@ class SessionLogViewer:
     def __init__(self):
         """Initialize the session log viewer."""
         self.base_dir = Path.home() / ".claude" / "hooks" / "session_logs"
-        
+
         # Initialize simple logger for internal debugging
         self.logger = setup_minimal_logger(__name__)
         self.logger.info(
@@ -82,13 +83,13 @@ class SessionLogViewer:
     def list_projects(self) -> None:
         """List all projects with session logs."""
         projects_dir = self.base_dir / "projects"
-        
+
         print("📁 プロジェクト一覧を取得しています...")
         self.logger.debug(
             "list_projects_started",
             context={"projects_dir": str(projects_dir)}
         )
-        
+
         if not projects_dir.exists():
             print("No projects found. Session logging may not be enabled.")
             print("To enable: export DISCORD_ENABLE_SESSION_LOGGING=1")
@@ -100,16 +101,16 @@ class SessionLogViewer:
             return
 
         print("\n📁 Projects with Session Logs:\n")
-        
+
         start_time = time.time()
         project_count = 0
-        
+
         try:
             for project_dir in sorted(projects_dir.iterdir()):
                 if project_dir.is_dir():
                     project_count += 1
                     info_path = project_dir / "project_info.json"
-                    
+
                     if info_path.exists():
                         try:
                             with open(info_path) as f:
@@ -128,19 +129,19 @@ class SessionLogViewer:
                                     active = sum(1 for s in sessions if s.get("status") == "active")
                                     complete = sum(1 for s in sessions if s.get("status") == "complete")
                                     print(f"   Sessions: {len(sessions)} total ({active} active, {complete} complete)")
-                                    
+
                                     self.logger.debug(
                                         "project_sessions_counted",
                                         context={
-                                            "project": info['project_name'],
+                                            "project": info["project_name"],
                                             "total_sessions": len(sessions),
                                             "active_sessions": active,
                                             "complete_sessions": complete
                                         }
                                     )
                                 except (json.JSONDecodeError, FileNotFoundError) as e:
-                                    print(f"   Sessions: Error reading sessions file")
-                                    self.logger.error(
+                                    print("   Sessions: Error reading sessions file")
+                                    self.logger.exception(
                                         "sessions_file_error",
                                         exception=e,
                                         context={"sessions_path": str(sessions_path)},
@@ -148,14 +149,14 @@ class SessionLogViewer:
                                     )
                             print()
                         except (json.JSONDecodeError, FileNotFoundError) as e:
-                            print(f"   Error: Could not read project info")
-                            self.logger.error(
+                            print("   Error: Could not read project info")
+                            self.logger.exception(
                                 "project_info_error",
                                 exception=e,
                                 context={"info_path": str(info_path)},
                                 ai_todo="Fix corrupted project_info.json file"
                             )
-            
+
             duration_ms = int((time.time() - start_time) * 1000)
             self.logger.info(
                 "list_projects_completed",
@@ -163,34 +164,34 @@ class SessionLogViewer:
                 duration_ms=duration_ms,
                 ai_todo=f"Listed {project_count} projects in {duration_ms}ms"
             )
-            
+
         except Exception as e:
-            self.logger.error(
+            self.logger.exception(
                 "list_projects_failed",
                 exception=e,
                 context={"projects_dir": str(projects_dir)},
                 ai_todo="Check file system permissions and directory structure"
             )
 
-    def list_sessions(self, project_hash: Optional[str] = None) -> None:
+    def list_sessions(self, project_hash: str | None = None) -> None:
         """List sessions, optionally filtered by project.
 
         Args:
             project_hash: Optional project hash to filter by
         """
         start_time = time.time()
-        
+
         if project_hash:
             print(f"📊 プロジェクト {project_hash} のセッション一覧を取得しています...")
-            
+
             # List sessions for specific project
             sessions_path = self.base_dir / "projects" / project_hash / "sessions.json"
-            
+
             self.logger.debug(
                 "list_project_sessions_started",
                 context={"project_hash": project_hash, "sessions_path": str(sessions_path)}
             )
-            
+
             if not sessions_path.exists():
                 print(f"Project {project_hash} not found")
                 self.logger.warning(
@@ -212,15 +213,15 @@ class SessionLogViewer:
                     print(f"{status_icon} {session['session_id'][:8]}... - {session['start_time']}")
                     if session.get("end_time"):
                         print(f"   Ended: {session['end_time']}")
-                        
+
                 self.logger.debug(
                     "project_sessions_listed",
                     context={"project_hash": project_hash, "session_count": len(sessions)}
                 )
-                
+
             except (json.JSONDecodeError, FileNotFoundError) as e:
                 print(f"Error reading sessions file: {e}")
-                self.logger.error(
+                self.logger.exception(
                     "sessions_file_read_error",
                     exception=e,
                     context={"sessions_path": str(sessions_path)},
@@ -228,15 +229,15 @@ class SessionLogViewer:
                 )
         else:
             print("📊 最新セッション一覧を取得しています...")
-            
+
             # List all recent sessions
             sessions_dir = self.base_dir / "sessions"
-            
+
             self.logger.debug(
                 "list_all_sessions_started",
                 context={"sessions_dir": str(sessions_dir)}
             )
-            
+
             if not sessions_dir.exists():
                 print("No sessions found")
                 self.logger.warning(
@@ -251,11 +252,11 @@ class SessionLogViewer:
             try:
                 # Get all session directories sorted by modification time
                 session_dirs = sorted(
-                    [d for d in sessions_dir.iterdir() if d.is_dir()], 
-                    key=lambda p: p.stat().st_mtime, 
+                    [d for d in sessions_dir.iterdir() if d.is_dir()],
+                    key=lambda p: p.stat().st_mtime,
                     reverse=True
                 )[:20]  # Last 20 sessions
-                
+
                 self.logger.debug(
                     "session_directories_found",
                     context={"total_sessions": len(session_dirs)}
@@ -275,7 +276,7 @@ class SessionLogViewer:
                             print()
                         except (json.JSONDecodeError, FileNotFoundError) as e:
                             print(f"   Error reading metadata for {session_dir.name[:8]}...")
-                            self.logger.error(
+                            self.logger.exception(
                                 "metadata_read_error",
                                 exception=e,
                                 context={"metadata_path": str(metadata_path)},
@@ -283,13 +284,13 @@ class SessionLogViewer:
                             )
             except Exception as e:
                 print(f"Error accessing sessions directory: {e}")
-                self.logger.error(
+                self.logger.exception(
                     "sessions_directory_access_error",
                     exception=e,
                     context={"sessions_dir": str(sessions_dir)},
                     ai_todo="Check file system permissions"
                 )
-        
+
         duration_ms = int((time.time() - start_time) * 1000)
         self.logger.info(
             "list_sessions_completed",
@@ -307,20 +308,20 @@ class SessionLogViewer:
         """
         start_time = time.time()
         print(f"🔍 セッション {session_id} の詳細を取得しています...")
-        
+
         self.logger.debug(
             "show_session_started",
             context={"session_id": session_id, "verbose": verbose}
         )
-        
+
         # Find full session ID from partial
         sessions_dir = self.base_dir / "sessions"
-        
+
         try:
             matching_dirs = [d for d in sessions_dir.iterdir() if d.is_dir() and d.name.startswith(session_id)]
         except Exception as e:
             print(f"Error accessing sessions directory: {e}")
-            self.logger.error(
+            self.logger.exception(
                 "sessions_directory_access_error",
                 exception=e,
                 context={"sessions_dir": str(sessions_dir)},
@@ -351,7 +352,7 @@ class SessionLogViewer:
 
         session_dir = matching_dirs[0]
         full_session_id = session_dir.name
-        
+
         self.logger.debug(
             "session_found",
             context={"full_session_id": full_session_id, "session_dir": str(session_dir)}
@@ -364,7 +365,7 @@ class SessionLogViewer:
                 metadata = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError) as e:
             print(f"Error loading session metadata: {e}")
-            self.logger.error(
+            self.logger.exception(
                 "metadata_load_error",
                 exception=e,
                 context={"metadata_path": str(metadata_path)},
@@ -385,7 +386,7 @@ class SessionLogViewer:
         if events_dir.exists():
             try:
                 event_files = sorted(events_dir.glob("*.json"))
-                
+
                 self.logger.debug(
                     "events_directory_scanned",
                     context={"event_count": len(event_files), "events_dir": str(events_dir)}
@@ -397,7 +398,7 @@ class SessionLogViewer:
 
                     # Show last 10 events (or all if verbose)
                     events_to_show = event_files if verbose else event_files[-10:]
-                    
+
                     # Performance logging for large files
                     if len(event_files) > 100:
                         self.logger.info(
@@ -432,7 +433,7 @@ class SessionLogViewer:
                                 print(f"{event['sequence']:06d} | {timestamp} | {event_type}")
                         except (json.JSONDecodeError, FileNotFoundError) as e:
                             print(f"         Error reading event {event_file.name}")
-                            self.logger.error(
+                            self.logger.exception(
                                 "event_file_read_error",
                                 exception=e,
                                 context={"event_file": str(event_file)},
@@ -442,10 +443,10 @@ class SessionLogViewer:
                     if not verbose and len(event_files) > 10:
                         print(f"\n... and {len(event_files) - 10} more events")
                         print("Use --verbose to see all events")
-                        
+
             except Exception as e:
                 print(f"Error processing events directory: {e}")
-                self.logger.error(
+                self.logger.exception(
                     "events_processing_error",
                     exception=e,
                     context={"events_dir": str(events_dir)},
@@ -475,27 +476,27 @@ class SessionLogViewer:
                                             prompt_preview += "..."
                                         print(f"  Prompt: {prompt_preview}")
                                 except (json.JSONDecodeError, FileNotFoundError) as e:
-                                    print(f"  Error reading subagent metadata")
-                                    self.logger.error(
+                                    print("  Error reading subagent metadata")
+                                    self.logger.exception(
                                         "subagent_metadata_error",
                                         exception=e,
                                         context={"metadata_path": str(metadata_path)},
                                         ai_todo="Fix corrupted subagent metadata"
                                     )
-                                    
+
                     self.logger.debug(
                         "subagent_activity_shown",
                         context={"subagent_count": len(subagent_dirs)}
                     )
             except Exception as e:
                 print(f"Error processing subagents directory: {e}")
-                self.logger.error(
+                self.logger.exception(
                     "subagents_processing_error",
                     exception=e,
                     context={"subagents_dir": str(subagents_dir)},
                     ai_todo="Check subagents directory permissions"
                 )
-        
+
         duration_ms = int((time.time() - start_time) * 1000)
         self.logger.info(
             "show_session_completed",
@@ -512,20 +513,20 @@ class SessionLogViewer:
         """
         start_time = time.time()
         print(f"📊 セッション {session_id} を分析しています...")
-        
+
         self.logger.debug(
             "analyze_session_started",
             context={"session_id": session_id}
         )
-        
+
         # Find full session ID
         sessions_dir = self.base_dir / "sessions"
-        
+
         try:
             matching_dirs = [d for d in sessions_dir.iterdir() if d.is_dir() and d.name.startswith(session_id)]
         except Exception as e:
             print(f"Error accessing sessions directory: {e}")
-            self.logger.error(
+            self.logger.exception(
                 "sessions_access_error_in_analyze",
                 exception=e,
                 context={"sessions_dir": str(sessions_dir)},
@@ -546,7 +547,7 @@ class SessionLogViewer:
         full_session_id = session_dir.name
 
         print(f"\n📊 Session Analysis: {full_session_id}\n")
-        
+
         self.logger.debug(
             "session_found_for_analysis",
             context={"full_session_id": full_session_id}
@@ -563,7 +564,7 @@ class SessionLogViewer:
         if events_dir.exists():
             try:
                 event_files = list(events_dir.glob("*.json"))
-                
+
                 # Performance logging for large sessions
                 if len(event_files) > 500:
                     self.logger.info(
@@ -571,12 +572,12 @@ class SessionLogViewer:
                         context={"event_count": len(event_files)},
                         ai_todo="Analyzing large session - this may take a while"
                     )
-                
+
                 for event_file in event_files:
                     try:
                         with open(event_file) as f:
                             event = json.load(f)
-                        
+
                         events_processed += 1
 
                         # Count tool usage
@@ -595,15 +596,15 @@ class SessionLogViewer:
                         # Sum durations
                         if duration := event.get("duration_ms"):
                             total_duration_ms += duration
-                            
+
                     except (json.JSONDecodeError, FileNotFoundError) as e:
-                        self.logger.error(
+                        self.logger.exception(
                             "event_analysis_error",
                             exception=e,
                             context={"event_file": str(event_file)},
                             ai_todo="Skip corrupted event file in analysis"
                         )
-                        
+
                 self.logger.debug(
                     "events_analyzed",
                     context={
@@ -613,10 +614,10 @@ class SessionLogViewer:
                         "errors_found": error_count
                     }
                 )
-                
+
             except Exception as e:
                 print(f"Error analyzing events: {e}")
-                self.logger.error(
+                self.logger.exception(
                     "events_analysis_error",
                     exception=e,
                     context={"events_dir": str(events_dir)},
@@ -646,7 +647,7 @@ class SessionLogViewer:
         if total_events > 0:
             success_rate = (total_events - error_count) / total_events * 100
             print(f"✅ Success Rate: {success_rate:.1f}%")
-            
+
         duration_ms = int((time.time() - start_time) * 1000)
         self.logger.info(
             "analyze_session_completed",
@@ -668,14 +669,14 @@ def main():
     """Main entry point for the session log viewer."""
     # Initialize global logger for main function
     main_logger = setup_minimal_logger("session_log_viewer.main")
-    
+
     start_time = time.time()
     main_logger.info(
         "session_log_viewer_started",
         context={"args": " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "no_args"},
         ai_todo="CLI session log viewer starting up"
     )
-    
+
     parser = argparse.ArgumentParser(
         description="View and analyze Claude Code session logs",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -733,14 +734,14 @@ def main():
         else:
             main_logger.debug("showing_help", context={"command": "help"})
             parser.print_help()
-            
+
         duration_ms = int((time.time() - start_time) * 1000)
         main_logger.info(
             "session_log_viewer_completed",
             context={"total_duration_ms": duration_ms},
             ai_todo=f"CLI operation completed successfully in {duration_ms}ms"
         )
-        
+
     except KeyboardInterrupt:
         print("\n💫 中断されました...")
         main_logger.warning(
@@ -751,7 +752,7 @@ def main():
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
-        main_logger.error(
+        main_logger.exception(
             "session_log_viewer_error",
             exception=e,
             ai_todo="Unexpected error in main function - needs investigation"
@@ -759,10 +760,8 @@ def main():
         sys.exit(1)
     finally:
         # Ensure logger cleanup
-        try:
+        with contextlib.suppress(builtins.BaseException):
             main_logger.stop()
-        except:
-            pass
 
 
 if __name__ == "__main__":

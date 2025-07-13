@@ -4,9 +4,21 @@ This module contains all constants, enums, and configuration values
 used throughout the Discord Notifier system.
 """
 
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from typing import Final
+
+from src.utils.astolfo_logger import AstolfoLogger
+
+logger = AstolfoLogger(__name__)
+
+# Log the initialization of constants
+logger.debug("Constants module loaded", {
+    "tool_names_count": 10,  # ToolNames enum members
+    "event_types_count": 5,  # EventTypes enum members
+    "color_constants": True,
+    "limit_constants": True
+})
 
 
 # Enums
@@ -128,18 +140,35 @@ CONFIG_FILE_NAME: str = ".env.discord"
 
 # Export all public constants
 __all__ = [
-    # Enums
-    'ToolNames', 'EventTypes',
-    # Limit classes
-    'TruncationLimits', 'DiscordLimits',
-    # Color classes and mappings
-    'DiscordColors', 'EVENT_TYPE_COLORS', 'EVENT_COLORS', 'TOOL_EMOJIS',
+    "CONFIG_FILE_NAME",
+    "DEFAULT_TIMEOUT",
+    "ENV_BOT_TOKEN",
+    "ENV_CHANNEL_ID",
+    "ENV_CHANNEL_TYPE",
+    "ENV_DEBUG",
+    "ENV_DISABLED_EVENTS",
+    "ENV_ENABLED_EVENTS",
+    "ENV_HOOK_EVENT",
+    "ENV_MENTION_USER_ID",
+    "ENV_THREAD_CLEANUP_DAYS",
+    "ENV_THREAD_PREFIX",
+    "ENV_THREAD_STORAGE_PATH",
+    "ENV_USE_THREADS",
     # Environment variables
-    'ENV_WEBHOOK_URL', 'ENV_BOT_TOKEN', 'ENV_CHANNEL_ID', 'ENV_DEBUG',
-    'ENV_USE_THREADS', 'ENV_CHANNEL_TYPE', 'ENV_THREAD_PREFIX',
-    'ENV_MENTION_USER_ID', 'ENV_ENABLED_EVENTS', 'ENV_DISABLED_EVENTS',
-    'ENV_THREAD_STORAGE_PATH', 'ENV_THREAD_CLEANUP_DAYS', 'ENV_HOOK_EVENT',
+    "ENV_WEBHOOK_URL",
+    "EVENT_COLORS",
+    "EVENT_TYPE_COLORS",
+    "THREAD_CACHE_EXPIRY",
+    "TOOL_EMOJIS",
+    "TRUNCATION_SUFFIX",
     # Other constants
-    'USER_AGENT', 'DEFAULT_TIMEOUT', 'TRUNCATION_SUFFIX',
-    'THREAD_CACHE_EXPIRY', 'CONFIG_FILE_NAME',
+    "USER_AGENT",
+    # Color classes and mappings
+    "DiscordColors",
+    "DiscordLimits",
+    "EventTypes",
+    # Enums
+    "ToolNames",
+    # Limit classes
+    "TruncationLimits",
 ]

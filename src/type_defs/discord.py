@@ -4,8 +4,9 @@ This module contains TypedDict definitions for Discord API structures
 including embeds, messages, channels, and threads.
 """
 
-from typing import TypedDict, NotRequired
-from src.type_defs.base import BaseField, TimestampedField
+from typing import NotRequired, TypedDict
+
+from src.type_defs.base import TimestampedField
 
 
 class DiscordFooter(TypedDict):
@@ -147,8 +148,14 @@ class DiscordThreadMessage(DiscordMessageBase):
 
 # Export all public types
 __all__ = [
-    'DiscordFooter', 'DiscordFieldBase', 'DiscordField',
-    'DiscordEmbedBase', 'DiscordEmbed', 'DiscordMessageBase',
-    'DiscordMessage', 'DiscordChannel', 'DiscordThread',
-    'DiscordThreadMessage'
+    "DiscordChannel",
+    "DiscordEmbed",
+    "DiscordEmbedBase",
+    "DiscordField",
+    "DiscordFieldBase",
+    "DiscordFooter",
+    "DiscordMessage",
+    "DiscordMessageBase",
+    "DiscordThread",
+    "DiscordThreadMessage"
 ]

@@ -7,8 +7,6 @@ caching, and lifecycle management for session-based threads.
 Enhanced with Python 3.13+ free-threaded mode support for better parallelism.
 """
 
-from src.utils.astolfo_logger import AstolfoLogger
-
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +14,7 @@ from typing import TypedDict
 
 from src.core.exceptions import DiscordAPIError, ThreadManagementError, ThreadStorageError
 from src.core.http_client import HTTPClient
+from src.utils.astolfo_logger import AstolfoLogger
 
 
 # Type definitions

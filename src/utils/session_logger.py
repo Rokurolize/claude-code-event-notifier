@@ -1,14 +1,15 @@
 """Session logger for persisting Claude Code events to local storage."""
 
 import asyncio
+import contextlib
 import json
-from src.utils.astolfo_logger import AstolfoLogger
-
 import os
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, TypedDict, Union, cast
-import threading
+from typing import TypedDict, Union, cast
+
+from src.utils.astolfo_logger import AstolfoLogger
 
 logger = AstolfoLogger(__name__)
 
@@ -46,7 +47,7 @@ class SessionMetadata(TypedDict):
     start_time: str
     python_version: str
     event_count: int
-    last_updated: Optional[str]
+    last_updated: str | None
 
 
 class ProjectInfo(TypedDict):
@@ -61,7 +62,7 @@ class SessionInfo(TypedDict):
     session_id: str
     start_time: str
     status: str
-    end_time: Optional[str]
+    end_time: str | None
 
 
 class SessionLogger:
@@ -88,9 +89,9 @@ class SessionLogger:
 
         # Async queue for event buffering
         self.event_queue: asyncio.Queue[EventData] = asyncio.Queue(maxsize=self.queue_size)
-        self.worker_task: Optional[asyncio.Task[None]] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        self.worker_task: asyncio.Task[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
 
         if self.enabled:
             self.session_dir = self._init_session_directory()
@@ -152,10 +153,10 @@ class SessionLogger:
         sessions_path = index_dir / "sessions.json"
         sessions: list[SessionInfo] = []
         if sessions_path.exists():
-            with open(sessions_path, "r") as f:
-                data = cast(Union[list[SessionInfo], JSONValue], json.load(f))
+            with open(sessions_path) as f:
+                data = cast("Union[list[SessionInfo], JSONValue]", json.load(f))
                 if isinstance(data, list):
-                    sessions = cast(list[SessionInfo], data)
+                    sessions = cast("list[SessionInfo]", data)
 
         session_info = SessionInfo(
             session_id=self.session_id,
@@ -171,7 +172,7 @@ class SessionLogger:
     def _start_worker(self) -> None:
         """Start the async worker task."""
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             # No event loop running, create one in a thread
             self._loop = asyncio.new_event_loop()
@@ -215,7 +216,7 @@ class SessionLogger:
                 # Write event to file
                 await self._write_event(event_data)
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Timeout is normal (for periodic checks)
                 continue
             except Exception as e:
@@ -262,15 +263,15 @@ class SessionLogger:
             metadata_path = self.session_dir / "metadata.json"
 
             # Read existing metadata
-            with open(metadata_path, "r") as f:
-                data = cast(Union[dict[str, JSONValue], JSONValue], json.load(f))
+            with open(metadata_path) as f:
+                data = cast("Union[dict[str, JSONValue], JSONValue]", json.load(f))
                 if isinstance(data, dict):
                     # Extract typed values with defaults
                     session_id = str(data.get("session_id", self.session_id))
                     project_path = str(data.get("project_path", self.project_path))
                     start_time = str(data.get("start_time", datetime.now(UTC).isoformat()))
                     python_version = str(data.get("python_version", "3.13+"))
-                    
+
                     metadata = SessionMetadata(
                         session_id=session_id,
                         project_path=project_path,
@@ -335,10 +336,8 @@ class SessionLogger:
             else:
                 # Add to queue (drop oldest if full)
                 if self.event_queue.full():
-                    try:
+                    with contextlib.suppress(asyncio.QueueEmpty):
                         self.event_queue.get_nowait()
-                    except asyncio.QueueEmpty:
-                        pass
 
                 await self.event_queue.put(enriched_event)
 
@@ -349,10 +348,8 @@ class SessionLogger:
     async def _add_to_queue(self, event: EventData) -> None:
         """Add event to queue (used for thread-safe operations)."""
         if self.event_queue.full():
-            try:
+            with contextlib.suppress(asyncio.QueueEmpty):
                 self.event_queue.get_nowait()
-            except asyncio.QueueEmpty:
-                pass
 
         await self.event_queue.put(event)
 
@@ -373,17 +370,13 @@ class SessionLogger:
         elif self.worker_task:
             # Regular async cleanup
             self.worker_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self.worker_task
-            except asyncio.CancelledError:
-                pass
 
         # Update session status in project index
         if self.enabled:
-            try:
+            with contextlib.suppress(Exception):
                 self._mark_session_complete()
-            except Exception:
-                pass
 
     def _mark_session_complete(self) -> None:
         """Mark session as complete in project index."""
@@ -393,8 +386,8 @@ class SessionLogger:
         sessions_path = Path.home() / ".claude" / "hooks" / "session_logs" / "projects" / project_hash / "sessions.json"
 
         if sessions_path.exists():
-            with open(sessions_path, "r") as f:
-                data = cast(Union[list[dict[str, JSONValue]], JSONValue], json.load(f))
+            with open(sessions_path) as f:
+                data = cast("Union[list[dict[str, JSONValue]], JSONValue]", json.load(f))
                 if isinstance(data, list):
                     sessions: list[SessionInfo] = []
                     # Update status for this session

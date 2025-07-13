@@ -5,16 +5,15 @@ This module handles loading and validation of configuration from
 environment variables and .env files.
 """
 
-from src.utils.astolfo_logger import AstolfoLogger
-
-import logging
 import os
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 # Python 3.13+ features
 from typing import Literal, TypedDict, cast
+
+from src.utils.astolfo_logger import AstolfoLogger
+from src.utils.datetime_utils import format_system_datetime
 
 # ReadOnly - use typing_extensions for compatibility
 try:
@@ -38,7 +37,6 @@ from .constants import (
     ENV_THREAD_STORAGE_PATH,
     ENV_USE_THREADS,
     ENV_WEBHOOK_URL,
-    LOG_FORMAT,
     EventTypes,
 )
 from .exceptions import ConfigurationError
@@ -423,8 +421,8 @@ def setup_logging(debug: bool) -> AstolfoLogger:
     if debug:
         log_dir = Path.home() / ".claude" / "hooks" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / f"discord_notifier_{datetime.now(UTC).strftime('%Y-%m-%d')}.log"
-        
+        log_file = log_dir / f"discord_notifier_{format_system_datetime().split('T')[0]}.log"
+
         # AstolfoLogger handles all logging configuration
         logger.debug(f"Debug logging enabled, log file: {log_file}")
 

@@ -41,15 +41,15 @@ def check_api_access(url: str, token: str, logger: AstolfoLogger) -> None:
 
     except urllib.error.HTTPError as e:
         print(f"✗ HTTPError {e.code}: {e.reason}")
-        
+
         # Read error response body for details
         try:
             error_body = e.read().decode()
             error_data = json.loads(error_body)
             print("Error details:")
             print(json.dumps(error_data, indent=2))
-            
-            logger.error("Discord API HTTP error", {
+
+            logger.exception("Discord API HTTP error", {
                 "url": url,
                 "code": e.code,
                 "reason": e.reason,
@@ -59,25 +59,25 @@ def check_api_access(url: str, token: str, logger: AstolfoLogger) -> None:
             # Common Discord error codes
             if error_data.get("code") == 50001:
                 print("→ Missing Access: Bot lacks permission to access this resource")
-                logger.error("Missing access permission", {"discord_error_code": 50001})
+                logger.exception("Missing access permission", {"discord_error_code": 50001})
             elif error_data.get("code") == 50013:
                 print("→ Missing Permissions: Bot lacks required permissions")
-                logger.error("Missing required permissions", {"discord_error_code": 50013})
+                logger.exception("Missing required permissions", {"discord_error_code": 50013})
             elif error_data.get("code") == 10003:
                 print("→ Unknown Channel: Channel does not exist")
-                logger.error("Unknown channel", {"discord_error_code": 10003})
+                logger.exception("Unknown channel", {"discord_error_code": 10003})
             elif error_data.get("code") == 10004:
                 print("→ Unknown Guild: Guild does not exist")
-                logger.error("Unknown guild", {"discord_error_code": 10004})
+                logger.exception("Unknown guild", {"discord_error_code": 10004})
 
         except (json.JSONDecodeError, UnicodeDecodeError):
             print("Could not parse error response body")
-            logger.error("Failed to parse error response", {"url": url})
+            logger.exception("Failed to parse error response", {"url": url})
 
     except (urllib.error.URLError, OSError, ValueError) as e:
         # Network errors, OS errors, or value errors
         print(f"✗ Error: {type(e).__name__}: {e}")
-        logger.error("API access error", {
+        logger.exception("API access error", {
             "url": url,
             "error_type": type(e).__name__,
             "error_message": str(e)
@@ -89,7 +89,7 @@ def main() -> None:
     # Initialize logger
     logger = AstolfoLogger("discord_access_check")
     logger.info("Starting Discord API access check")
-    
+
     token = os.getenv("DISCORD_TOKEN", "")
     channel_id = os.getenv("DISCORD_CHANNEL_ID", "")
 
@@ -132,7 +132,7 @@ def main() -> None:
     thread_id = "1391977832007208990"
     print(f"4. Checking specific thread: {thread_id}")
     check_api_access(f"https://discord.com/api/v10/channels/{thread_id}", token, logger)
-    
+
     logger.info("Discord API access check completed")
 
 
