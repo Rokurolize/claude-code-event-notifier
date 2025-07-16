@@ -30,6 +30,7 @@ class TimestampedField(BaseField):
 # Discord API response types
 class DiscordChannel(TypedDict, total=False):
     """Discord channel response structure."""
+
     id: str
     type: int
     name: str
@@ -42,6 +43,7 @@ class DiscordChannel(TypedDict, total=False):
 
 class DiscordThread(TypedDict, total=False):
     """Discord thread response structure."""
+
     id: str
     type: int
     name: str
@@ -109,6 +111,16 @@ class DiscordThreadMessage(DiscordMessageBase):
     thread_name: str | None
 
 
+class DiscordMessageResponse(TypedDict):
+    """Discord message response with ID."""
+
+    id: str
+    timestamp: str
+    author: dict[str, str]
+    content: str | None
+    embeds: list[DiscordEmbed] | None
+
+
 class HTTPClient:
     """HTTP client for Discord API calls.
 
@@ -152,6 +164,26 @@ class HTTPClient:
 
         return self._make_request(url, data, headers, "Webhook", 204)
 
+    def post_webhook_with_id(self, url: str, data: DiscordMessage) -> DiscordMessageResponse | None:
+        """Send message via Discord webhook and return message ID.
+
+        Args:
+            url: Discord webhook URL
+            data: Message data to send
+
+        Returns:
+            Message response with ID if successful, None otherwise
+
+        Raises:
+            DiscordAPIError: On API communication errors
+        """
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+        }
+
+        return self._make_request_with_response(url, data, headers, "Webhook", 204)
+
     def post_bot_api(self, url: str, data: DiscordMessage, token: str) -> bool:
         """Send message via Discord bot API.
 
@@ -173,6 +205,28 @@ class HTTPClient:
         }
 
         return self._make_request(url, data, headers, "Bot API", lambda s: 200 <= s < 300)
+
+    def post_bot_api_with_id(self, url: str, data: DiscordMessage, token: str) -> DiscordMessageResponse | None:
+        """Send message via Discord bot API and return message ID.
+
+        Args:
+            url: Discord API endpoint URL
+            data: Message data to send
+            token: Bot authentication token
+
+        Returns:
+            Message response with ID if successful, None otherwise
+
+        Raises:
+            DiscordAPIError: On API communication errors
+        """
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        return self._make_request_with_response(url, data, headers, "Bot API", 200)
 
     def _make_request(
         self,
@@ -208,6 +262,63 @@ class HTTPClient:
                 if callable(success_check):
                     return bool(success_check(status))
                 return bool(status == success_check)
+
+        except urllib.error.HTTPError as e:
+            self.logger.exception("%s HTTP error %s: %s", api_name, e.code, e.reason)
+            raise DiscordAPIError(f"{api_name} failed: {e.code} {e.reason}") from e
+        except urllib.error.URLError as e:
+            self.logger.exception("%s URL error: %s", api_name, e.reason)
+            raise DiscordAPIError(f"{api_name} connection failed: {e.reason}") from e
+
+    def _make_request_with_response(
+        self,
+        url: str,
+        data: DiscordMessage | DiscordThreadMessage | dict[str, str | int | bool],
+        headers: dict[str, str],
+        api_name: str,
+        success_status: int,
+    ) -> DiscordMessageResponse | None:
+        """Make HTTP request and return response data.
+
+        Args:
+            url: Request URL
+            data: Data to send
+            headers: HTTP headers
+            api_name: Name for logging
+            success_status: Expected success status code
+
+        Returns:
+            Discord message response if successful, None otherwise
+
+        Raises:
+            DiscordAPIError: On API communication errors
+        """
+        try:
+            json_data = json.dumps(data).encode("utf-8")
+            req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
+
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
+                status = response.status
+                self.logger.debug("%s response: %s", api_name, status)
+
+                if status == success_status:
+                    # Read response data
+                    response_data = response.read().decode("utf-8")
+                    if response_data:
+                        message_data = json.loads(response_data)
+                        return cast(DiscordMessageResponse, {
+                            "id": message_data.get("id", ""),
+                            "timestamp": message_data.get("timestamp", ""),
+                            "author": message_data.get("author", {}),
+                            "content": message_data.get("content"),
+                            "embeds": message_data.get("embeds"),
+                        })
+                    else:
+                        self.logger.warning("%s success but no response data", api_name)
+                        return None
+                else:
+                    self.logger.warning("%s unexpected status: %s", api_name, status)
+                    return None
 
         except urllib.error.HTTPError as e:
             self.logger.exception("%s HTTP error %s: %s", api_name, e.code, e.reason)

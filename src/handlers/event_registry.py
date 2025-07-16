@@ -59,9 +59,7 @@ class FormatterRegistry:
             EventTypes.SUBAGENT_STOP.value: format_subagent_stop,
         }
 
-    def get_formatter(
-        self, event_type: str
-    ) -> Callable[[EventData, str], DiscordEmbed]:
+    def get_formatter(self, event_type: str) -> Callable[[EventData, str], DiscordEmbed]:
         """Get formatter for event type.
 
         Args:

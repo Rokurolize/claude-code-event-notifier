@@ -9,7 +9,7 @@ zero-dependency storage.
 import logging
 import sqlite3
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from typing import NamedTuple, TypedDict
 
@@ -156,7 +156,7 @@ class ThreadStorage:
 
         with self._lock:
             try:
-                now = datetime.now(datetime.UTC)
+                now = datetime.now(UTC)
                 with sqlite3.connect(str(self.db_path)) as conn:
                     conn.execute(
                         """
@@ -212,7 +212,7 @@ class ThreadStorage:
                     row = cursor.fetchone()
                     if row:
                         # Update last_used timestamp
-                        now = datetime.now(datetime.UTC)
+                        now = datetime.now(UTC)
                         conn.execute(
                             """
                             UPDATE thread_mappings
@@ -260,7 +260,7 @@ class ThreadStorage:
                         SET is_archived = ?, last_used = ?
                         WHERE session_id = ?
                     """,
-                        (is_archived, datetime.now(datetime.UTC), session_id),
+                        (is_archived, datetime.now(UTC), session_id),
                     )
 
                     conn.commit()
@@ -410,7 +410,7 @@ class ThreadStorage:
         Returns:
             Number of records removed
         """
-        cutoff_date = datetime.now(datetime.UTC) - timedelta(days=self.cleanup_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=self.cleanup_days)
 
         with self._lock:
             try:
@@ -481,12 +481,9 @@ class ThreadStorage:
                 return ThreadStatsError(error=str(e), db_path=str(self.db_path))
 
     def close(self) -> None:
-        """Close the storage and perform cleanup."""
-        with self._lock:
-            try:
-                # Run cleanup on close
-                self.cleanup_stale_threads()
-                self._logger.debug("Thread storage closed")
-            except (sqlite3.Error, OSError):
-                # Catch specific exceptions that might occur during cleanup
-                self._logger.exception("Error during storage cleanup")
+        """Close the storage connection."""
+        try:
+            self._logger.debug("Thread storage closed")
+        except Exception:
+            # Catch any logging errors during close
+            pass

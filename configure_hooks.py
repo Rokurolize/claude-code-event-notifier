@@ -81,6 +81,8 @@ def is_hook_config(value: object) -> TypeGuard[HookConfig]:
 def find_project_root() -> Path | None:
     """Find project root using Path.full_match() for better pattern matching.
 
+    Now supports both new architecture (main.py) and legacy architecture (discord_notifier.py).
+
     Returns:
         Path to project root directory, or None if not found
     """
@@ -90,12 +92,23 @@ def find_project_root() -> Path | None:
     for parent in [current, *current.parents]:
         # Check for pyproject.toml first
         if (parent / "pyproject.toml").exists():
-            # Use full_match to verify it's our project
+            # Check for new architecture (main.py) first
+            main_path = parent / "src" / "main.py"
+            if main_path.exists() and main_path.full_match("**/src/main.py"):
+                return parent
+
+            # Fall back to legacy architecture (discord_notifier.py) if main.py not found
             notifier_path = parent / "src" / "discord_notifier.py"
             if notifier_path.exists() and notifier_path.full_match("**/src/discord_notifier.py"):
                 return parent
 
-        # Also check for the notifier script directly
+        # Also check for the scripts directly
+        # Check for new architecture first
+        for path in parent.rglob("main.py"):
+            if path.full_match("**/src/main.py"):
+                return path.parent.parent
+
+        # Fall back to legacy architecture
         for path in parent.rglob("discord_notifier.py"):
             if path.full_match("**/src/discord_notifier.py"):
                 return path.parent.parent
@@ -124,16 +137,14 @@ def should_keep_hook(hook: HookConfig) -> bool:
             try:
                 script_path = Path(part)
                 # Use full_match for pattern checking - check both legacy and new architecture
-                if (script_path.full_match("**/discord_notifier.py") or 
-                    script_path.full_match("**/main.py")):
+                if script_path.full_match("**/discord_notifier.py") or script_path.full_match("**/main.py"):
                     return False
             except (ValueError, TypeError):
                 # Invalid path, continue checking other parts
                 continue
 
     # Fallback to simple string check for both legacy and new architecture
-    return ("discord_notifier.py" not in command and 
-            "claude-code-event-notifier-bugfix/src/main.py" not in command)
+    return "discord_notifier.py" not in command and "claude-code-event-notifier-bugfix/src/main.py" not in command
 
 
 def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
@@ -156,12 +167,17 @@ def _main_impl() -> int:
     """Main implementation split from main() to reduce complexity."""
     parser = argparse.ArgumentParser(description="Configure Claude Code hooks for Discord notifications")
     parser.add_argument("--remove", action="store_true", help="Remove the notifier from Claude Code")
-    parser.add_argument("--use-legacy", action="store_true", 
-                       help="Use the legacy implementation (discord_notifier.py) instead of new modular architecture")
-    parser.add_argument("--reload", action="store_true", 
-                       help="Test configuration hot reload functionality")
-    parser.add_argument("--validate-end-to-end", action="store_true",
-                       help="Complete end-to-end validation: hot reload + Discord sending + API verification")
+    parser.add_argument(
+        "--use-legacy",
+        action="store_true",
+        help="Use the legacy implementation (discord_notifier.py) instead of new modular architecture",
+    )
+    parser.add_argument("--reload", action="store_true", help="Test configuration hot reload functionality")
+    parser.add_argument(
+        "--validate-end-to-end",
+        action="store_true",
+        help="Complete end-to-end validation: hot reload + Discord sending + API verification",
+    )
     args = parser.parse_args()
 
     # Paths
@@ -225,7 +241,9 @@ def _handle_remove_command(settings_file: Path) -> int:
     return 0
 
 
-def _handle_install_command(hooks_dir: Path, settings_file: Path, source_script: Path, use_new_architecture: bool = False) -> int:
+def _handle_install_command(
+    hooks_dir: Path, settings_file: Path, source_script: Path, use_new_architecture: bool = False
+) -> int:
     """Handle install command to setup the notifier."""
     print("Installing Claude Code Discord Notifier...")
 
@@ -329,7 +347,7 @@ def _handle_install_command(hooks_dir: Path, settings_file: Path, source_script:
         print("1. Edit .env with your Discord credentials (if not already configured)")
         print("2. Restart Claude Code")
     print("\nNote: Environment variables take precedence over .env file.")
-    
+
     if use_new_architecture:
         print("\n💡 To switch to legacy implementation, run:")
         print("  python3 configure_hooks.py --use-legacy")
@@ -345,54 +363,59 @@ def _handle_end_to_end_validation_command() -> int:
     print("🚀 Starting Complete End-to-End Validation...")
     print("   Hot Reload + Discord Sending + API Verification")
     print()
-    
+
     try:
         # Add project root to Python path for imports
         project_root = Path(__file__).parent
         sys.path.insert(0, str(project_root))
-        
+
         # Import required modules
         from src.core.config import ConfigFileWatcher, ConfigValidator
-        from src.utils.discord_api_validator import fetch_channel_messages, verify_channel_repeatedly, analyze_channel_health
+        from src.utils.discord_api_validator import (
+            fetch_channel_messages,
+            verify_channel_repeatedly,
+            analyze_channel_health,
+        )
         import time
         import tempfile
         import json as json_module
-        
+
         print("📋 Step 1: Configuration Loading and Validation")
         print("=" * 50)
-        
+
         # Create ConfigFileWatcher instance
         config_watcher = ConfigFileWatcher()
         config = config_watcher.get_config_with_auto_reload()
-        
+
         # Validate Discord credentials
         if not ConfigValidator.validate_credentials(config):
             print("❌ Discord credentials invalid or missing")
             print("   Please configure DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID")
             return 1
-        
+
         channel_id = config.get("channel_id", "")
         if not channel_id:
             print("❌ Discord channel ID not configured")
             return 1
-        
+
         print(f"✅ Discord channel ID: {channel_id}")
         print(f"✅ Configuration validation: Passed")
         print()
-        
+
         print("📡 Step 2: Authentication Method Detection")
         print("=" * 50)
-        
+
         # Check if bot token is available for API reading
         bot_token = None
         try:
             from src.utils.discord_api_validator import get_discord_bot_token
+
             bot_token = get_discord_bot_token()
         except ImportError:
             pass
-        
+
         webhook_mode = bot_token is None
-        
+
         if webhook_mode:
             print("🔗 Webhook-only mode detected (no bot token for reading)")
             print("   End-to-end validation will test webhook sending only")
@@ -401,35 +424,35 @@ def _handle_end_to_end_validation_command() -> int:
         else:
             print("🤖 Bot token authentication detected")
             print("   Full API verification with message reading enabled")
-            
+
             # Get baseline Discord API state
             baseline_result = fetch_channel_messages(channel_id, limit=5)
             if not baseline_result["success"]:
                 print(f"❌ Discord API access failed: {baseline_result['error_message']}")
                 return 1
-            
+
             baseline_count = baseline_result["message_count"]
             baseline_notifier_count = baseline_result["notifier_message_count"]
-            
+
             print(f"✅ Discord API access verified")
             print(f"📊 Baseline: {baseline_count} total messages, {baseline_notifier_count} notifier messages")
-        
+
         print()
-        
+
         print("🔥 Step 3: Hook Execution with Test Event")
         print("=" * 50)
-        
+
         # Find the appropriate hook script to test
         project_root = find_project_root() or Path(__file__).parent
-        
+
         # Check which implementation is configured
         settings_file = Path.home() / ".claude" / "settings.json"
         use_new_architecture = True
-        
+
         if settings_file.exists():
             with settings_file.open() as f:
                 settings_data = json_module.load(f)
-            
+
             # Check if hooks are configured for main.py (new) or discord_notifier.py (legacy)
             hooks_config = settings_data.get("hooks", {})
             for event_hooks in hooks_config.values():
@@ -440,18 +463,18 @@ def _handle_end_to_end_validation_command() -> int:
                         break
                 if not use_new_architecture:
                     break
-        
+
         if use_new_architecture:
             hook_script = project_root / "src" / "main.py"
             print("🔧 Using new modular architecture (main.py)")
         else:
             hook_script = project_root / "src" / "discord_notifier.py"
             print("🔧 Using legacy implementation (discord_notifier.py)")
-        
+
         if not hook_script.exists():
             print(f"❌ Hook script not found: {hook_script}")
             return 1
-        
+
         # Create test event JSON
         test_event = {
             "session_id": "end-to-end-validation-test",
@@ -460,32 +483,33 @@ def _handle_end_to_end_validation_command() -> int:
             "tool_input": {
                 "description": "Complete end-to-end validation test",
                 "validation_timestamp": time.time(),
-                "test_type": "hot_reload_discord_api_integration"
-            }
+                "test_type": "hot_reload_discord_api_integration",
+            },
         }
-        
+
         # Execute hook with test event
         python_cmd = get_python_command(hook_script)
         full_command = f"CLAUDE_HOOK_EVENT=PreToolUse {python_cmd}"
-        
+
         print(f"🚀 Executing: {full_command}")
-        
+
         # Run the hook with test event
         try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json_module.dump(test_event, f)
                 temp_file = f.name
-            
+
             import subprocess
+
             result = subprocess.run(
                 full_command,
                 input=json_module.dumps(test_event),
                 text=True,
                 capture_output=True,
                 shell=True,
-                timeout=30
+                timeout=30,
             )
-            
+
             if result.returncode == 0:
                 print("✅ Hook execution successful")
                 if result.stdout:
@@ -494,25 +518,25 @@ def _handle_end_to_end_validation_command() -> int:
                 print(f"⚠️ Hook returned exit code {result.returncode}")
                 if result.stderr:
                     print(f"❌ Hook error: {result.stderr.strip()}")
-                
+
         except subprocess.TimeoutExpired:
             print("⏱️ Hook execution timed out (30s)")
         except Exception as e:
             print(f"❌ Hook execution failed: {e}")
-        
+
         print()
-        
+
         print("🔍 Step 4: Validation Method")
         print("=" * 50)
-        
+
         if webhook_mode:
             print("🔗 Webhook Validation Mode")
             print("   Validating based on hook execution success")
             print("   Note: Cannot verify Discord message delivery without bot token")
-            
+
             # For webhook mode, success is based on hook execution
             success = result.returncode == 0
-            
+
             if success:
                 print("🎉 END-TO-END VALIDATION: SUCCESS!")
                 print("✅ Hook executed successfully with webhook configuration")
@@ -520,35 +544,35 @@ def _handle_end_to_end_validation_command() -> int:
             else:
                 print("❌ END-TO-END VALIDATION: FAILED")
                 print("🚫 Hook execution failed")
-            
+
             verification_results = []
             health_analysis = {"status": "webhook_mode", "success_rate": "N/A"}
-            
+
         else:
             print("🤖 API Verification Mode")
             print("⏱️ Waiting 3 seconds for Discord message propagation...")
             time.sleep(3)
-            
+
             # Verify Discord API with multiple attempts
             verification_results = verify_channel_repeatedly(channel_id, iterations=3, delay_seconds=1)
-            
+
             # Analyze results
             health_analysis = analyze_channel_health(verification_results)
-            
+
             # Check for new messages
             latest_result = verification_results[-1] if verification_results else None
             success = False
-            
+
             if latest_result and latest_result["success"]:
                 new_total = latest_result["message_count"]
                 new_notifier_count = latest_result["notifier_message_count"]
-                
+
                 if new_notifier_count > baseline_notifier_count:
                     success = True
                     print("🎉 END-TO-END VALIDATION: SUCCESS!")
                     print(f"✅ New Discord Notifier message detected!")
                     print(f"📈 Message count: {baseline_notifier_count} → {new_notifier_count}")
-                    
+
                     # Show latest message details
                     if latest_result["latest_message"]:
                         latest_msg = latest_result["latest_message"]
@@ -562,8 +586,10 @@ def _handle_end_to_end_validation_command() -> int:
                     print(f"📊 Notifier message count remained: {baseline_notifier_count}")
             else:
                 print("❌ END-TO-END VALIDATION: FAILED")
-                print(f"🔌 Discord API verification failed: {latest_result.get('error_message') if latest_result else 'No results'}")
-        
+                print(
+                    f"🔌 Discord API verification failed: {latest_result.get('error_message') if latest_result else 'No results'}"
+                )
+
         print()
         print("📊 Step 5: End-to-End Results Analysis")
         print("=" * 50)
@@ -578,7 +604,7 @@ def _handle_end_to_end_validation_command() -> int:
         else:
             print(f"  Message Detection: {'✅ Success' if success else '❌ Failed'}")
         print(f"  Overall Result: {'🎉 PASSED' if success else '❌ FAILED'}")
-        
+
         print()
         print("🎯 Next Steps:")
         if success:
@@ -604,18 +630,19 @@ def _handle_end_to_end_validation_command() -> int:
                 print("  2. Verify webhook/token configuration")
                 print("  3. Test hook execution manually")
                 print("  4. Check Discord API access with utils/check_discord_access.py")
-        
+
         return 0 if success else 1
-        
+
     except ImportError as e:
         print(f"❌ Import error: {e}")
         print("   Make sure you're running from the project root directory.")
         print("   Required modules: src.core.config, src.utils.discord_api_validator")
         return 1
-        
+
     except Exception as e:
         print(f"❌ Unexpected error during end-to-end validation: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -624,55 +651,52 @@ def _handle_reload_command() -> int:
     """Handle reload command to test configuration hot reload functionality."""
     print("🔄 Testing Configuration Hot Reload Functionality...")
     print()
-    
+
     try:
         # Add project root to Python path for imports
         project_root = Path(__file__).parent
         sys.path.insert(0, str(project_root))
-        
+
         # Import ConfigFileWatcher
         from src.core.config import ConfigFileWatcher, ConfigValidator
-        
+
         print("📁 Checking configuration files...")
-        config_files = [
-            Path(".env"),
-            Path("~/.claude/hooks/.env.discord").expanduser()
-        ]
-        
+        config_files = [Path(".env"), Path("~/.claude/hooks/.env.discord").expanduser()]
+
         for config_file in config_files:
             if config_file.exists():
                 print(f"  ✅ {config_file}")
             else:
                 print(f"  ❌ {config_file} (not found)")
-        
+
         print()
         print("🔍 Testing configuration loading...")
-        
+
         # Create ConfigFileWatcher instance
         config_watcher = ConfigFileWatcher()
-        
+
         # Test configuration loading
         config = config_watcher.get_config_with_auto_reload()
-        
+
         print("✅ Configuration loaded successfully!")
         print()
-        
+
         # Display some key configuration values
         print("📋 Current Configuration:")
         print(f"  Discord Enabled: {'✅' if ConfigValidator.validate_credentials(config) else '❌'}")
         print(f"  Debug Mode: {'✅' if config.get('debug') else '❌'}")
         print(f"  Use Threads: {'✅' if config.get('use_threads') else '❌'}")
-        
+
         # Display tool filtering settings
         disabled_events = config.get("disabled_events", [])
         disabled_tools = config.get("disabled_tools", [])
-        
+
         print(f"  Disabled Events: {', '.join(disabled_events) if disabled_events else 'None'}")
         print(f"  Disabled Tools: {', '.join(disabled_tools) if disabled_tools else 'None'}")
-        
+
         print()
         print("🔄 Testing configuration change detection...")
-        
+
         # Check if configuration has changed
         if config_watcher.has_config_changed():
             print("📝 Configuration changes detected! Reloading...")
@@ -680,10 +704,10 @@ def _handle_reload_command() -> int:
             print("✅ Configuration reloaded successfully!")
         else:
             print("📝 No configuration changes detected.")
-        
+
         print()
         print("🔍 Testing enhanced validation and fallback mechanisms...")
-        
+
         # Test validation functionality
         is_valid, validation_errors = config_watcher.validate_config_integrity(config)
         if is_valid:
@@ -692,33 +716,33 @@ def _handle_reload_command() -> int:
             print("  ⚠️ Configuration validation: Issues detected")
             for error in validation_errors:
                 print(f"    - {error}")
-        
+
         # Test backup/restore functionality
         print("  📋 Testing backup functionality...")
         config_watcher.create_config_backup(config)
-        
+
         backup_config = config_watcher.restore_from_backup()
         if backup_config:
             print("  ✅ Configuration backup/restore: Working")
         else:
             print("  ❌ Configuration backup/restore: Failed")
-        
+
         # Display validation report
         validation_report = config_watcher.get_validation_report()
         print(f"\n📊 Validation Report:")
-        for line in validation_report.split('\n'):
+        for line in validation_report.split("\n"):
             print(f"  {line}")
-        
+
         print()
         print("🎯 Enhanced Hot Reload Test Results:")
         print("  ✅ Configuration file tracking: Working")
-        print("  ✅ Configuration loading: Working") 
+        print("  ✅ Configuration loading: Working")
         print("  ✅ Change detection: Working")
         print("  ✅ Auto-reload: Working")
         print("  ✅ Configuration validation: Working")
         print("  ✅ Backup/restore mechanism: Working")
         print("  ✅ Error reporting: Working")
-        
+
         print()
         print("💡 To test enhanced hot reload in action:")
         print("  1. Modify .env file (e.g., change DISCORD_DISABLED_TOOLS)")
@@ -726,20 +750,20 @@ def _handle_reload_command() -> int:
         print("  3. Settings will be validated and applied immediately!")
         print("  4. Invalid configs will automatically fallback to safe settings")
         print("  5. All changes are reported via Discord notifications")
-        
+
         print()
         print("🎉 Enhanced hot reload functionality is working perfectly!")
         print("   ✅ Claude Code's limitations bypassed")
         print("   ✅ Configuration validation and safety mechanisms active")
         print("   ✅ Automatic fallback and recovery systems operational")
-        
+
         return 0
-        
+
     except ImportError as e:
         print(f"❌ Import error: {e}")
         print("   Make sure you're running from the project root directory.")
         return 1
-        
+
     except Exception as e:
         print(f"❌ Error during reload test: {e}")
         return 1

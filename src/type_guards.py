@@ -40,6 +40,7 @@ from src.settings_types import (
 # Define TypedDicts for event data structures
 class BaseEventData(TypedDict):
     """Base structure for all events."""
+
     session_id: str
     transcript_path: str
     hook_event_name: str
@@ -47,6 +48,7 @@ class BaseEventData(TypedDict):
 
 class ToolEventDataBase(BaseEventData, total=False):
     """Base structure for tool events."""
+
     tool_name: str
     tool_input: dict[str, str | int | float | bool | list[str] | dict[str, str]]
 
@@ -57,6 +59,7 @@ class PreToolUseEventData(ToolEventDataBase):
 
 class PostToolUseEventData(ToolEventDataBase, total=False):
     """PostToolUse event data."""
+
     tool_response: str | dict[str, str | int | float | bool | list[str]] | list[dict[str, str]]
     exit_code: int
     duration_ms: int
@@ -65,6 +68,7 @@ class PostToolUseEventData(ToolEventDataBase, total=False):
 
 class NotificationEventData(BaseEventData, total=False):
     """Notification event data."""
+
     message: str
     level: str
     timestamp: str
@@ -72,6 +76,7 @@ class NotificationEventData(BaseEventData, total=False):
 
 class StopEventData(BaseEventData, total=False):
     """Stop event data."""
+
     reason: str
     duration_seconds: int
     tools_used: int
@@ -80,13 +85,13 @@ class StopEventData(BaseEventData, total=False):
 
 class SubagentStopEventData(BaseEventData, total=False):
     """Enhanced subagent stop event data with conversation tracking."""
-    
+
     # 既存フィールド
     subagent_id: str
     result: str
     duration_seconds: int
     tools_used: int
-    
+
     # 新規追加フィールド
     conversation_log: str  # 実際の発言内容
     response_content: str  # サブエージェントの回答
@@ -100,6 +105,7 @@ class SubagentStopEventData(BaseEventData, total=False):
 # Tool input TypedDicts
 class BashToolInput(TypedDict, total=False):
     """Bash tool input structure."""
+
     command: str
     description: str
     timeout: int
@@ -107,6 +113,7 @@ class BashToolInput(TypedDict, total=False):
 
 class FileToolInput(TypedDict, total=False):
     """File tool input structure."""
+
     file_path: str
     content: str
     old_string: str
@@ -118,6 +125,7 @@ class FileToolInput(TypedDict, total=False):
 
 class SearchToolInput(TypedDict, total=False):
     """Search tool input structure."""
+
     pattern: str
     path: str
     glob: str
@@ -127,9 +135,10 @@ class SearchToolInput(TypedDict, total=False):
 
 class TaskToolInput(TypedDict, total=False):
     """Task tool input structure - matches actual Claude Code Task tool format."""
+
     description: str  # Task name/description
-    prompt: str       # Actual prompt/instructions content
-    
+    prompt: str  # Actual prompt/instructions content
+
     # Legacy fields (may still be used)
     instructions: str
     parent: str
@@ -137,6 +146,7 @@ class TaskToolInput(TypedDict, total=False):
 
 class WebToolInput(TypedDict, total=False):
     """Web tool input structure."""
+
     url: str
     prompt: str
 
@@ -144,6 +154,7 @@ class WebToolInput(TypedDict, total=False):
 # Tool response TypedDicts
 class BashToolResponse(TypedDict, total=False):
     """Bash tool response structure."""
+
     stdout: str
     stderr: str
     exit_code: int
@@ -152,6 +163,7 @@ class BashToolResponse(TypedDict, total=False):
 
 class FileOperationResponse(TypedDict, total=False):
     """File operation response structure."""
+
     success: bool
     message: str
     content: str
@@ -160,6 +172,7 @@ class FileOperationResponse(TypedDict, total=False):
 
 class FileEditOperation(TypedDict):
     """File edit operation structure."""
+
     old_string: str
     new_string: str
     replace_all: bool | None
@@ -168,19 +181,10 @@ class FileEditOperation(TypedDict):
 # Type aliases for unions
 Config = dict[str, str | int | bool]
 ToolResponse = (
-    BashToolResponse
-    | FileOperationResponse
-    | str
-    | list[dict[str, str]]
-    | dict[str, str | int | float | bool]
+    BashToolResponse | FileOperationResponse | str | list[dict[str, str]] | dict[str, str | int | float | bool]
 )
 ToolInput = (
-    BashToolInput
-    | FileToolInput
-    | SearchToolInput
-    | TaskToolInput
-    | WebToolInput
-    | dict[str, str | int | float | bool]
+    BashToolInput | FileToolInput | SearchToolInput | TaskToolInput | WebToolInput | dict[str, str | int | float | bool]
 )
 EventData = (
     BaseEventData
@@ -729,52 +733,52 @@ def is_stop_event_data(value: object) -> TypeIs[StopEventData]:
 
 def is_subagent_stop_event_data(value: object) -> TypeIs[SubagentStopEventData]:
     """Enhanced type guard for SubagentStopEventData with conversation tracking.
-    
+
     Args:
         value: Object to check
-        
+
     Returns:
         True if value matches SubagentStopEventData structure
     """
     # 必須フィールドのチェック
     if not isinstance(value, dict):
         return False
-    
+
     # 基本的なフィールドのチェック
     if "subagent_id" in value and not isinstance(value["subagent_id"], str):
         return False
-    
+
     if "result" in value and not isinstance(value["result"], str):
         return False
-    
+
     if "duration_seconds" in value and not isinstance(value["duration_seconds"], (int, float)):
         return False
-    
+
     if "tools_used" in value and not isinstance(value["tools_used"], (int, float)):
         return False
-    
+
     # 新規フィールドのチェック
     if "conversation_log" in value and not isinstance(value["conversation_log"], str):
         return False
-    
+
     if "response_content" in value and not isinstance(value["response_content"], str):
         return False
-    
+
     if "interaction_history" in value and not isinstance(value["interaction_history"], list):
         return False
-    
+
     if "message_id" in value and not isinstance(value["message_id"], str):
         return False
-    
+
     if "task_description" in value and not isinstance(value["task_description"], str):
         return False
-    
+
     if "context_summary" in value and not isinstance(value["context_summary"], str):
         return False
-    
+
     if "error_messages" in value and not isinstance(value["error_messages"], list):
         return False
-    
+
     return True
 
 

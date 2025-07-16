@@ -108,7 +108,7 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
         ```
         # Discord configuration
         DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
-        DISCORD_TOKEN="your_bot_token_here"
+        DISCORD_BOT_TOKEN="your_bot_token_here"
         DISCORD_CHANNEL_ID='123456789012345678'
         # Thread settings
         DISCORD_USE_THREADS=1
@@ -186,17 +186,17 @@ def parse_event_list(event_list_str: str) -> list[str]:
 
 def parse_tool_list(tool_list_str: str) -> list[str]:
     """Parse comma-separated tool list string into cleaned list.
-    
+
     Parses environment variable values like "Read,Edit,TodoWrite,Grep" into a list
     of tool name strings. Unlike parse_event_list, this doesn't validate against
     a fixed set of tool names to allow flexibility.
-    
+
     Args:
         tool_list_str: Comma-separated string of tool names
-        
+
     Returns:
         List of tool name strings
-        
+
     Examples:
         >>> parse_tool_list("Read,Edit,TodoWrite")
         ['Read', 'Edit', 'TodoWrite']
@@ -207,7 +207,7 @@ def parse_tool_list(tool_list_str: str) -> list[str]:
     """
     if not tool_list_str:
         return []
-    
+
     # Split and clean up tool names
     tools = [tool.strip() for tool in tool_list_str.split(",")]
     return [tool for tool in tools if tool]  # Remove empty strings
@@ -215,20 +215,20 @@ def parse_tool_list(tool_list_str: str) -> list[str]:
 
 def should_process_tool(tool_name: str, config: Config) -> bool:
     """Determine if a tool should be processed based on filtering configuration.
-    
+
     Args:
         tool_name: The tool name to check (e.g., "Read", "Edit", "TodoWrite")
         config: Configuration containing filtering settings
-        
+
     Returns:
         bool: True if the tool should be processed, False otherwise
     """
     disabled_tools = config.get("disabled_tools")
-    
+
     # If disabled_tools is configured, skip tools in that list
     if disabled_tools:
         return tool_name not in disabled_tools
-    
+
     # Default: process all tools
     return True
 
@@ -441,16 +441,21 @@ class ConfigLoader:
         # 1. Start with defaults
         config = ConfigLoader._get_default_config()
 
-        # 2. Load from .env file if it exists in project root
-        env_file = Path(".env")
-        if env_file.exists():
-            try:
-                env_vars = parse_env_file(env_file)
-                config = ConfigLoader._apply_env_file(config, env_vars)
-            except ConfigurationError:
-                # If .env file parsing fails, continue with defaults
-                # This ensures we don't block Claude Code
-                pass
+        # 2. Load from .env file if it exists in project root or hooks directory
+        env_files = [
+            Path(".env"),
+            Path.home() / ".claude" / "hooks" / ".env.discord"
+        ]
+        
+        for env_file in env_files:
+            if env_file.exists():
+                try:
+                    env_vars = parse_env_file(env_file)
+                    config = ConfigLoader._apply_env_file(config, env_vars)
+                except ConfigurationError:
+                    # If .env file parsing fails, continue with defaults
+                    # This ensures we don't block Claude Code
+                    pass
 
         # 3. Environment variables override file config
         return ConfigLoader._apply_env_vars(config)
@@ -672,7 +677,7 @@ class ConfigValidator:
 
 class ConfigFileMetadata(TypedDict):
     """Metadata for configuration file tracking."""
-    
+
     file_path: str
     last_modified: float
     file_hash: str
@@ -681,49 +686,49 @@ class ConfigFileMetadata(TypedDict):
 
 class ConfigFileWatcher:
     """Configuration file change detection and hot reload system.
-    
-    This class addresses Claude Code's limitation where hook settings are 
-    captured at startup and don't automatically reflect changes made during 
-    a session. It provides hot reload functionality by detecting changes to 
+
+    This class addresses Claude Code's limitation where hook settings are
+    captured at startup and don't automatically reflect changes made during
+    a session. It provides hot reload functionality by detecting changes to
     configuration files and allowing immediate reloading.
-    
+
     Key Features:
     - File modification time tracking
-    - SHA-256 hash-based change detection  
+    - SHA-256 hash-based change detection
     - Atomic configuration reloading
     - Enhanced validation and fallback mechanisms
     - Configuration backup and restore capabilities
     - Detailed error reporting and recovery
-    
+
     Usage:
         >>> watcher = ConfigFileWatcher()
         >>> if watcher.has_config_changed():
         ...     new_config = watcher.reload_config()
     """
-    
+
     _instance = None
     _config_metadata: dict[str, ConfigFileMetadata] = {}
     _last_config: Config | None = None
     _backup_config: Config | None = None
     _notification_callback = None
     _validation_errors: list[str] = []
-    
+
     def __new__(cls):
         """Singleton pattern for global config watching."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
-    
+
     @staticmethod
     def _calculate_file_hash(file_path: Path) -> str:
         """Calculate SHA-256 hash of a file.
-        
+
         Args:
             file_path: Path to the file
-            
+
         Returns:
             Hexadecimal SHA-256 hash string
-            
+
         Raises:
             FileNotFoundError: If file doesn't exist
             OSError: If file cannot be read
@@ -736,38 +741,35 @@ class ConfigFileWatcher:
                     sha256_hash.update(chunk)
         except OSError as e:
             raise ConfigurationError(f"Cannot read config file {file_path}: {e}") from e
-        
+
         return sha256_hash.hexdigest()
-    
+
     @staticmethod
     def _get_file_metadata(file_path: Path) -> ConfigFileMetadata:
         """Get file metadata for change detection.
-        
+
         Args:
             file_path: Path to the configuration file
-            
+
         Returns:
             ConfigFileMetadata with current file information
-            
+
         Raises:
             ConfigurationError: If file cannot be accessed
         """
         try:
             stat = file_path.stat()
             file_hash = ConfigFileWatcher._calculate_file_hash(file_path)
-            
+
             return ConfigFileMetadata(
-                file_path=str(file_path),
-                last_modified=stat.st_mtime,
-                file_hash=file_hash,
-                size=stat.st_size
+                file_path=str(file_path), last_modified=stat.st_mtime, file_hash=file_hash, size=stat.st_size
             )
         except OSError as e:
             raise ConfigurationError(f"Cannot access config file {file_path}: {e}") from e
-    
+
     def track_config_file(self, file_path: Path) -> None:
         """Start tracking a configuration file for changes.
-        
+
         Args:
             file_path: Path to the configuration file to track
         """
@@ -778,24 +780,24 @@ class ConfigFileWatcher:
             except ConfigurationError:
                 # If we can't read the file, don't track it
                 pass
-    
+
     def has_config_changed(self) -> bool:
         """Check if any tracked configuration files have changed.
-        
+
         Returns:
             True if any configuration file has been modified
         """
         try:
             for key, old_metadata in self._config_metadata.items():
                 file_path = Path(key)
-                
+
                 if not file_path.exists():
                     # File was deleted - this counts as a change
                     return True
-                
+
                 try:
                     current_metadata = self._get_file_metadata(file_path)
-                    
+
                     # Check multiple change indicators for reliability
                     if (
                         current_metadata["last_modified"] != old_metadata["last_modified"]
@@ -803,18 +805,18 @@ class ConfigFileWatcher:
                         or current_metadata["size"] != old_metadata["size"]
                     ):
                         return True
-                        
+
                 except ConfigurationError:
                     # If we can't read the file anymore, consider it changed
                     return True
-                    
+
         except Exception:
             # If there's any error during change detection, assume no change
             # This ensures we don't break the main application flow
             pass
-            
+
         return False
-    
+
     def update_tracked_files(self) -> None:
         """Update metadata for all tracked files."""
         for key in list(self._config_metadata.keys()):
@@ -828,46 +830,46 @@ class ConfigFileWatcher:
             else:
                 # Remove deleted files from tracking
                 del self._config_metadata[key]
-    
+
     def validate_config_integrity(self, config: Config) -> tuple[bool, list[str]]:
         """Comprehensive validation of configuration integrity.
-        
+
         Performs extensive validation beyond basic credential checks to ensure
         the configuration is not only present but also logically consistent
         and safe to use.
-        
+
         Args:
             config: Configuration to validate
-            
+
         Returns:
             Tuple of (is_valid, error_messages)
         """
         errors: list[str] = []
-        
+
         # Reset validation errors
         self._validation_errors = []
-        
+
         # 1. Basic credential validation
         if not ConfigValidator.validate_credentials(config):
             errors.append("Invalid or missing Discord credentials")
-        
+
         # 2. Thread configuration validation
         if not ConfigValidator.validate_thread_config(config):
             errors.append("Invalid thread configuration")
-        
+
         # 3. Mention configuration validation
         if not ConfigValidator.validate_mention_config(config):
             errors.append("Invalid user mention configuration")
-        
+
         # 4. Event filtering validation
         enabled_events = config.get("enabled_events")
         disabled_events = config.get("disabled_events")
-        
+
         if enabled_events and disabled_events:
             overlap = set(enabled_events) & set(disabled_events)
             if overlap:
                 errors.append(f"Events cannot be both enabled and disabled: {overlap}")
-        
+
         # 5. Tool filtering validation
         disabled_tools = config.get("disabled_tools")
         if disabled_tools:
@@ -875,27 +877,27 @@ class ConfigFileWatcher:
             invalid_tools = [tool for tool in disabled_tools if not tool.isalnum()]
             if invalid_tools:
                 errors.append(f"Invalid tool names detected: {invalid_tools}")
-        
+
         # 6. Thread configuration consistency
         if config.get("use_threads"):
             if config.get("channel_type") == "forum" and not config.get("webhook_url"):
                 errors.append("Forum channels require webhook URL for thread creation")
             elif config.get("channel_type") == "text" and not (config.get("bot_token") and config.get("channel_id")):
                 errors.append("Text channel threads require bot token and channel ID")
-        
+
         # 7. Cleanup days validation
         cleanup_days = config.get("thread_cleanup_days", DEFAULT_THREAD_CLEANUP_DAYS)
         if cleanup_days <= 0:
             errors.append(f"Invalid thread cleanup days: {cleanup_days} (must be positive)")
-        
+
         # Store validation errors for reporting
         self._validation_errors = errors
-        
+
         return len(errors) == 0, errors
-    
+
     def create_config_backup(self, config: Config) -> None:
         """Create a backup of known good configuration.
-        
+
         Args:
             config: Configuration to backup
         """
@@ -904,10 +906,10 @@ class ConfigFileWatcher:
         if is_valid:
             # Create a deep copy for backup
             self._backup_config = dict(config)
-        
+
     def restore_from_backup(self) -> Config | None:
         """Restore configuration from backup.
-        
+
         Returns:
             Backup configuration if available, None otherwise
         """
@@ -917,101 +919,97 @@ class ConfigFileWatcher:
             is_valid, _ = self.validate_config_integrity(backup_config)
             if is_valid:
                 return backup_config
-        
+
         return None
-    
+
     def get_validation_report(self) -> str:
         """Get detailed validation error report.
-        
+
         Returns:
             Formatted string with validation errors
         """
         if not self._validation_errors:
             return "✅ Configuration validation passed"
-        
+
         report = "❌ Configuration validation failed:\n"
         for i, error in enumerate(self._validation_errors, 1):
             report += f"  {i}. {error}\n"
-        
+
         return report.strip()
-    
+
     def reload_config(self) -> Config:
         """Reload configuration from files with enhanced validation and fallback.
-        
+
         Returns:
             Newly loaded configuration
-            
+
         Raises:
             ConfigurationError: If config loading fails and no fallback available
         """
         try:
             # Load fresh configuration
             new_config = ConfigLoader.load()
-            
+
             # Comprehensive validation of new configuration
             is_valid, validation_errors = self.validate_config_integrity(new_config)
-            
+
             if is_valid:
                 # Configuration is valid - proceed with update
                 self.update_tracked_files()
-                
+
                 # Create backup of previous good config before updating
                 if self._last_config is not None:
                     self.create_config_backup(self._last_config)
-                
+
                 # Store as last known good configuration
                 self._last_config = new_config
-                
+
                 return new_config
             else:
                 # New configuration failed validation - attempt fallback
                 validation_report = self.get_validation_report()
-                
+
                 # Try to restore from backup first
                 backup_config = self.restore_from_backup()
                 if backup_config is not None:
                     error_msg = f"New config validation failed, restored from backup.\n{validation_report}"
                     raise ConfigurationError(error_msg)
-                
+
                 # Try previous config as fallback
                 if self._last_config is not None:
                     error_msg = f"New config validation failed, using previous config.\n{validation_report}"
                     raise ConfigurationError(error_msg)
-                
+
                 # No valid fallback available - this is a critical error
                 error_msg = f"Config validation failed and no valid fallback available.\n{validation_report}"
                 raise ConfigurationError(error_msg)
-            
+
         except ConfigurationError:
             # Re-raise configuration errors as-is (they include our enhanced error messages)
             raise
-            
+
         except Exception as e:
             # Handle unexpected errors during loading
-            
+
             # Try to restore from backup first
             backup_config = self.restore_from_backup()
             if backup_config is not None:
                 self._last_config = backup_config
-                raise ConfigurationError(
-                    f"Config reload failed unexpectedly, restored from backup: {e}"
-                ) from e
-            
+                raise ConfigurationError(f"Config reload failed unexpectedly, restored from backup: {e}") from e
+
             # Try previous config as fallback
             if self._last_config is not None:
-                raise ConfigurationError(
-                    f"Config reload failed unexpectedly, using previous configuration: {e}"
-                ) from e
-            
+                raise ConfigurationError(f"Config reload failed unexpectedly, using previous configuration: {e}") from e
+
             # No fallback available - critical failure
             raise ConfigurationError(f"Config reload failed with no fallback available: {e}") from e
-    
+
     def get_config_with_auto_reload(self) -> Config:
         """Get configuration with automatic reload if files changed.
-        
+
         This is the main method for getting configuration that automatically
         detects and applies changes without requiring Claude Code restart.
-        
+
         Returns:
             Current configuration (potentially reloaded)
         """
@@ -1019,7 +1017,7 @@ class ConfigFileWatcher:
         if not self._config_metadata:
             self.track_config_file(Path(".env"))
             self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
-        
+
         # Check if any config files have changed
         if self.has_config_changed():
             try:
@@ -1029,28 +1027,28 @@ class ConfigFileWatcher:
                 if self._last_config is not None:
                     return self._last_config
                 return ConfigLoader.load()
-        
+
         # No changes detected, use cached config or load normally
         if self._last_config is not None:
             return self._last_config
-            
+
         # First time loading
         config = ConfigLoader.load()
         self._last_config = config
         return config
-    
+
     def set_notification_callback(self, callback) -> None:
         """Set callback function for configuration change notifications.
-        
+
         Args:
             callback: Function to call when config changes are detected.
                      Should accept (message: str, is_error: bool) parameters.
         """
         self._notification_callback = callback
-    
+
     def _send_config_change_notification(self, message: str, is_error: bool = False) -> None:
         """Send configuration change notification via callback.
-        
+
         Args:
             message: Notification message to send
             is_error: Whether this is an error notification
@@ -1061,13 +1059,13 @@ class ConfigFileWatcher:
             except Exception:
                 # Don't let notification failures break the main flow
                 pass
-    
+
     def get_config_with_auto_reload_and_notify(self) -> Config:
         """Get configuration with auto-reload, validation, and change notifications.
-        
+
         Enhanced version with comprehensive validation, backup/restore capabilities,
         and detailed error reporting via Discord notifications.
-        
+
         Returns:
             Current configuration (potentially reloaded)
         """
@@ -1075,35 +1073,35 @@ class ConfigFileWatcher:
         if not self._config_metadata:
             self.track_config_file(Path(".env"))
             self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
-        
+
         # Check if any config files have changed
         if self.has_config_changed():
             try:
                 new_config = self.reload_config()
-                
+
                 # Send success notification with validation status
                 changed_files = []
                 for key in self._config_metadata.keys():
                     file_path = Path(key)
                     if file_path.exists():
                         changed_files.append(file_path.name)
-                
+
                 files_text = ", ".join(changed_files) if changed_files else "config files"
                 validation_report = self.get_validation_report()
-                
+
                 if validation_report.startswith("✅"):
                     message = f"🔄 Configuration reloaded: {files_text} updated.\n{validation_report}\nNew settings applied immediately!"
                 else:
                     message = f"🔄 Configuration reloaded: {files_text} updated.\n{validation_report}"
-                
+
                 self._send_config_change_notification(message, is_error=False)
-                
+
                 return new_config
-                
+
             except ConfigurationError as e:
                 # Enhanced error notification with validation details
                 error_str = str(e)
-                
+
                 # Check if we're using a fallback
                 if "backup" in error_str.lower():
                     message = f"🔄 Configuration restored from backup:\n{error_str}"
@@ -1114,40 +1112,40 @@ class ConfigFileWatcher:
                 else:
                     message = f"🚨 Critical configuration error:\n{error_str}"
                     self._send_config_change_notification(message, is_error=True)
-                
+
                 # Determine best fallback strategy
                 backup_config = self.restore_from_backup()
                 if backup_config is not None:
                     self._last_config = backup_config
                     return backup_config
-                
+
                 if self._last_config is not None:
                     return self._last_config
-                
+
                 # Last resort - load default config
                 return ConfigLoader.load()
-        
+
         # No changes detected, use cached config or load normally
         if self._last_config is not None:
             return self._last_config
-            
+
         # First time loading with enhanced validation
         config = ConfigLoader.load()
-        
+
         # Validate initial configuration
         is_valid, validation_errors = self.validate_config_integrity(config)
-        
+
         if is_valid:
             self._last_config = config
             self.create_config_backup(config)  # Create initial backup
-            
+
             # NOTE: Removed initialization notification to prevent spam on every hook execution
             # Only send notifications when configuration actually changes, not on first load
         else:
             # Initial config is invalid - proceed without notification to prevent spam
             # Only send notifications when configuration actually changes, not on first load
-            
+
             # Still store it as last config for fallback purposes
             self._last_config = config
-        
+
         return config

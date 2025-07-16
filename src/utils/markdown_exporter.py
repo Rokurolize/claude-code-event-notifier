@@ -137,7 +137,7 @@ def generate_markdown_content(raw_content: dict[str, str], message_id: str) -> s
         "fields": None,
         "message_id": message_id,
         "markdown_content": "",
-        "raw_content": raw_content
+        "raw_content": raw_content,
     }
 
     return exporter.export_embed_to_markdown(pseudo_embed)

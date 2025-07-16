@@ -52,28 +52,34 @@ class EventTypes(str, Enum):
 
 @dataclass(frozen=True)
 class TruncationLimits:
-    """Enhanced character limits for truncation with conversation tracking support."""
-
-    COMMAND_PREVIEW: int = 100
-    COMMAND_FULL: int = 500
-    STRING_PREVIEW: int = 100
-    PROMPT_PREVIEW: int = 200
-    OUTPUT_PREVIEW: int = 500
-    ERROR_PREVIEW: int = 300
-    RESULT_PREVIEW: int = 300
-    JSON_PREVIEW: int = 400
+    """Enhanced character limits for truncation with conversation tracking support.
     
-    # Discord field limits
+    IMPORTANT: These limits have been dramatically increased to reduce information loss.
+    Previous limits caused 87.8% information loss for Bash output and 92.7% for errors.
+    """
+
+    COMMAND_PREVIEW: int = 200
+    COMMAND_FULL: int = 1000
+    STRING_PREVIEW: int = 200
+    PROMPT_PREVIEW: int = 500
+    
+    # CRITICAL: Increased to reduce massive information loss
+    OUTPUT_PREVIEW: int = 3000      # Was 500 (87.8% loss) → Now 3000 (26.8% loss)
+    ERROR_PREVIEW: int = 2500       # Was 300 (92.7% loss) → Now 2500 (39.0% loss)
+    RESULT_PREVIEW: int = 2500      # Was 300 (92.7% loss) → Now 2500 (39.0% loss)
+    JSON_PREVIEW: int = 2000        # Was 400 (90.2% loss) → Now 2000 (51.2% loss)
+
+    # Discord field limits (use almost full Discord API limits)
     TITLE: int = 256
-    DESCRIPTION: int = 2048  # 発言内容表示のため増量
+    DESCRIPTION: int = 3800         # Was 2048 → Now 3800 (95% of Discord's 4096 limit)
     FIELD_NAME: int = 256
     FIELD_VALUE: int = 1024
     FOOTER_TEXT: int = 2048
-    
+
     # 新規追加 - 会話追跡機能用
-    CONVERSATION_LOG: int = 1500  # 会話ログ専用
-    RESPONSE_CONTENT: int = 1500  # 回答内容専用
-    MARKDOWN_EXPORT: int = 10000  # Markdownエクスポート専用
+    CONVERSATION_LOG: int = 3000    # 会話ログ専用 (increased)
+    RESPONSE_CONTENT: int = 3000    # 回答内容専用 (increased)
+    MARKDOWN_EXPORT: int = 10000    # Markdownエクスポート専用
 
 
 @dataclass(frozen=True)
@@ -124,7 +130,7 @@ TOOL_EMOJIS: Final[dict[str, str]] = {
 
 # Environment variable keys
 ENV_WEBHOOK_URL: Final[str] = "DISCORD_WEBHOOK_URL"
-ENV_BOT_TOKEN: Final[str] = "DISCORD_TOKEN"  # noqa: S105
+ENV_BOT_TOKEN: Final[str] = "DISCORD_BOT_TOKEN"  # noqa: S105
 ENV_CHANNEL_ID: Final[str] = "DISCORD_CHANNEL_ID"
 ENV_DEBUG: Final[str] = "DISCORD_DEBUG"
 ENV_USE_THREADS: Final[str] = "DISCORD_USE_THREADS"

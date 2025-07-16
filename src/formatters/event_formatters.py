@@ -21,6 +21,7 @@ from src.core.http_client import DiscordEmbed as BaseDiscordEmbed, DiscordMessag
 from src.formatters.base import add_field, format_json_field, truncate_string
 from src.utils.message_id_generator import UUIDMessageIDGenerator
 from src.utils.markdown_exporter import generate_markdown_content
+from src.utils.path_utils import extract_working_directory_from_transcript_path, get_project_name_from_path, format_cd_command
 from src.utils.version_info import format_version_footer
 from src.formatters.tool_formatters import (
     format_bash_post_use,
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
 # Enhanced Discord embed structure with tracking capabilities
 class DiscordEmbed(BaseDiscordEmbed, total=False):
     """Enhanced Discord embed structure with unique ID and Markdown support."""
-    
+
     # 新規追加フィールド
     message_id: str  # 一意ID
     markdown_content: str  # Markdown形式の内容
@@ -96,7 +97,7 @@ class SubagentStopEventData(TypedDict, total=False):
     result: str
     duration_seconds: int
     tools_used: int
-    
+
     # 新規追加フィールド
     conversation_log: str  # 実際の発言内容
     response_content: str  # サブエージェントの回答
@@ -138,7 +139,7 @@ def format_pre_tool_use(event_data: ToolEventData, session_id: str) -> DiscordEm
         "color": None,
         "timestamp": None,
         "footer": None,
-        "fields": None
+        "fields": None,
     }
 
     # Build detailed description
@@ -193,7 +194,7 @@ def format_post_tool_use(event_data: ToolEventData, session_id: str) -> DiscordE
         "color": None,
         "timestamp": None,
         "footer": None,
-        "fields": None
+        "fields": None,
     }
 
     # Build detailed description
@@ -288,28 +289,42 @@ def format_notification(event_data: NotificationEventData, session_id: str) -> D
         "color": None,
         "timestamp": None,
         "footer": None,
-        "fields": None
+        "fields": None,
     }
 
 
 def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
-    """Format Stop event with session details.
+    """Format Stop event with session details and working directory.
 
     Args:
         event_data: Event data containing stop information
         session_id: Session identifier
 
     Returns:
-        Discord embed with formatted stop event
+        Discord embed with formatted stop event including working directory
     """
     desc_parts: list[str] = []
 
     add_field(desc_parts, "Session ID", session_id, code=True)
     add_field(desc_parts, "Ended at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
 
-    # Add transcript path if available
+    # Enhanced transcript path handling with working directory extraction
     transcript_path = event_data.get("transcript_path", "")
     if transcript_path:
+        # Extract working directory from transcript path
+        working_dir = extract_working_directory_from_transcript_path(transcript_path)
+        if working_dir:
+            project_name = get_project_name_from_path(working_dir)
+            cd_command = format_cd_command(working_dir)
+            
+            # Add project name for quick identification
+            if project_name:
+                add_field(desc_parts, "Project", project_name, code=True)
+            
+            # Add ready-to-use cd command
+            add_field(desc_parts, "Working Directory", cd_command, code=True)
+        
+        # Keep original transcript path for reference
         add_field(desc_parts, "Transcript", transcript_path, code=True)
 
     # Add any session statistics if available
@@ -324,98 +339,100 @@ def format_stop(event_data: StopEventData, session_id: str) -> DiscordEmbed:
         "color": None,
         "timestamp": None,
         "footer": None,
-        "fields": None
+        "fields": None,
     }
 
 
 def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> DiscordEmbed:
     """Enhanced format SubagentStop event with conversation tracking.
-    
+
     Args:
         event_data: Enhanced event data containing subagent stop information
         session_id: Session identifier (完全形で保持)
-        
+
     Returns:
         Enhanced Discord embed with conversation content and unique ID
     """
     # 🔍 デバッグ: event_dataの全フィールドをログ出力
-    from src.core.constants import astolfo_logger
-    astolfo_logger.info(
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.info(
         "SubagentStop event_data debug",
         extra={
             "event_data_keys": list(event_data.keys()),
             "event_data_full": event_data,
             "session_id": session_id,
             "ai_todo": "Debug SubagentStop event data for prompt separation analysis",
-        }
+        },
     )
-    
+
     # 1. 一意ID生成
     message_id_generator = UUIDMessageIDGenerator()
     message_id = message_id_generator.generate_message_id("SubagentStop", session_id)
-    
+
     desc_parts: list[str] = []
     raw_content: dict[str, str] = {}
-    
+
     # 2. 基本情報の追加
     add_field(desc_parts, "Message ID", message_id, code=True)
     add_field(desc_parts, "Session", session_id, code=True)  # 完全形で表示
     add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
-    
+
     # 3. サブエージェント情報
     if "subagent_id" in event_data:
         subagent_id = event_data.get("subagent_id", "unknown")
         add_field(desc_parts, "Subagent ID", subagent_id)
         raw_content["subagent_id"] = subagent_id
-    
+
     # 4. 発言内容の追跡（新機能）
     if "conversation_log" in event_data:
         conversation = event_data.get("conversation_log", "")
         conversation_preview = truncate_string(str(conversation), TruncationLimits.DESCRIPTION)
         desc_parts.append(f"**Conversation:**\n{conversation_preview}")
         raw_content["conversation_log"] = conversation
-    
+
     if "response_content" in event_data:
         response = event_data.get("response_content", "")
         response_preview = truncate_string(str(response), TruncationLimits.DESCRIPTION)
         desc_parts.append(f"**Response:**\n{response_preview}")
         raw_content["response_content"] = response
-    
+
     # 5. タスク情報（新機能）
     if "task_description" in event_data:
         task = event_data.get("task_description", "")
         task_preview = truncate_string(str(task), TruncationLimits.FIELD_VALUE)
         add_field(desc_parts, "Task", task_preview)
         raw_content["task_description"] = task
-    
+
     # 6. 結果情報（既存機能の改良）
     if "result" in event_data:
         result = event_data.get("result", "")
         result_summary = truncate_string(str(result), TruncationLimits.JSON_PREVIEW)
         desc_parts.append(f"**Result:**\n{result_summary}")
         raw_content["result"] = result
-    
+
     # 7. メトリクス情報
     if "duration_seconds" in event_data:
         duration = event_data.get("duration_seconds", 0)
         add_field(desc_parts, "Duration", f"{duration} seconds")
         raw_content["duration_seconds"] = str(duration)
-    
+
     if "tools_used" in event_data:
         tools = event_data.get("tools_used", 0)
         add_field(desc_parts, "Tools Used", str(tools))
         raw_content["tools_used"] = str(tools)
-    
+
     # 8. エラー情報（新機能）
     if "error_messages" in event_data and event_data["error_messages"]:
         error_list = event_data["error_messages"]
         error_preview = truncate_string(str(error_list), TruncationLimits.FIELD_VALUE)
         desc_parts.append(f"**Errors:**\n{error_preview}")
         raw_content["errors"] = str(error_list)
-    
+
     # 9. Markdown形式の内容生成
     markdown_content = generate_markdown_content(raw_content, message_id)
-    
+
     return {
         "title": "🤖 Subagent Completed",
         "description": "\n".join(desc_parts),
@@ -426,7 +443,7 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
         # 新規追加
         "message_id": message_id,
         "markdown_content": markdown_content,
-        "raw_content": raw_content
+        "raw_content": raw_content,
     }
 
 
@@ -458,7 +475,7 @@ def format_default_impl(
         "color": None,
         "timestamp": None,
         "footer": None,
-        "fields": None
+        "fields": None,
     }
 
 
@@ -494,12 +511,7 @@ def format_event(
     """
     timestamp = datetime.now(UTC).isoformat()
     # Enhanced Session ID extraction with multiple fallback options
-    session_id = (
-        event_data.get("session_id") or
-        event_data.get("Session") or  
-        event_data.get("session") or
-        "unknown"
-    )
+    session_id = event_data.get("session_id") or event_data.get("Session") or event_data.get("session") or "unknown"
     # Note: Don't truncate to 8 chars anymore - keep full session ID for better tracking
 
     # Format the event using the appropriate formatter
