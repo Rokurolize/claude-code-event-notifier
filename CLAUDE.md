@@ -700,16 +700,16 @@ src/formatters/           # 新アーキテクチャ（完成済み、未使用�
 
 ```bash
 # 現在の実装をテストする
-uv run --no-sync --python 3.13 python configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py
 
 # Hookを削除する
-uv run --no-sync --python 3.13 python configure_hooks.py --remove
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --remove
 
 # すべてのテストを実行する
-uv run --no-sync --python 3.13 python -m unittest discover -s tests -p "test_*.py"
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python -m unittest discover -s tests -p "test_*.py"
 
 # 型チェックとリンティングを実行する
-uv run --no-sync --python 3.13 python -m mypy src/ configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python -m mypy src/ configure_hooks.py
 ruff check src/ configure_hooks.py utils/
 ruff format src/ configure_hooks.py utils/
 
@@ -718,22 +718,175 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 
 # 新アーキテクチャ用コマンド
 # 新アーキテクチャでのHook設定（main.py使用）
-uv run --no-sync --python 3.13 python configure_hooks.py --use-new-architecture
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py
 
 # 新アーキテクチャの動作テスト
-uv run --no-sync --python 3.13 python src/main.py < test_event.json
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python src/main.py < test_event.json
 
 # 🚀 END-TO-END VALIDATION SYSTEM (完全統合テスト)
 # エンドツーエンド検証 - Hot Reload + Discord API 統合テスト
-uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
 
 # 設定ホットリロード機能テスト
-uv run --no-sync --python 3.13 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
 
 # 既存Discord API検証ツール単体実行
-uv run --no-sync --python 3.13 python src/utils/discord_api_validator.py
-uv run --no-sync --python 3.13 python utils/check_discord_access.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python src/utils/discord_api_validator.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python utils/check_discord_access.py
 ```
+
+## 🔧 Discord Notification Configuration
+
+### 📱 Available Message Types
+
+The Discord notifier supports 5 main event types with distinct visual styling:
+
+1. **PreToolUse** (🔵 Blue) - Triggered before any tool executes
+2. **PostToolUse** (🟢 Green) - Triggered after tool execution completes
+3. **Notification** (🟠 Orange) - System notifications and important messages
+4. **Stop** (⚫ Gray) - Session end notifications
+5. **SubagentStop** (🟣 Purple) - Subagent completion notifications
+
+### ⚙️ Configuration Methods
+
+#### Event-Level Filtering
+
+**Enable specific events only (whitelist approach):**
+```bash
+# Only send Stop and Notification events
+DISCORD_ENABLED_EVENTS=Stop,Notification
+
+# Only send tool execution events
+DISCORD_ENABLED_EVENTS=PreToolUse,PostToolUse
+```
+
+**Disable specific events (blacklist approach):**
+```bash
+# Send all events except PreToolUse and PostToolUse
+DISCORD_DISABLED_EVENTS=PreToolUse,PostToolUse
+
+# Disable only session end notifications
+DISCORD_DISABLED_EVENTS=Stop,SubagentStop
+```
+
+#### Tool-Level Filtering
+
+**Disable notifications for specific tools:**
+```bash
+# Don't send notifications for Read, Edit, TodoWrite, and Grep tools
+DISCORD_DISABLED_TOOLS=Read,Edit,TodoWrite,Grep
+
+# Common development setup - exclude file operations
+DISCORD_DISABLED_TOOLS=Read,Write,Edit,MultiEdit,LS
+```
+
+**Available tools include:** Bash, Read, Write, Edit, MultiEdit, Glob, Grep, LS, Task, WebFetch, TodoWrite, and others.
+
+### 📁 Configuration File Location
+
+**Primary configuration file:** `~/.claude/hooks/.env.discord`
+
+**Example complete configuration:**
+```bash
+# Discord Connection (required)
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123456789/abcdef
+
+# Event filtering (optional)
+DISCORD_ENABLED_EVENTS=PreToolUse,PostToolUse,Notification,Stop,SubagentStop
+DISCORD_DISABLED_EVENTS=
+DISCORD_DISABLED_TOOLS=Read,Edit,TodoWrite,Grep
+
+# Advanced options (optional)
+DISCORD_MENTION_USER_ID=176716772664279040
+DISCORD_USE_THREADS=true
+DISCORD_DEBUG=1
+```
+
+### 🔄 Configuration Precedence
+
+The system follows this hierarchy (highest to lowest priority):
+
+1. **Environment variables** (highest priority)
+2. **`.env.discord` file values**
+3. **Built-in defaults** (all events enabled)
+
+### 💡 Common Configuration Examples
+
+#### Minimal Notifications (Essentials Only)
+```bash
+# Only important system messages
+DISCORD_ENABLED_EVENTS=Notification,Stop
+```
+
+#### Development Mode (Exclude File Operations)
+```bash
+# Reduce noise from file operations
+DISCORD_DISABLED_TOOLS=Read,Write,Edit,MultiEdit,LS,TodoWrite
+```
+
+#### Production Mode (Comprehensive Monitoring)
+```bash
+# All events enabled with user mentions
+DISCORD_ENABLED_EVENTS=PreToolUse,PostToolUse,Notification,Stop,SubagentStop
+DISCORD_MENTION_USER_ID=your_discord_user_id
+```
+
+#### Focus Mode (Tool Execution Only)
+```bash
+# Only see when tools start and complete
+DISCORD_ENABLED_EVENTS=PreToolUse,PostToolUse
+```
+
+### 🔥 Hot Reload Support
+
+The new architecture includes `ConfigFileWatcher` that automatically detects changes to the configuration file:
+
+```bash
+# Test configuration changes without restart
+echo 'DISCORD_DISABLED_TOOLS=Read,Edit' >> ~/.claude/hooks/.env.discord
+
+# Configuration is automatically reloaded
+# No Claude Code restart required
+```
+
+### 📊 Configuration Validation
+
+The system includes comprehensive validation:
+
+```bash
+# Test configuration validity
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
+
+# Validate end-to-end functionality
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+```
+
+### 🛠️ Advanced Configuration Options
+
+#### User Mentions
+```bash
+# Automatic user mentions for important events
+DISCORD_MENTION_USER_ID=your_discord_user_id
+```
+
+#### Thread Support
+```bash
+# Create Discord threads for session organization
+DISCORD_USE_THREADS=true
+```
+
+#### Debug Logging
+```bash
+# Enable detailed logging for troubleshooting
+DISCORD_DEBUG=1
+```
+
+### 🚨 Important Notes
+
+- **Graceful Degradation**: Invalid configurations never block Claude Code operation
+- **Error Reporting**: Configuration errors are logged but don't prevent execution
+- **Performance**: Filtering happens before message formatting for optimal performance
+- **Thread Safety**: Configuration changes are safely applied during runtime
 
 ## 🎯 End-to-End Validation System
 
@@ -741,7 +894,7 @@ uv run --no-sync --python 3.13 python utils/check_discord_access.py
 
 **基本実行 - 即座に完全テスト開始**
 ```bash
-uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
 ```
 
 このコマンドは、あなたが要求した「Discord API使って自分でメッセージ受信して検証する過程」を含む完全な統合テストを実行します。
@@ -804,14 +957,14 @@ echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/hooks/.env.discord
 #### 問題発生時の系統的診断
 ```bash
 # 1. 基本動作確認
-uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
 
 # 2. 失敗時: 個別コンポーネント確認
-uv run --no-sync --python 3.13 python configure_hooks.py --reload  # 設定読み込み確認
-uv run --no-sync --python 3.13 python utils/check_discord_access.py  # Discord API アクセス確認
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload  # 設定読み込み確認
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python utils/check_discord_access.py  # Discord API アクセス確認
 
 # 3. Hook単体実行テスト
-echo '{"session_id":"test","tool_name":"Test"}' | CLAUDE_HOOK_EVENT=PreToolUse uv run --no-sync --python 3.13 python src/main.py
+echo '{"session_id":"test","tool_name":"Test"}' | CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python src/main.py
 
 # 4. 詳細ログ確認
 tail -f ~/.claude/hooks/logs/discord_notifier_*.log
@@ -867,16 +1020,16 @@ Overall Result: 🎉 PASSED
 #### リアルタイム設定変更テスト
 ```bash
 # 1. ベースライン確認
-uv run --no-sync --python 3.13 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
 
 # 2. 設定変更（例：無効化ツール変更）
 echo 'DISCORD_DISABLED_TOOLS=Write,Edit' >> ~/.claude/hooks/.env.discord
 
 # 3. 変更の即座反映確認
-uv run --no-sync --python 3.13 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
 
 # 4. 実際のHook動作での設定反映確認
-uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
 ```
 
 ### 📊 既存Discord API Validator統合
@@ -889,7 +1042,7 @@ uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
 **使用例 - 直接API検証**:
 ```bash
 # 単体でDiscord API検証実行
-uv run --no-sync --python 3.13 python src/utils/discord_api_validator.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python src/utils/discord_api_validator.py
 
 # 実行結果例
 🚀 Starting Discord API validation for channel 1391964875600822366
@@ -912,7 +1065,7 @@ Discord Notifier Messages Found: True
 set -e
 
 echo "🔄 Running Discord Notifier End-to-End Validation..."
-uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
 
 if [ $? -eq 0 ]; then
     echo "✅ All validation tests passed!"
@@ -925,7 +1078,7 @@ fi
 #### 定期実行設定例
 ```bash
 # crontab設定例（毎時実行）
-0 * * * * cd /path/to/project && uv run --no-sync --python 3.13 python configure_hooks.py --validate-end-to-end >> /tmp/discord-validation.log 2>&1
+0 * * * * cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --validate-end-to-end >> /tmp/discord-validation.log 2>&1
 ```
 
 ## 🛠️ 実装時トラブルシューティング
@@ -1149,10 +1302,10 @@ ls 2025-*-investigation-*.md | head -3
 #### 新アーキテクチャで問題が発生した場合
 ```bash
 # 1. 即座に古い実装に戻す
-uv run --no-sync --python 3.13 python configure_hooks.py  # --use-new-architectureフラグなし
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --use-legacy
 
 # 2. 動作確認
-echo '{"test": "data"}' | CLAUDE_HOOK_EVENT=PreToolUse uv run --no-sync --python 3.13 python src/discord_notifier.py
+echo '{"test": "data"}' | CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python src/discord_notifier.py
 
 # 3. Hook再起動要求
 echo "Claude Codeの再起動が必要です"
@@ -1161,13 +1314,13 @@ echo "Claude Codeの再起動が必要です"
 #### 完全にHookが動作しなくなった場合
 ```bash
 # 1. Hook設定を完全削除
-uv run --no-sync --python 3.13 python configure_hooks.py --remove
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --remove
 
 # 2. 設定ファイル確認
 ls -la ~/.claude/hooks/.env.discord
 
 # 3. 古い実装で再設定
-uv run --no-sync --python 3.13 python configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --use-legacy
 
 # 4. Claude Code再起動後、動作確認
 ```
@@ -1177,7 +1330,7 @@ uv run --no-sync --python 3.13 python configure_hooks.py
 #### 問題発生時に必ず実行すべきコマンド
 ```bash
 # Python環境情報
-uv run --no-sync --python 3.13 python --version
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python --version
 
 # 重要ファイル存在確認
 ls -la src/discord_notifier.py src/main.py src/core/config.py
@@ -1199,7 +1352,7 @@ tail -20 ~/.claude/hooks/logs/discord_notifier_*.log
 
 #### 必須チェック項目（すべて✅になったら完了）
 - [ ] `src/main.py` が作成され、構文チェックが通る
-- [ ] `uv run --no-sync --python 3.13 python configure_hooks.py --use-new-architecture` がエラーなく実行される
+- [ ] `cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py` がエラーなく実行される
 - [ ] Hook設定がmain.pyを指している（~/.claude/settings.json確認）
 - [ ] 実際のHook実行でDiscordにメッセージが送信される
 - [ ] Claude Code再起動後も正常動作する
@@ -1207,10 +1360,10 @@ tail -20 ~/.claude/hooks/logs/discord_notifier_*.log
 #### 動作テスト手順
 ```bash
 # 1. 構文チェック
-uv run --no-sync --python 3.13 python -m py_compile src/main.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python -m py_compile src/main.py
 
 # 2. Hook設定
-uv run --no-sync --python 3.13 python configure_hooks.py --use-new-architecture
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py
 
 # 3. Claude Code再起動（マニュアル操作）
 
