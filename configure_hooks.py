@@ -107,7 +107,7 @@ def should_keep_hook(hook: HookConfig) -> bool:
     """Check if a hook should be kept (i.e., it's not a discord notifier hook).
 
     This function safely navigates the hook structure to check if it contains
-    a discord_notifier.py command, using type guards at each level.
+    a discord_notifier.py or main.py command, using type guards at each level.
     """
     if not is_hook_config(hook):
         return True
@@ -123,15 +123,17 @@ def should_keep_hook(hook: HookConfig) -> bool:
         if part.endswith(".py"):
             try:
                 script_path = Path(part)
-                # Use full_match for pattern checking
-                if script_path.full_match("**/discord_notifier.py"):
+                # Use full_match for pattern checking - check both legacy and new architecture
+                if (script_path.full_match("**/discord_notifier.py") or 
+                    script_path.full_match("**/main.py")):
                     return False
             except (ValueError, TypeError):
                 # Invalid path, continue checking other parts
                 continue
 
-    # Fallback to simple string check
-    return "discord_notifier.py" not in command
+    # Fallback to simple string check for both legacy and new architecture
+    return ("discord_notifier.py" not in command and 
+            "claude-code-event-notifier-bugfix/src/main.py" not in command)
 
 
 def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
