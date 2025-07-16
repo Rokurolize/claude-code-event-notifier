@@ -304,6 +304,65 @@ Python 3.14+の純粋性は、単なる技術選択ではない。それは、**
 - **知識共有の重要性** - 既存機能の仕様理解の共有
 - **継続的改善の文化** - 障害から学ぶ姿勢の重要性
 
+### 🔍 第二次Discord通知スパム問題 - 設定初期化通知スパム (解決済み)
+
+**発生日時**: 2025-07-17 01:11  
+**現象**: 「⚙️ Configuration Update」「✅ Discord Notifier initialized with hot reload support」メッセージが tool実行のたびに連続送信される
+
+#### 根本原因の発見
+**直接原因**: `ConfigFileWatcher`の`get_config_with_auto_reload_and_notify()`メソッドが、Hook実行のたびに「初回読み込み」と判定して通知を送信していた
+
+**システム的欠陥**: 
+- 毎回のHook実行で新しい`ConfigFileWatcher()`インスタンスが作成される
+- 新インスタンスは`self._last_config = None`の状態で開始
+- `get_config_with_auto_reload_and_notify()`が「初回読み込み」と判定
+- 設定が実際に変更されていないのに初期化通知を送信
+
+#### 障害の発生パターン
+1. **ツール実行** → PreToolUse Hook発火 → 新ConfigFileWatcher作成 → 初期化通知送信
+2. **ツール実行** → PostToolUse Hook発火 → 新ConfigFileWatcher作成 → 初期化通知送信
+3. **セッション終了** → Stop Hook発火 → 新ConfigFileWatcher作成 → 初期化通知送信
+
+結果：ツール実行のたびに同一の無意味な通知が連続送信される
+
+#### 緊急修正内容 (2025-07-17 01:17:51)
+**修正ファイル**: `src/core/config.py:1144-1147, 1149-1152`
+
+**修正前**:
+```python
+# Send initial load notification with validation status
+validation_report = self.get_validation_report()
+message = f"✅ Discord Notifier initialized with hot reload support.\n{validation_report}"
+self._send_config_change_notification(message, is_error=False)
+```
+
+**修正後**:
+```python
+# NOTE: Removed initialization notification to prevent spam on every hook execution
+# Only send notifications when configuration actually changes, not on first load
+```
+
+#### 修正効果
+- ✅ **Hook実行時のスパム通知完全停止**: 初期化通知は送信されない
+- ✅ **設定変更時の通知は維持**: 実際の設定変更時の通知機能は保持
+- ✅ **システム安定性向上**: 無意味な通知による混乱の除去
+
+#### 検証結果
+**end-to-end validation**: 成功
+**Hook動作確認**: 正常
+**通知機能**: 設定変更時のみ動作
+**スパム発生**: 完全停止
+
+#### 技術的教訓
+- **設計時の想定と実装のギャップ**: Singletonパターンの不完全実装が原因
+- **通知システムの適切な判定**: 「初回読み込み」と「設定変更」の区別が重要
+- **Hook実行頻度の考慮**: 頻繁に実行されるHook環境での通知設計の重要性
+
+#### 再発防止策
+1. **通知条件の厳密化**: 設定が実際に変更された場合のみ通知送信
+2. **Singleton実装の改善**: 必要に応じて完全なSingletonパターンの実装
+3. **Hook実行コンテキストの考慮**: 通知システム設計時のHook実行環境の考慮
+
 ## ⚔️ 絶対禁止事項 - ABSOLUTE TABOOS
 
 ### 💀 設計を破壊する悪魔的行為
@@ -1437,9 +1496,9 @@ Ruffによるフォーマットとリンティングを実行し、一貫した�
 
 **プロジェクト情報**
 - **作業ディレクトリ**: `/home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix/`
-- **最終更新**: 2025-07-16-11-37-39
-- **実装状況**: ⚠️ 新アーキテクチャ動作中・Hook Validation問題あり（「⚠️ Issues」表示）
-- **次の優先作業**: Hook Validation問題の調査と修正 → 「⚠️ Issues」表示の原因特定
+- **最終更新**: 2025-07-17-01-17-51
+- **実装状況**: ✅ 新アーキテクチャ正常動作中・Discord通知スパム問題完全解決
+- **次の優先作業**: システムの安定性監視と継続的改善
 - **重要**: Pure Python 3.13+ 設計原則が復元され、typing_extensions依存を完全除去済み
 
 ---

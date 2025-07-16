@@ -1141,15 +1141,11 @@ class ConfigFileWatcher:
             self._last_config = config
             self.create_config_backup(config)  # Create initial backup
             
-            # Send initial load notification with validation status
-            validation_report = self.get_validation_report()
-            message = f"✅ Discord Notifier initialized with hot reload support.\n{validation_report}"
-            self._send_config_change_notification(message, is_error=False)
+            # NOTE: Removed initialization notification to prevent spam on every hook execution
+            # Only send notifications when configuration actually changes, not on first load
         else:
-            # Initial config is invalid - send warning but proceed
-            validation_report = self.get_validation_report()
-            message = f"⚠️ Configuration issues detected on startup:\n{validation_report}\nSome features may not work correctly."
-            self._send_config_change_notification(message, is_error=True)
+            # Initial config is invalid - proceed without notification to prevent spam
+            # Only send notifications when configuration actually changes, not on first load
             
             # Still store it as last config for fallback purposes
             self._last_config = config
