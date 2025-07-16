@@ -47,7 +47,11 @@ class SearchToolInput(TypedDict, total=False):
 
 
 class TaskToolInput(TypedDict, total=False):
-    """Input structure for Task tool."""
+    """Input structure for Task tool - matches actual Claude Code Task tool format."""
+    description: str  # Task name/description
+    prompt: str       # Actual prompt/instructions content
+    
+    # Legacy fields (may still be used)
     instructions: str
     parent: str
 

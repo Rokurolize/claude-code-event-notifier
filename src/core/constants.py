@@ -52,7 +52,7 @@ class EventTypes(str, Enum):
 
 @dataclass(frozen=True)
 class TruncationLimits:
-    """Character limits for truncation."""
+    """Enhanced character limits for truncation with conversation tracking support."""
 
     COMMAND_PREVIEW: int = 100
     COMMAND_FULL: int = 500
@@ -62,6 +62,18 @@ class TruncationLimits:
     ERROR_PREVIEW: int = 300
     RESULT_PREVIEW: int = 300
     JSON_PREVIEW: int = 400
+    
+    # Discord field limits
+    TITLE: int = 256
+    DESCRIPTION: int = 2048  # 発言内容表示のため増量
+    FIELD_NAME: int = 256
+    FIELD_VALUE: int = 1024
+    FOOTER_TEXT: int = 2048
+    
+    # 新規追加 - 会話追跡機能用
+    CONVERSATION_LOG: int = 1500  # 会話ログ専用
+    RESPONSE_CONTENT: int = 1500  # 回答内容専用
+    MARKDOWN_EXPORT: int = 10000  # Markdownエクスポート専用
 
 
 @dataclass(frozen=True)
@@ -121,6 +133,7 @@ ENV_THREAD_PREFIX: Final[str] = "DISCORD_THREAD_PREFIX"
 ENV_MENTION_USER_ID: Final[str] = "DISCORD_MENTION_USER_ID"
 ENV_ENABLED_EVENTS: Final[str] = "DISCORD_ENABLED_EVENTS"
 ENV_DISABLED_EVENTS: Final[str] = "DISCORD_DISABLED_EVENTS"
+ENV_DISABLED_TOOLS: Final[str] = "DISCORD_DISABLED_TOOLS"
 ENV_THREAD_STORAGE_PATH: Final[str] = "DISCORD_THREAD_STORAGE_PATH"
 ENV_THREAD_CLEANUP_DAYS: Final[str] = "DISCORD_THREAD_CLEANUP_DAYS"
 ENV_HOOK_EVENT: Final[str] = "CLAUDE_HOOK_EVENT"

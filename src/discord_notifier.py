@@ -97,6 +97,18 @@ except ImportError:
         # ThreadStorage not available
         THREAD_STORAGE_AVAILABLE = False
 
+# Try to import version_info utilities
+try:
+    from src.utils.version_info import format_version_footer
+except ImportError:
+    try:
+        # When run as a script
+        from utils.version_info import format_version_footer
+    except ImportError:
+        # Fallback function if version_info not available
+        def format_version_footer() -> str:
+            return "Discord Notifier • Version unavailable"
+
         class ThreadStorage:  # type: ignore[no-redef]
             """Dummy ThreadStorage class when imports fail."""
 
@@ -650,9 +662,14 @@ class GrepToolInput(SearchToolInputBase):
 
 
 class TaskToolInput(ToolInputBase):
-    """Task tool input structure."""
+    """Task tool input structure - matches actual Claude Code Task tool format."""
 
-    prompt: str
+    description: str  # Task name/description
+    prompt: str       # Actual prompt/instructions content
+    
+    # Legacy fields (may still be used)
+    instructions: str
+    parent: str
 
 
 class WebToolInput(ToolInputBase):
@@ -798,12 +815,24 @@ class StopEventData(StopEventDataBase):
 
 
 class SubagentStopEventData(StopEventData):
-    """SubagentStop event data structure."""
+    """Enhanced SubagentStop event data structure with conversation tracking."""
 
+    # 既存フィールド（古い形式）
     task_description: NotRequired[str]
     result: NotRequired[str | dict[str, str | int | float | bool]]
     execution_time: NotRequired[float]
     status: NotRequired[str]
+    
+    # 新規追加フィールド（拡張版）
+    subagent_id: NotRequired[str]  # サブエージェントのID
+    duration_seconds: NotRequired[int]  # 実行時間（秒）
+    tools_used: NotRequired[int]  # 使用したツール数
+    conversation_log: NotRequired[str]  # 実際の発言内容
+    response_content: NotRequired[str]  # サブエージェントの回答
+    interaction_history: NotRequired[list[str]]  # 対話履歴
+    message_id: NotRequired[str]  # 一意ID
+    context_summary: NotRequired[str]  # コンテキストの要約
+    error_messages: NotRequired[list[str]]  # エラーメッセージ
 
 
 # Union type for all event data
@@ -3240,7 +3269,14 @@ def format_event(
 ) -> DiscordMessage:
     """Format Claude Code event into Discord embed with length limits."""
     timestamp = datetime.now(UTC).isoformat()
-    session_id = event_data.get("session_id", "unknown")[:8]
+    # Enhanced Session ID extraction with multiple fallback options
+    session_id = (
+        event_data.get("session_id") or
+        event_data.get("Session") or  
+        event_data.get("session") or
+        "unknown"
+    )
+    # Note: Don't truncate to 8 chars anymore - keep full session ID for better tracking
 
     # Get formatter for event type
     formatter = registry.get_formatter(event_type)
@@ -3262,7 +3298,9 @@ def format_event(
     else:
         embed["color"] = DiscordColors.DEFAULT
 
-    embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type}"}
+    # Enhanced footer with version information
+    version_footer = format_version_footer()
+    embed["footer"] = {"text": f"Session: {session_id} | Event: {event_type} | {version_footer}"}
 
     # Create message with embeds
     message: DiscordMessage = {"embeds": [embed]}
