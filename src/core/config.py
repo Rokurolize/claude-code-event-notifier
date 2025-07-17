@@ -698,24 +698,17 @@ class ConfigLoader:
         # 1. Start with defaults
         config = ConfigLoader._get_default_config()
 
-        # 2. Load from .env file with standardized naming convention fallback
-        # Priority order: Claude AI standard (.env) → Migration path → Legacy compatibility
-        env_files = [
-            Path(".env"),                                    # Project root (dotenv standard)
-            Path.home() / ".claude" / ".env",               # New standard: Claude AI + dotenv
-            Path.home() / ".claude" / "hooks" / ".env",     # Migration path
-            Path.home() / ".claude" / "hooks" / ".env.discord"  # Legacy compatibility
-        ]
+        # 2. Load from single standard configuration file
+        config_file = Path.home() / ".claude" / ".env"
         
-        for env_file in env_files:
-            if env_file.exists():
-                try:
-                    env_vars = parse_env_file(env_file)
-                    config = ConfigLoader._apply_env_file(config, env_vars)
-                except ConfigurationError:
-                    # If .env file parsing fails, continue with defaults
-                    # This ensures we don't block Claude Code
-                    pass
+        if config_file.exists():
+            try:
+                env_vars = parse_env_file(config_file)
+                config = ConfigLoader._apply_env_file(config, env_vars)
+            except ConfigurationError:
+                # If .env file parsing fails, continue with defaults
+                # This ensures we don't block Claude Code
+                pass
 
         # 3. Environment variables override file config
         return ConfigLoader._apply_env_vars(config)
@@ -1273,12 +1266,9 @@ class ConfigFileWatcher:
         Returns:
             Current configuration (potentially reloaded)
         """
-        # Set up tracking for standard config files on first call
+        # Set up tracking for standard config file on first call
         if not self._config_metadata:
-            self.track_config_file(Path(".env"))
             self.track_config_file(Path("~/.claude/.env").expanduser())
-            self.track_config_file(Path("~/.claude/hooks/.env").expanduser())
-            self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
 
         # Check if any config files have changed
         if self.has_config_changed():
@@ -1331,12 +1321,9 @@ class ConfigFileWatcher:
         Returns:
             Current configuration (potentially reloaded)
         """
-        # Set up tracking for standard config files on first call
+        # Set up tracking for standard config file on first call
         if not self._config_metadata:
-            self.track_config_file(Path(".env"))
             self.track_config_file(Path("~/.claude/.env").expanduser())
-            self.track_config_file(Path("~/.claude/hooks/.env").expanduser())
-            self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
 
         # Check if any config files have changed
         if self.has_config_changed():

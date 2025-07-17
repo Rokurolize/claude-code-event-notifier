@@ -13,7 +13,7 @@ python3 configure_hooks.py
 ### 2. Set Up Discord Credentials
 
 ```bash
-cp ~/.claude/hooks/.env.discord.example ~/.claude/.env
+cp .env.example ~/.claude/.env
 # Edit the file with your Discord webhook URL or bot token
 ```
 

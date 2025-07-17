@@ -304,16 +304,18 @@ def _handle_install_command(
 
     print("✓ Updated settings.json")
 
-    # Create .env from template if it doesn't exist
-    env_file = Path.cwd() / ".env"
+    # Create ~/.claude/.env from template if it doesn't exist
+    standard_env_file = Path.home() / ".claude" / ".env"
     env_example = Path.cwd() / ".env.example"
 
-    if not env_file.exists() and env_example.exists():
-        # Copy .env.example to .env
-        env_file.write_text(env_example.read_text())
-        print("✓ Created .env from template")
-    elif not env_file.exists():
-        print("⚠️  Warning: No .env file found. Copy .env.example to .env and configure")
+    if not standard_env_file.exists() and env_example.exists():
+        # Ensure ~/.claude directory exists
+        standard_env_file.parent.mkdir(exist_ok=True)
+        # Copy .env.example to ~/.claude/.env
+        standard_env_file.write_text(env_example.read_text())
+        print("✓ Created ~/.claude/.env from template")
+    elif not standard_env_file.exists():
+        print("⚠️  Warning: No ~/.claude/.env file found. Copy .env.example to ~/.claude/.env and configure")
 
     print("\n✅ Installation complete!")
 
@@ -339,14 +341,14 @@ def _handle_install_command(
         print("  • Full feature parity with new architecture")
 
     print("\nNext steps:")
-    if not env_file.exists():
-        print("1. Copy .env.example to .env")
-        print("2. Edit .env with your Discord credentials")
+    if not standard_env_file.exists():
+        print("1. Copy .env.example to ~/.claude/.env")
+        print("2. Edit ~/.claude/.env with your Discord credentials")
         print("3. Restart Claude Code")
     else:
-        print("1. Edit .env with your Discord credentials (if not already configured)")
+        print("1. Edit ~/.claude/.env with your Discord credentials (if not already configured)")
         print("2. Restart Claude Code")
-    print("\nNote: Environment variables take precedence over .env file.")
+    print("\nNote: Environment variables take precedence over ~/.claude/.env file.")
 
     if use_new_architecture:
         print("\n💡 To switch to legacy implementation, run:")
@@ -660,14 +662,13 @@ def _handle_reload_command() -> int:
         # Import ConfigFileWatcher
         from src.core.config import ConfigFileWatcher, ConfigValidator
 
-        print("📁 Checking configuration files...")
-        config_files = [Path(".env"), Path("~/.claude/.env").expanduser(), Path("~/.claude/hooks/.env").expanduser(), Path("~/.claude/hooks/.env.discord").expanduser()]
+        print("📁 Checking configuration file...")
+        config_file = Path("~/.claude/.env").expanduser()
 
-        for config_file in config_files:
-            if config_file.exists():
-                print(f"  ✅ {config_file}")
-            else:
-                print(f"  ❌ {config_file} (not found)")
+        if config_file.exists():
+            print(f"  ✅ {config_file}")
+        else:
+            print(f"  ❌ {config_file} (not found)")
 
         print()
         print("🔍 Testing configuration loading...")
