@@ -379,20 +379,68 @@ def format_subagent_stop(event_data: SubagentStopEventData, session_id: str) -> 
     add_field(desc_parts, "Session", session_id, code=True)  # 完全形で表示
     add_field(desc_parts, "Completed at", datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"))
 
-    # 3. サブエージェント情報
-    if "subagent_id" in event_data:
+    # 3. transcript ファイルからサブエージェント情報を抽出
+    transcript_path = event_data.get("transcript_path", "")
+    if transcript_path:
+        try:
+            from ..utils.transcript_analyzer import TranscriptAnalyzer
+            analyzer = TranscriptAnalyzer(logger)
+            latest_response = analyzer.get_latest_subagent_response(transcript_path)
+            
+            if latest_response:
+                # サブエージェント情報
+                add_field(desc_parts, "Subagent ID", latest_response["subagent_id"])
+                raw_content["subagent_id"] = latest_response["subagent_id"]
+                
+                # タスク情報
+                if latest_response["task_description"]:
+                    task_preview = truncate_string(latest_response["task_description"], TruncationLimits.FIELD_VALUE)
+                    add_field(desc_parts, "Task", task_preview)
+                    raw_content["task_description"] = latest_response["task_description"]
+                
+                # 発言内容の追跡（新機能）
+                if latest_response["response_content"]:
+                    response_preview = truncate_string(latest_response["response_content"], TruncationLimits.DESCRIPTION)
+                    desc_parts.append(f"**Response:**\n{response_preview}")
+                    raw_content["response_content"] = latest_response["response_content"]
+                
+                # 会話ログ
+                if latest_response["conversation_log"]:
+                    conversation_preview = truncate_string(latest_response["conversation_log"], TruncationLimits.DESCRIPTION)
+                    desc_parts.append(f"**Conversation:**\n{conversation_preview}")
+                    raw_content["conversation_log"] = latest_response["conversation_log"]
+                
+                # メトリクス情報
+                if latest_response["duration_seconds"]:
+                    add_field(desc_parts, "Duration", f"{latest_response['duration_seconds']:.2f} seconds")
+                    raw_content["duration_seconds"] = str(latest_response["duration_seconds"])
+                
+                if latest_response["tools_used"]:
+                    add_field(desc_parts, "Tools Used", str(latest_response["tools_used"]))
+                    raw_content["tools_used"] = str(latest_response["tools_used"])
+                
+                logger.info(f"Successfully extracted subagent response from transcript: {latest_response['subagent_id']}")
+            else:
+                logger.warning(f"No subagent response found in transcript: {transcript_path}")
+                
+        except Exception as e:
+            logger.error(f"Error analyzing transcript file {transcript_path}: {e}")
+            # フォールバック: 基本情報のみ表示
+            desc_parts.append("*Unable to extract subagent details from transcript*")
+
+    # 4. フォールバック: 既存のフィールドがある場合は使用
+    if "subagent_id" in event_data and not raw_content.get("subagent_id"):
         subagent_id = event_data.get("subagent_id", "unknown")
         add_field(desc_parts, "Subagent ID", subagent_id)
         raw_content["subagent_id"] = subagent_id
 
-    # 4. 発言内容の追跡（新機能）
-    if "conversation_log" in event_data:
+    if "conversation_log" in event_data and not raw_content.get("conversation_log"):
         conversation = event_data.get("conversation_log", "")
         conversation_preview = truncate_string(str(conversation), TruncationLimits.DESCRIPTION)
         desc_parts.append(f"**Conversation:**\n{conversation_preview}")
         raw_content["conversation_log"] = conversation
 
-    if "response_content" in event_data:
+    if "response_content" in event_data and not raw_content.get("response_content"):
         response = event_data.get("response_content", "")
         response_preview = truncate_string(str(response), TruncationLimits.DESCRIPTION)
         desc_parts.append(f"**Response:**\n{response_preview}")
