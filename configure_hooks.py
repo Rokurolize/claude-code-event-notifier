@@ -615,7 +615,7 @@ def _handle_end_to_end_validation_command() -> int:
             print("     3. Check Discord channel for notifications")
             if webhook_mode:
                 print("  📋 To enable full API verification:")
-                print("     1. Configure DISCORD_BOT_TOKEN in ~/.claude/hooks/.env.discord")
+                print("     1. Configure DISCORD_BOT_TOKEN in ~/.claude/.env")
                 print("     2. Ensure bot has 'Read Message History' permissions")
                 print("     3. Re-run validation for complete API verification")
         else:
@@ -661,7 +661,7 @@ def _handle_reload_command() -> int:
         from src.core.config import ConfigFileWatcher, ConfigValidator
 
         print("📁 Checking configuration files...")
-        config_files = [Path(".env"), Path("~/.claude/hooks/.env.discord").expanduser()]
+        config_files = [Path(".env"), Path("~/.claude/.env").expanduser(), Path("~/.claude/hooks/.env").expanduser(), Path("~/.claude/hooks/.env.discord").expanduser()]
 
         for config_file in config_files:
             if config_file.exists():

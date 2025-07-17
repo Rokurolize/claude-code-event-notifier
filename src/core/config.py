@@ -26,6 +26,23 @@ from .constants import (
     ENV_DISABLED_EVENTS,
     ENV_DISABLED_TOOLS,
     ENV_ENABLED_EVENTS,
+    # Individual event controls
+    ENV_EVENT_PRETOOLUSE,
+    ENV_EVENT_POSTTOOLUSE,
+    ENV_EVENT_NOTIFICATION,
+    ENV_EVENT_STOP,
+    ENV_EVENT_SUBAGENT_STOP,
+    # Individual tool controls
+    ENV_TOOL_READ,
+    ENV_TOOL_EDIT,
+    ENV_TOOL_MULTIEDIT,
+    ENV_TOOL_TODOWRITE,
+    ENV_TOOL_GREP,
+    ENV_TOOL_GLOB,
+    ENV_TOOL_LS,
+    ENV_TOOL_BASH,
+    ENV_TOOL_TASK,
+    ENV_TOOL_WEBFETCH,
     ENV_MENTION_USER_ID,
     ENV_THREAD_CLEANUP_DAYS,
     ENV_THREAD_PREFIX,
@@ -64,9 +81,37 @@ class NotificationConfiguration(TypedDict):
     debug: bool
 
 
+class IndividualEventConfiguration(TypedDict, total=False):
+    """Individual event ON/OFF configuration (recommended approach)."""
+    
+    # Event controls - true=enabled, false=disabled, None=use default
+    event_pretooluse: bool | None
+    event_posttooluse: bool | None  
+    event_notification: bool | None
+    event_stop: bool | None
+    event_subagent_stop: bool | None
+
+
+class IndividualToolConfiguration(TypedDict, total=False):
+    """Individual tool ON/OFF configuration (recommended approach)."""
+    
+    # Tool controls - true=enabled, false=disabled, None=use default
+    tool_read: bool | None
+    tool_edit: bool | None
+    tool_multiedit: bool | None
+    tool_todowrite: bool | None
+    tool_grep: bool | None
+    tool_glob: bool | None
+    tool_ls: bool | None
+    tool_bash: bool | None
+    tool_task: bool | None
+    tool_webfetch: bool | None
+
+
 class EventFilterConfiguration(TypedDict):
     """Event filtering configuration."""
 
+    # Legacy filtering (maintained for backward compatibility)
     enabled_events: list[str] | None
     disabled_events: list[str] | None
     disabled_tools: list[str] | None
@@ -77,6 +122,8 @@ class Config(
     ThreadConfiguration,
     NotificationConfiguration,
     EventFilterConfiguration,
+    IndividualEventConfiguration,
+    IndividualToolConfiguration,
 ):
     """Complete configuration combining all aspects."""
 
@@ -213,8 +260,56 @@ def parse_tool_list(tool_list_str: str) -> list[str]:
     return [tool for tool in tools if tool]  # Remove empty strings
 
 
+def parse_bool_env(value: str | None) -> bool | None:
+    """Parse environment variable string to boolean value.
+    
+    Converts string values to boolean using flexible parsing rules.
+    Returns None if value is None or empty, allowing for default handling.
+    
+    Args:
+        value: Environment variable string value
+        
+    Returns:
+        True, False, or None (for default handling)
+        
+    Examples:
+        >>> parse_bool_env("true")
+        True
+        >>> parse_bool_env("false") 
+        False
+        >>> parse_bool_env("1")
+        True
+        >>> parse_bool_env("0")
+        False
+        >>> parse_bool_env("")
+        None
+        >>> parse_bool_env(None)
+        None
+    """
+    if not value:
+        return None
+        
+    lower_value = value.lower().strip()
+    
+    # Handle common true values
+    if lower_value in ("true", "1", "yes", "on", "enabled"):
+        return True
+        
+    # Handle common false values  
+    if lower_value in ("false", "0", "no", "off", "disabled"):
+        return False
+        
+    # Invalid value - return None for default handling
+    return None
+
+
 def should_process_tool(tool_name: str, config: Config) -> bool:
     """Determine if a tool should be processed based on filtering configuration.
+
+    Implements tool filtering logic with the following precedence:
+    1. Individual tool controls (DISCORD_TOOL_*) - highest priority
+    2. Legacy disabled_tools list (DISCORD_DISABLED_TOOLS)
+    3. Default: process all tools
 
     Args:
         tool_name: The tool name to check (e.g., "Read", "Edit", "TodoWrite")
@@ -222,14 +317,74 @@ def should_process_tool(tool_name: str, config: Config) -> bool:
 
     Returns:
         bool: True if the tool should be processed, False otherwise
+
+    Examples:
+        >>> # Individual controls take highest priority
+        >>> config = {"tool_read": True, "disabled_tools": ["Read"]}
+        >>> should_process_tool("Read", config)
+        True
+        >>>
+        >>> # Legacy settings used when individual controls not set
+        >>> config = {"disabled_tools": ["Read", "Edit"]}
+        >>> should_process_tool("Read", config)
+        False
+        >>> should_process_tool("Bash", config)
+        True
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # 1. Check individual tool controls first (highest priority)
+    individual_setting = None
+    individual_key = None
+    if tool_name == "Read":
+        individual_setting = config.get("tool_read")
+        individual_key = "DISCORD_TOOL_READ"
+    elif tool_name == "Edit":
+        individual_setting = config.get("tool_edit")
+        individual_key = "DISCORD_TOOL_EDIT"
+    elif tool_name == "MultiEdit":
+        individual_setting = config.get("tool_multiedit")
+        individual_key = "DISCORD_TOOL_MULTIEDIT"
+    elif tool_name == "TodoWrite":
+        individual_setting = config.get("tool_todowrite")
+        individual_key = "DISCORD_TOOL_TODOWRITE"
+    elif tool_name == "Grep":
+        individual_setting = config.get("tool_grep")
+        individual_key = "DISCORD_TOOL_GREP"
+    elif tool_name == "Glob":
+        individual_setting = config.get("tool_glob")
+        individual_key = "DISCORD_TOOL_GLOB"
+    elif tool_name == "LS":
+        individual_setting = config.get("tool_ls")
+        individual_key = "DISCORD_TOOL_LS"
+    elif tool_name == "Bash":
+        individual_setting = config.get("tool_bash")
+        individual_key = "DISCORD_TOOL_BASH"
+    elif tool_name == "Task":
+        individual_setting = config.get("tool_task")
+        individual_key = "DISCORD_TOOL_TASK"
+    elif tool_name == "WebFetch":
+        individual_setting = config.get("tool_webfetch")
+        individual_key = "DISCORD_TOOL_WEBFETCH"
+    
+    # If individual setting is explicitly set, use it
+    if individual_setting is not None:
+        result = individual_setting
+        logger.debug(f"Tool {tool_name}: Using individual control {individual_key}={individual_setting} → {result}")
+        return result
+
+    # 2. Fall back to legacy filtering logic
     disabled_tools = config.get("disabled_tools")
 
     # If disabled_tools is configured, skip tools in that list
     if disabled_tools:
-        return tool_name not in disabled_tools
+        result = tool_name not in disabled_tools
+        logger.debug(f"Tool {tool_name}: Using legacy DISCORD_DISABLED_TOOLS={disabled_tools} → {result}")
+        return result
 
-    # Default: process all tools
+    # 3. Default: process all tools
+    logger.debug(f"Tool {tool_name}: Using default (all tools enabled) → True")
     return True
 
 
@@ -237,43 +392,77 @@ def should_process_event(event_type: str, config: Config) -> bool:
     """Determine if an event should be processed based on filtering configuration.
 
     Implements event filtering logic with the following precedence:
-    1. If enabled_events is configured, only process events in that list
-    2. If disabled_events is configured, skip events in that list
-    3. If both are configured, enabled_events takes precedence
-    4. If neither is configured, process all events (default behavior)
+    1. Individual event controls (DISCORD_EVENT_*) - highest priority
+    2. Legacy enabled_events list (DISCORD_ENABLED_EVENTS)
+    3. Legacy disabled_events list (DISCORD_DISABLED_EVENTS)
+    4. Default: process all events
 
     Args:
-        event_type: The event type to check (e.g., "Stop", "Notification")
+        event_type: The event type to check (e.g., "Stop", "Notification") 
         config: Configuration containing filtering settings
 
     Returns:
         bool: True if the event should be processed, False otherwise
 
     Examples:
+        >>> # Individual controls take highest priority
+        >>> config = {"event_stop": False, "enabled_events": ["Stop"]}
+        >>> should_process_event("Stop", config)
+        False
+        >>>
+        >>> # Legacy settings used when individual controls not set
         >>> config = {"enabled_events": ["Stop", "Notification"], "disabled_events": None}
         >>> should_process_event("Stop", config)
         True
         >>> should_process_event("PreToolUse", config)
         False
-        >>>
-        >>> config = {"enabled_events": None, "disabled_events": ["PreToolUse"]}
-        >>> should_process_event("PreToolUse", config)
-        False
-        >>> should_process_event("Stop", config)
-        True
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # 1. Check individual event controls first (highest priority)
+    individual_setting = None
+    individual_key = None
+    if event_type == "PreToolUse":
+        individual_setting = config.get("event_pretooluse")
+        individual_key = "DISCORD_EVENT_PRETOOLUSE"
+    elif event_type == "PostToolUse":
+        individual_setting = config.get("event_posttooluse")
+        individual_key = "DISCORD_EVENT_POSTTOOLUSE"
+    elif event_type == "Notification":
+        individual_setting = config.get("event_notification")
+        individual_key = "DISCORD_EVENT_NOTIFICATION"
+    elif event_type == "Stop":
+        individual_setting = config.get("event_stop")
+        individual_key = "DISCORD_EVENT_STOP"
+    elif event_type == "SubagentStop":
+        individual_setting = config.get("event_subagent_stop")
+        individual_key = "DISCORD_EVENT_SUBAGENT_STOP"
+    
+    # If individual setting is explicitly set, use it
+    if individual_setting is not None:
+        result = individual_setting
+        logger.debug(f"Event {event_type}: Using individual control {individual_key}={individual_setting} → {result}")
+        return result
+
+    # 2. Fall back to legacy filtering logic
     enabled_events = config.get("enabled_events")
     disabled_events = config.get("disabled_events")
 
     # If enabled_events is configured, only process events in that list
     if enabled_events:
-        return event_type in enabled_events
+        result = event_type in enabled_events
+        logger.debug(f"Event {event_type}: Using legacy DISCORD_ENABLED_EVENTS={enabled_events} → {result}")
+        return result
 
     # If disabled_events is configured, skip events in that list
     if disabled_events:
-        return event_type not in disabled_events
+        result = event_type not in disabled_events
+        logger.debug(f"Event {event_type}: Using legacy DISCORD_DISABLED_EVENTS={disabled_events} → {result}")
+        return result
 
-    # Default: process all events
+    # 3. Default: process all events
+    logger.debug(f"Event {event_type}: Using default (all events enabled) → True")
     return True
 
 
@@ -359,6 +548,40 @@ class ConfigLoader:
             disabled_tools = parse_tool_list(env_vars[ENV_DISABLED_TOOLS])
             updates["disabled_tools"] = disabled_tools if disabled_tools else None
 
+        # Individual event controls (recommended)
+        if ENV_EVENT_PRETOOLUSE in env_vars:
+            updates["event_pretooluse"] = parse_bool_env(env_vars[ENV_EVENT_PRETOOLUSE])
+        if ENV_EVENT_POSTTOOLUSE in env_vars:
+            updates["event_posttooluse"] = parse_bool_env(env_vars[ENV_EVENT_POSTTOOLUSE])
+        if ENV_EVENT_NOTIFICATION in env_vars:
+            updates["event_notification"] = parse_bool_env(env_vars[ENV_EVENT_NOTIFICATION])
+        if ENV_EVENT_STOP in env_vars:
+            updates["event_stop"] = parse_bool_env(env_vars[ENV_EVENT_STOP])
+        if ENV_EVENT_SUBAGENT_STOP in env_vars:
+            updates["event_subagent_stop"] = parse_bool_env(env_vars[ENV_EVENT_SUBAGENT_STOP])
+
+        # Individual tool controls (recommended)
+        if ENV_TOOL_READ in env_vars:
+            updates["tool_read"] = parse_bool_env(env_vars[ENV_TOOL_READ])
+        if ENV_TOOL_EDIT in env_vars:
+            updates["tool_edit"] = parse_bool_env(env_vars[ENV_TOOL_EDIT])
+        if ENV_TOOL_MULTIEDIT in env_vars:
+            updates["tool_multiedit"] = parse_bool_env(env_vars[ENV_TOOL_MULTIEDIT])
+        if ENV_TOOL_TODOWRITE in env_vars:
+            updates["tool_todowrite"] = parse_bool_env(env_vars[ENV_TOOL_TODOWRITE])
+        if ENV_TOOL_GREP in env_vars:
+            updates["tool_grep"] = parse_bool_env(env_vars[ENV_TOOL_GREP])
+        if ENV_TOOL_GLOB in env_vars:
+            updates["tool_glob"] = parse_bool_env(env_vars[ENV_TOOL_GLOB])
+        if ENV_TOOL_LS in env_vars:
+            updates["tool_ls"] = parse_bool_env(env_vars[ENV_TOOL_LS])
+        if ENV_TOOL_BASH in env_vars:
+            updates["tool_bash"] = parse_bool_env(env_vars[ENV_TOOL_BASH])
+        if ENV_TOOL_TASK in env_vars:
+            updates["tool_task"] = parse_bool_env(env_vars[ENV_TOOL_TASK])
+        if ENV_TOOL_WEBFETCH in env_vars:
+            updates["tool_webfetch"] = parse_bool_env(env_vars[ENV_TOOL_WEBFETCH])
+
         if ENV_THREAD_CLEANUP_DAYS in env_vars:
             try:
                 cleanup_days = int(env_vars[ENV_THREAD_CLEANUP_DAYS])
@@ -420,6 +643,40 @@ class ConfigLoader:
             disabled_tools = parse_tool_list(os.environ.get(ENV_DISABLED_TOOLS, ""))
             updates["disabled_tools"] = disabled_tools if disabled_tools else None
 
+        # Individual event controls (recommended)
+        if os.environ.get(ENV_EVENT_PRETOOLUSE):
+            updates["event_pretooluse"] = parse_bool_env(os.environ.get(ENV_EVENT_PRETOOLUSE))
+        if os.environ.get(ENV_EVENT_POSTTOOLUSE):
+            updates["event_posttooluse"] = parse_bool_env(os.environ.get(ENV_EVENT_POSTTOOLUSE))
+        if os.environ.get(ENV_EVENT_NOTIFICATION):
+            updates["event_notification"] = parse_bool_env(os.environ.get(ENV_EVENT_NOTIFICATION))
+        if os.environ.get(ENV_EVENT_STOP):
+            updates["event_stop"] = parse_bool_env(os.environ.get(ENV_EVENT_STOP))
+        if os.environ.get(ENV_EVENT_SUBAGENT_STOP):
+            updates["event_subagent_stop"] = parse_bool_env(os.environ.get(ENV_EVENT_SUBAGENT_STOP))
+
+        # Individual tool controls (recommended)
+        if os.environ.get(ENV_TOOL_READ):
+            updates["tool_read"] = parse_bool_env(os.environ.get(ENV_TOOL_READ))
+        if os.environ.get(ENV_TOOL_EDIT):
+            updates["tool_edit"] = parse_bool_env(os.environ.get(ENV_TOOL_EDIT))
+        if os.environ.get(ENV_TOOL_MULTIEDIT):
+            updates["tool_multiedit"] = parse_bool_env(os.environ.get(ENV_TOOL_MULTIEDIT))
+        if os.environ.get(ENV_TOOL_TODOWRITE):
+            updates["tool_todowrite"] = parse_bool_env(os.environ.get(ENV_TOOL_TODOWRITE))
+        if os.environ.get(ENV_TOOL_GREP):
+            updates["tool_grep"] = parse_bool_env(os.environ.get(ENV_TOOL_GREP))
+        if os.environ.get(ENV_TOOL_GLOB):
+            updates["tool_glob"] = parse_bool_env(os.environ.get(ENV_TOOL_GLOB))
+        if os.environ.get(ENV_TOOL_LS):
+            updates["tool_ls"] = parse_bool_env(os.environ.get(ENV_TOOL_LS))
+        if os.environ.get(ENV_TOOL_BASH):
+            updates["tool_bash"] = parse_bool_env(os.environ.get(ENV_TOOL_BASH))
+        if os.environ.get(ENV_TOOL_TASK):
+            updates["tool_task"] = parse_bool_env(os.environ.get(ENV_TOOL_TASK))
+        if os.environ.get(ENV_TOOL_WEBFETCH):
+            updates["tool_webfetch"] = parse_bool_env(os.environ.get(ENV_TOOL_WEBFETCH))
+
         if os.environ.get(ENV_THREAD_CLEANUP_DAYS):
             try:
                 cleanup_days = int(os.environ.get(ENV_THREAD_CLEANUP_DAYS, str(DEFAULT_THREAD_CLEANUP_DAYS)))
@@ -441,10 +698,13 @@ class ConfigLoader:
         # 1. Start with defaults
         config = ConfigLoader._get_default_config()
 
-        # 2. Load from .env file if it exists in project root or hooks directory
+        # 2. Load from .env file with standardized naming convention fallback
+        # Priority order: Claude AI standard (.env) → Migration path → Legacy compatibility
         env_files = [
-            Path(".env"),
-            Path.home() / ".claude" / "hooks" / ".env.discord"
+            Path(".env"),                                    # Project root (dotenv standard)
+            Path.home() / ".claude" / ".env",               # New standard: Claude AI + dotenv
+            Path.home() / ".claude" / "hooks" / ".env",     # Migration path
+            Path.home() / ".claude" / "hooks" / ".env.discord"  # Legacy compatibility
         ]
         
         for env_file in env_files:
@@ -1016,6 +1276,8 @@ class ConfigFileWatcher:
         # Set up tracking for standard config files on first call
         if not self._config_metadata:
             self.track_config_file(Path(".env"))
+            self.track_config_file(Path("~/.claude/.env").expanduser())
+            self.track_config_file(Path("~/.claude/hooks/.env").expanduser())
             self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
 
         # Check if any config files have changed
@@ -1072,6 +1334,8 @@ class ConfigFileWatcher:
         # Set up tracking for standard config files on first call
         if not self._config_metadata:
             self.track_config_file(Path(".env"))
+            self.track_config_file(Path("~/.claude/.env").expanduser())
+            self.track_config_file(Path("~/.claude/hooks/.env").expanduser())
             self.track_config_file(Path("~/.claude/hooks/.env.discord").expanduser())
 
         # Check if any config files have changed

@@ -48,16 +48,22 @@ def get_discord_bot_token() -> Optional[str]:
     if token:
         return token
 
-    # Try ~/.claude/hooks/.env.discord file
-    try:
-        env_file = os.path.expanduser("~/.claude/hooks/.env.discord")
-        if os.path.exists(env_file):
-            with open(env_file, "r") as f:
-                for line in f:
-                    if line.strip().startswith("DISCORD_BOT_TOKEN="):
-                        return line.strip().split("=", 1)[1].strip('"')
-    except Exception:
-        pass
+    # Try standard configuration files (priority order matching config.py)
+    env_files = [
+        os.path.expanduser("~/.claude/.env"),               # New standard: Claude AI + dotenv
+        os.path.expanduser("~/.claude/hooks/.env"),         # Migration path
+        os.path.expanduser("~/.claude/hooks/.env.discord")  # Legacy compatibility
+    ]
+    
+    for env_file in env_files:
+        try:
+            if os.path.exists(env_file):
+                with open(env_file, "r") as f:
+                    for line in f:
+                        if line.strip().startswith("DISCORD_BOT_TOKEN="):
+                            return line.strip().split("=", 1)[1].strip('"')
+        except Exception:
+            continue
 
     return None
 

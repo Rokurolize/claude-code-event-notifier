@@ -111,7 +111,7 @@ import json
 from pathlib import Path
 
 # 設定ファイルからBot Tokenを読み込む
-config_path = Path.home() / '.claude' / 'hooks' / '.env.discord'
+config_path = Path.home() / '.claude' / 'hooks' / '.env'
 bot_token = None
 
 with open(config_path, 'r') as f:
@@ -258,7 +258,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 ```
 
 **設定ファイルの読み込み**
-新アーキテクチャは `~/.claude/hooks/.env.discord` ファイルから設定を読み込み、モジュール化された設定管理システムでDiscordとの通信に必要な認証情報とチャンネル設定を処理しています。
+新アーキテクチャは `~/.claude/.env` ファイルから設定を読み込み、モジュール化された設定管理システムでDiscordとの通信に必要な認証情報とチャンネル設定を処理しています。
 
 ### ✅ Python 3.14 完全移行・最先端技術採用
 
@@ -810,8 +810,8 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 **🔗 Webhook-only Mode（現在の標準設定）**
 ```bash
 # 設定確認
-ls -la ~/.claude/hooks/.env.discord
-grep DISCORD_WEBHOOK_URL ~/.claude/hooks/.env.discord
+ls -la ~/.claude/.env
+grep DISCORD_WEBHOOK_URL ~/.claude/.env
 
 # 実行結果例
 🔗 Webhook-only mode detected (no bot token for reading)
@@ -823,7 +823,7 @@ grep DISCORD_WEBHOOK_URL ~/.claude/hooks/.env.discord
 **🤖 Bot Token + API Mode（完全検証）**
 ```bash
 # Bot Token追加でフル機能有効化
-echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/hooks/.env.discord
+echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/.env
 
 # 実行結果例
 🤖 Bot token authentication detected
@@ -1475,7 +1475,7 @@ date +"%Y-%m-%d-%H-%M-%S"
 ### 設定ファイル確認
 ```bash
 # 設定ファイル存在確認
-ls -la ~/.claude/hooks/.env.discord
+ls -la ~/.claude/.env
 
 # Hook設定確認（新アーキテクチャ用main.pyが指定されているか）
 grep -A 5 "discord_notifier\|main.py" ~/.claude/settings.json
@@ -1748,7 +1748,7 @@ src/formatters/           # 新アーキテクチャ（完成済み、使用中�
 設定管理は以下の優先順位階層に従って実行されます：
 
 1. **環境変数**（最高優先度）
-2. **`~/.claude/hooks/` ディレクトリの `.env.discord` ファイル**
+2. **`~/.claude/hooks/` ディレクトリの `.env` ファイル**
 3. **デフォルト値**（最低優先度）
 
 重要な設定オプション：
@@ -1862,7 +1862,7 @@ DISCORD_DISABLED_TOOLS=Read,Write,Edit,MultiEdit,LS
 
 ### 📁 Configuration File Location
 
-**Primary configuration file:** `~/.claude/hooks/.env.discord`
+**Primary configuration file:** `~/.claude/.env`
 
 **Example complete configuration:**
 ```bash
@@ -1885,7 +1885,7 @@ DISCORD_DEBUG=1
 The system follows this hierarchy (highest to lowest priority):
 
 1. **Environment variables** (highest priority)
-2. **`.env.discord` file values**
+2. **`.env` file values**
 3. **Built-in defaults** (all events enabled)
 
 ### 💡 Common Configuration Examples
@@ -1921,7 +1921,7 @@ The new architecture includes `ConfigFileWatcher` that automatically detects cha
 
 ```bash
 # Test configuration changes without restart
-echo 'DISCORD_DISABLED_TOOLS=Read,Edit' >> ~/.claude/hooks/.env.discord
+echo 'DISCORD_DISABLED_TOOLS=Read,Edit' >> ~/.claude/.env
 
 # Configuration is automatically reloaded
 # No Claude Code restart required
@@ -2006,8 +2006,8 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 #### 🔗 Webhook-only Mode（現在の標準設定）
 ```bash
 # 設定確認
-ls -la ~/.claude/hooks/.env.discord
-grep DISCORD_WEBHOOK_URL ~/.claude/hooks/.env.discord
+ls -la ~/.claude/.env
+grep DISCORD_WEBHOOK_URL ~/.claude/.env
 
 # 実行結果例
 🔗 Webhook-only mode detected (no bot token for reading)
@@ -2019,7 +2019,7 @@ grep DISCORD_WEBHOOK_URL ~/.claude/hooks/.env.discord
 #### 🤖 Bot Token + API Mode（完全検証）
 ```bash
 # Bot Token追加でフル機能有効化
-echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/hooks/.env.discord
+echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/.env
 
 # 実行結果例
 🤖 Bot token authentication detected
@@ -2076,7 +2076,7 @@ Overall Result: 🎉 PASSED
 **設定エラー**: 
 ```
 ❌ Discord credentials invalid or missing
-→ ~/.claude/hooks/.env.discord を確認・設定
+→ ~/.claude/.env を確認・設定
 ```
 
 **Hook実行エラー**:
@@ -2101,7 +2101,7 @@ Overall Result: 🎉 PASSED
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
 
 # 2. 設定変更（例：無効化ツール変更）
-echo 'DISCORD_DISABLED_TOOLS=Write,Edit' >> ~/.claude/hooks/.env.discord
+echo 'DISCORD_DISABLED_TOOLS=Write,Edit' >> ~/.claude/.env
 
 # 3. 変更の即座反映確認
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
@@ -2349,7 +2349,7 @@ fi
 
 #### パターン3: 「設定ファイル場所の混乱」
 **症状**: .envファイルとHookの設定不一致
-**正解**: Hook用設定は `~/.claude/hooks/.env.discord` のみ
+**正解**: Hook用設定は `~/.claude/.env` のみ
 
 #### パターン4: 「ConfigLoader重複の無視」
 **症状**: 新旧両方のConfigLoaderが存在することを忘れる
@@ -2380,7 +2380,7 @@ ls 2025-*-investigation-*.md | head -3
 #### 新アーキテクチャで問題が発生した場合
 ```bash
 # 1. 設定ファイル確認
-ls -la ~/.claude/hooks/.env.discord
+ls -la ~/.claude/.env
 
 # 2. 設定の再読み込み
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --reload
@@ -2397,7 +2397,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py --remove
 
 # 2. 設定ファイル確認
-ls -la ~/.claude/hooks/.env.discord
+ls -la ~/.claude/.env
 
 # 3. 新アーキテクチャで再設定
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run --python 3.14 python configure_hooks.py
@@ -2419,8 +2419,8 @@ ls -la src/main.py src/core/config.py src/handlers/discord_sender.py
 grep -C 3 "main.py" ~/.claude/settings.json
 
 # 設定ファイル確認
-ls -la ~/.claude/hooks/.env.discord
-cat ~/.claude/hooks/.env.discord | grep -v "TOKEN\|WEBHOOK"  # 機密情報除外
+ls -la ~/.claude/.env
+cat ~/.claude/.env | grep -v "TOKEN\|WEBHOOK"  # 機密情報除外
 
 # エラーログ確認
 tail -20 ~/.claude/hooks/logs/discord_notifier_*.log
@@ -3019,7 +3019,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 - `src/handlers/thread_manager.py` - ThreadStorage統合層
 
 #### 設定ファイル
-- `~/.claude/hooks/.env.discord` - Discord設定
+- `~/.claude/.env` - Discord設定
 - `~/.claude/hooks/threads.db` - ThreadStorageデータベース
 
 ### 🎉 結論：完全活用による価値創出
