@@ -219,7 +219,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 
 ---
 
-## 🚨 現在の実装状況（最終更新：2025-07-17-03-54-59）
+## 🚨 現在の実装状況（最終更新：2025-07-17-15-15-05）
 
 ### ✅ 新アーキテクチャ完全実装・デッドコード完全除去
 
@@ -303,6 +303,15 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix && uv run -
 - **要求**: 複数プロジェクト並行作業で「cd （ディレクトリのパス）」で即座に移動できる情報が必要
 - **実装**: `src/utils/path_utils.py` + `format_stop`関数の拡張
 - **機能**: transcript_pathから作業ディレクトリを抽出し、コピー&ペースト可能なcdコマンドを表示
+
+### ✅ Task イベント Prompt 切り詰め問題解決
+
+**問題発生・解決状況**
+2025-07-17 15:15:05 - Task イベントの Prompt が 500 文字で切り詰められる問題を完全解決
+- **問題**: Discord 通知で Task の Prompt が「再利用可能な数学的... ...」で切れる
+- **原因**: `TruncationLimits.PROMPT_PREVIEW` が 500 文字に制限されていた
+- **解決**: `PROMPT_PREVIEW` を 2500 文字に増加
+- **効果**: 大部分の Prompt が完全に表示されるようになった
 
 **新機能詳細**
 - **プロジェクト名表示**: `claude-code-event-notifier-bugfix`
@@ -2517,8 +2526,8 @@ Ruffによるフォーマットとリンティングを実行し、一貫した�
 
 **プロジェクト情報**
 - **作業ディレクトリ**: `/home/ubuntu/workbench/projects/claude-code-event-notifier-bugfix/`
-- **最終更新**: 2025-07-17-03-54-59
-- **実装状況**: ✅ 新アーキテクチャ完全実装・Stop イベント通知改善完了・正常動作中
+- **最終更新**: 2025-07-17-15-15-05
+- **実装状況**: ✅ 新アーキテクチャ完全実装・Stop イベント通知改善・Task Prompt 切り詰め問題解決完了・正常動作中
 - **コード状況**: 新アーキテクチャ (約8,000行) が正常動作中、UX改善機能統合完了
 - **次の優先作業**: 他のイベントタイプへの作業ディレクトリ表示機能の拡張検討
 - **重要**: Pure Python 3.14+ 設計原則が維持され、typing_extensions依存を完全除去済み

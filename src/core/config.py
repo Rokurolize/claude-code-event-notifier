@@ -48,7 +48,6 @@ from .constants import (
     ENV_THREAD_PREFIX,
     ENV_THREAD_STORAGE_PATH,
     ENV_USE_THREADS,
-    ENV_WEBHOOK_URL,
     LOG_FORMAT,
     EventTypes,
 )
@@ -59,7 +58,6 @@ from .exceptions import ConfigurationError
 class DiscordCredentials(TypedDict):
     """Discord authentication credentials."""
 
-    webhook_url: ReadOnly[str | None]
     bot_token: ReadOnly[str | None]
     channel_id: ReadOnly[str | None]
 
@@ -154,7 +152,6 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
     Example File Content:
         ```
         # Discord configuration
-        DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
         DISCORD_BOT_TOKEN="your_bot_token_here"
         DISCORD_CHANNEL_ID='123456789012345678'
         # Thread settings
@@ -162,8 +159,8 @@ def parse_env_file(file_path: Path) -> dict[str, str]:
         ```
 
     Example Usage:
-        >>> env_vars = parse_env_file(Path(".env.discord"))
-        >>> webhook_url = env_vars.get("DISCORD_WEBHOOK_URL")
+        >>> env_vars = parse_env_file(Path(".env"))
+        >>> bot_token = env_vars.get("DISCORD_BOT_TOKEN")
 
     Error Handling:
         - IOError: File access issues (permissions, file not found)
@@ -303,6 +300,58 @@ def parse_bool_env(value: str | None) -> bool | None:
     return None
 
 
+# Common filtering logic for both tools and events
+def _should_process_item(
+    item_name: str, 
+    config: Config, 
+    individual_mappings: dict[str, tuple[str, str]], 
+    legacy_config_keys: tuple[str, ...],
+    default_behavior: str = "include"
+) -> bool:
+    """Generic filtering logic for tools and events.
+    
+    Args:
+        item_name: Name of the item to check
+        config: Configuration dictionary
+        individual_mappings: Dict mapping item names to (config_key, env_var_name)
+        legacy_config_keys: Tuple of legacy config keys to check in order
+        default_behavior: "include" (default allow) or "exclude" (default deny)
+    
+    Returns:
+        bool: True if item should be processed
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # 1. Check individual controls first (highest priority)
+    if item_name in individual_mappings:
+        config_key, env_var_name = individual_mappings[item_name]
+        individual_setting = config.get(config_key)
+        if individual_setting is not None:
+            logger.debug(f"Item {item_name}: Using individual control {env_var_name}={individual_setting} → {individual_setting}")
+            return individual_setting
+    
+    # 2. Check legacy configuration
+    for legacy_key in legacy_config_keys:
+        legacy_list = config.get(legacy_key)
+        if legacy_list:
+            if legacy_key.endswith("_enabled") or "enabled" in legacy_key:
+                # Whitelist behavior: only included items are processed
+                result = item_name in legacy_list
+                logger.debug(f"Item {item_name}: Using legacy {legacy_key}={legacy_list} → {result}")
+                return result
+            elif legacy_key.endswith("_disabled") or "disabled" in legacy_key:
+                # Blacklist behavior: excluded items are not processed
+                result = item_name not in legacy_list
+                logger.debug(f"Item {item_name}: Using legacy {legacy_key}={legacy_list} → {result}")
+                return result
+    
+    # 3. Default behavior
+    result = default_behavior == "include"
+    logger.debug(f"Item {item_name}: Using default ({default_behavior} all) → {result}")
+    return result
+
+
 def should_process_tool(tool_name: str, config: Config) -> bool:
     """Determine if a tool should be processed based on filtering configuration.
 
@@ -331,61 +380,26 @@ def should_process_tool(tool_name: str, config: Config) -> bool:
         >>> should_process_tool("Bash", config)
         True
     """
-    import logging
-    logger = logging.getLogger(__name__)
+    tool_mappings = {
+        "Read": ("tool_read", "DISCORD_TOOL_READ"),
+        "Edit": ("tool_edit", "DISCORD_TOOL_EDIT"),
+        "MultiEdit": ("tool_multiedit", "DISCORD_TOOL_MULTIEDIT"),
+        "TodoWrite": ("tool_todowrite", "DISCORD_TOOL_TODOWRITE"),
+        "Grep": ("tool_grep", "DISCORD_TOOL_GREP"),
+        "Glob": ("tool_glob", "DISCORD_TOOL_GLOB"),
+        "LS": ("tool_ls", "DISCORD_TOOL_LS"),
+        "Bash": ("tool_bash", "DISCORD_TOOL_BASH"),
+        "Task": ("tool_task", "DISCORD_TOOL_TASK"),
+        "WebFetch": ("tool_webfetch", "DISCORD_TOOL_WEBFETCH"),
+    }
     
-    # 1. Check individual tool controls first (highest priority)
-    individual_setting = None
-    individual_key = None
-    if tool_name == "Read":
-        individual_setting = config.get("tool_read")
-        individual_key = "DISCORD_TOOL_READ"
-    elif tool_name == "Edit":
-        individual_setting = config.get("tool_edit")
-        individual_key = "DISCORD_TOOL_EDIT"
-    elif tool_name == "MultiEdit":
-        individual_setting = config.get("tool_multiedit")
-        individual_key = "DISCORD_TOOL_MULTIEDIT"
-    elif tool_name == "TodoWrite":
-        individual_setting = config.get("tool_todowrite")
-        individual_key = "DISCORD_TOOL_TODOWRITE"
-    elif tool_name == "Grep":
-        individual_setting = config.get("tool_grep")
-        individual_key = "DISCORD_TOOL_GREP"
-    elif tool_name == "Glob":
-        individual_setting = config.get("tool_glob")
-        individual_key = "DISCORD_TOOL_GLOB"
-    elif tool_name == "LS":
-        individual_setting = config.get("tool_ls")
-        individual_key = "DISCORD_TOOL_LS"
-    elif tool_name == "Bash":
-        individual_setting = config.get("tool_bash")
-        individual_key = "DISCORD_TOOL_BASH"
-    elif tool_name == "Task":
-        individual_setting = config.get("tool_task")
-        individual_key = "DISCORD_TOOL_TASK"
-    elif tool_name == "WebFetch":
-        individual_setting = config.get("tool_webfetch")
-        individual_key = "DISCORD_TOOL_WEBFETCH"
-    
-    # If individual setting is explicitly set, use it
-    if individual_setting is not None:
-        result = individual_setting
-        logger.debug(f"Tool {tool_name}: Using individual control {individual_key}={individual_setting} → {result}")
-        return result
-
-    # 2. Fall back to legacy filtering logic
-    disabled_tools = config.get("disabled_tools")
-
-    # If disabled_tools is configured, skip tools in that list
-    if disabled_tools:
-        result = tool_name not in disabled_tools
-        logger.debug(f"Tool {tool_name}: Using legacy DISCORD_DISABLED_TOOLS={disabled_tools} → {result}")
-        return result
-
-    # 3. Default: process all tools
-    logger.debug(f"Tool {tool_name}: Using default (all tools enabled) → True")
-    return True
+    return _should_process_item(
+        item_name=tool_name,
+        config=config,
+        individual_mappings=tool_mappings,
+        legacy_config_keys=("disabled_tools",),
+        default_behavior="include"
+    )
 
 
 def should_process_event(event_type: str, config: Config) -> bool:
@@ -490,7 +504,6 @@ class ConfigLoader:
     def _get_default_config() -> Config:
         """Get default configuration."""
         return {
-            "webhook_url": None,
             "bot_token": None,
             "channel_id": None,
             "debug": False,
@@ -512,7 +525,6 @@ class ConfigLoader:
 
         # Simple string assignments
         simple_mappings = {
-            ENV_WEBHOOK_URL: "webhook_url",
             ENV_BOT_TOKEN: "bot_token",
             ENV_CHANNEL_ID: "channel_id",
             ENV_THREAD_PREFIX: "thread_prefix",
@@ -604,7 +616,6 @@ class ConfigLoader:
 
         # Simple string assignments
         simple_mappings = {
-            ENV_WEBHOOK_URL: "webhook_url",
             ENV_BOT_TOKEN: "bot_token",
             ENV_CHANNEL_ID: "channel_id",
             ENV_MENTION_USER_ID: "mention_user_id",
@@ -716,8 +727,8 @@ class ConfigLoader:
     @staticmethod
     def validate(config: Config) -> None:
         """Validate configuration."""
-        if not config["webhook_url"] and not (config["bot_token"] and config["channel_id"]):
-            raise ConfigurationError("No Discord configuration found. Please set webhook URL or bot token/channel ID.")
+        if not (config["bot_token"] and config["channel_id"]):
+            raise ConfigurationError("Discord bot token and channel ID are required.")
 
 
 def setup_logging(debug: bool) -> logging.Logger:
@@ -763,7 +774,7 @@ class ConfigValidator:
     before attempting to send messages.
 
     Validation Areas:
-        - Credentials: Webhook URL or bot token/channel ID combination
+        - Credentials: Bot token/channel ID combination
         - Thread configuration: Consistency between channel type and auth method
         - Mention configuration: Valid Discord user ID format
 
@@ -777,7 +788,7 @@ class ConfigValidator:
     def validate_credentials(config: Config) -> bool:
         """Validate that at least one credential method is configured.
 
-        Checks that either webhook URL or bot token/channel ID combination
+        Checks that bot token/channel ID combination
         is available for Discord API access.
 
         Args:
@@ -787,19 +798,15 @@ class ConfigValidator:
             bool: True if valid credentials are configured, False otherwise
 
         Validation Logic:
-            - Webhook URL alone is sufficient for basic messaging
             - Bot token + channel ID combination is required for bot API
-            - At least one method must be configured
 
         Example:
-            >>> config = {"webhook_url": "https://discord.com/api/webhooks/..."}
-            >>> ConfigValidator.validate_credentials(config)  # True
             >>> config = {"bot_token": "token", "channel_id": "123"}
             >>> ConfigValidator.validate_credentials(config)  # True
             >>> config = {"bot_token": "token"}  # Missing channel_id
             >>> ConfigValidator.validate_credentials(config)  # False
         """
-        return bool(config.get("webhook_url") or (config.get("bot_token") and config.get("channel_id")))
+        return bool(config.get("bot_token") and config.get("channel_id"))
 
     @staticmethod
     def validate_thread_config(config: Config) -> bool:
@@ -816,28 +823,26 @@ class ConfigValidator:
 
         Validation Rules:
             - If threads are disabled, configuration is always valid
-            - Forum channels require webhook URL for thread creation
+            - Only text channels are supported (forum channels require webhooks)
             - Text channels require bot token + channel ID for thread creation
-            - Invalid channel types are rejected
 
         Thread Types:
-            - Forum channels: Use webhook API with thread_name parameter
             - Text channels: Use bot API to create public threads
 
         Example:
-            >>> # Valid forum channel config
+            >>> # Valid text channel config
             >>> config = {
             ...     "use_threads": True,
-            ...     "channel_type": "forum",
-            ...     "webhook_url": "https://discord.com/api/webhooks/..."
+            ...     "channel_type": "text",
+            ...     "bot_token": "token",
+            ...     "channel_id": "123"
             ... }
             >>> ConfigValidator.validate_thread_config(config)  # True
 
-            >>> # Invalid: forum channel without webhook
+            >>> # Invalid: forum channel not supported
             >>> config = {
             ...     "use_threads": True,
-            ...     "channel_type": "forum",
-            ...     "bot_token": "token"
+            ...     "channel_type": "forum"
             ... }
             >>> ConfigValidator.validate_thread_config(config)  # False
         """
@@ -846,7 +851,7 @@ class ConfigValidator:
 
         channel_type = cast("str", config.get("channel_type", "text"))
         if channel_type == "forum":
-            return bool(config.get("webhook_url"))
+            return False  # Forum channels not supported without webhooks
         if channel_type == "text":
             return bool(config.get("bot_token") and config.get("channel_id"))
         # Invalid channel type
@@ -909,7 +914,7 @@ class ConfigValidator:
             bool: True if all validation checks pass, False otherwise
 
         Validation Checks:
-            1. Credentials validation (webhook URL or bot token/channel)
+            1. Credentials validation (bot token/channel)
             2. Thread configuration consistency
             3. Mention user ID format validation
 
@@ -1133,8 +1138,8 @@ class ConfigFileWatcher:
 
         # 6. Thread configuration consistency
         if config.get("use_threads"):
-            if config.get("channel_type") == "forum" and not config.get("webhook_url"):
-                errors.append("Forum channels require webhook URL for thread creation")
+            if config.get("channel_type") == "forum":
+                errors.append("Forum channels are not supported (require webhooks)")
             elif config.get("channel_type") == "text" and not (config.get("bot_token") and config.get("channel_id")):
                 errors.append("Text channel threads require bot token and channel ID")
 

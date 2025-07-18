@@ -61,7 +61,7 @@ class TruncationLimits:
     COMMAND_PREVIEW: int = 200
     COMMAND_FULL: int = 1000
     STRING_PREVIEW: int = 200
-    PROMPT_PREVIEW: int = 500
+    PROMPT_PREVIEW: int = 2500      # Was 500 → Now 2500 (enough for most prompts)
     
     # CRITICAL: Increased to reduce massive information loss
     OUTPUT_PREVIEW: int = 3000      # Was 500 (87.8% loss) → Now 3000 (26.8% loss)
@@ -129,7 +129,6 @@ TOOL_EMOJIS: Final[dict[str, str]] = {
 }
 
 # Environment variable keys
-ENV_WEBHOOK_URL: Final[str] = "DISCORD_WEBHOOK_URL"
 ENV_BOT_TOKEN: Final[str] = "DISCORD_BOT_TOKEN"  # noqa: S105
 ENV_CHANNEL_ID: Final[str] = "DISCORD_CHANNEL_ID"
 ENV_DEBUG: Final[str] = "DISCORD_DEBUG"

@@ -416,11 +416,11 @@ def _handle_end_to_end_validation_command() -> int:
         except ImportError:
             pass
 
-        webhook_mode = bot_token is None
+        send_only_mode = bot_token is None
 
-        if webhook_mode:
-            print("🔗 Webhook-only mode detected (no bot token for reading)")
-            print("   End-to-end validation will test webhook sending only")
+        if send_only_mode:
+            print("📤 Send-only mode detected (no bot token available for reading)")
+            print("   End-to-end validation will test message sending only")
             baseline_count = 0
             baseline_notifier_count = 0
         else:
@@ -531,24 +531,24 @@ def _handle_end_to_end_validation_command() -> int:
         print("🔍 Step 4: Validation Method")
         print("=" * 50)
 
-        if webhook_mode:
-            print("🔗 Webhook Validation Mode")
+        if send_only_mode:
+            print("📤 Send-Only Validation Mode")
             print("   Validating based on hook execution success")
-            print("   Note: Cannot verify Discord message delivery without bot token")
+            print("   Note: Cannot verify Discord message delivery without bot token for reading")
 
-            # For webhook mode, success is based on hook execution
+            # For send-only mode, success is based on hook execution
             success = result.returncode == 0
 
             if success:
                 print("🎉 END-TO-END VALIDATION: SUCCESS!")
-                print("✅ Hook executed successfully with webhook configuration")
-                print("📤 Discord notification should have been sent via webhook")
+                print("✅ Hook executed successfully with bot token configuration")
+                print("📤 Discord notification should have been sent via bot API")
             else:
                 print("❌ END-TO-END VALIDATION: FAILED")
                 print("🚫 Hook execution failed")
 
             verification_results = []
-            health_analysis = {"status": "webhook_mode", "success_rate": "N/A"}
+            health_analysis = {"status": "send_only_mode", "success_rate": "N/A"}
 
         else:
             print("🤖 API Verification Mode")
@@ -596,13 +596,13 @@ def _handle_end_to_end_validation_command() -> int:
         print("📊 Step 5: End-to-End Results Analysis")
         print("=" * 50)
         print("📋 Validation Summary:")
-        print(f"  Authentication Mode: {'Webhook-only' if webhook_mode else 'Bot Token + API'}")
-        if not webhook_mode:
+        print(f"  Authentication Mode: {'Send-only' if send_only_mode else 'Bot Token + API'}")
+        if not send_only_mode:
             print(f"  Discord API Health: {health_analysis['status']}")
             print(f"  API Success Rate: {health_analysis['success_rate']}")
         print(f"  Hook Execution: {'✅ Success' if result.returncode == 0 else '❌ Failed'}")
-        if webhook_mode:
-            print(f"  Webhook Validation: {'✅ Success' if success else '❌ Failed'}")
+        if send_only_mode:
+            print(f"  Send-only Validation: {'✅ Success' if success else '❌ Failed'}")
         else:
             print(f"  Message Detection: {'✅ Success' if success else '❌ Failed'}")
         print(f"  Overall Result: {'🎉 PASSED' if success else '❌ FAILED'}")
@@ -615,21 +615,21 @@ def _handle_end_to_end_validation_command() -> int:
             print("     1. Change DISCORD_DISABLED_TOOLS in .env")
             print("     2. Trigger a hook event")
             print("     3. Check Discord channel for notifications")
-            if webhook_mode:
+            if send_only_mode:
                 print("  📋 To enable full API verification:")
                 print("     1. Configure DISCORD_BOT_TOKEN in ~/.claude/.env")
                 print("     2. Ensure bot has 'Read Message History' permissions")
                 print("     3. Re-run validation for complete API verification")
         else:
             print("  🔧 Troubleshooting required:")
-            if webhook_mode:
-                print("  1. Check webhook URL configuration")
-                print("  2. Verify webhook permissions")
+            if send_only_mode:
+                print("  1. Check bot token configuration")
+                print("  2. Verify bot permissions")
                 print("  3. Test hook execution manually")
                 print("  4. Check hook logs for detailed errors")
             else:
                 print("  1. Check Discord bot permissions")
-                print("  2. Verify webhook/token configuration")
+                print("  2. Verify bot token configuration")
                 print("  3. Test hook execution manually")
                 print("  4. Check Discord API access with utils/check_discord_access.py")
 

@@ -14,7 +14,7 @@ python3 configure_hooks.py
 
 ```bash
 cp .env.example ~/.claude/.env
-# Edit the file with your Discord webhook URL or bot token
+# Edit the file with your Discord bot token and channel ID
 ```
 
 ### 3. Restart Claude Code
@@ -26,11 +26,8 @@ That's it! You'll now receive Discord notifications for Claude Code events.
 Edit `~/.claude/.env`:
 
 ```bash
-# Option 1: Webhook (recommended - easier)
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
-
-# Option 2: Bot Token (more features)
-DISCORD_TOKEN=your_bot_token_here
+# Discord Bot Token (required)
+DISCORD_BOT_TOKEN=your_bot_token_here
 DISCORD_CHANNEL_ID=your_channel_id_here
 
 # Optional: Enable debug logging

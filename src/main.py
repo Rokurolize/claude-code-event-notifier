@@ -106,8 +106,21 @@ def format_event_message(
         ] and config.get("mention_user_id"):
             # Extract appropriate message based on event type
             if event_type == EventTypes.NOTIFICATION.value:
-                # For notifications, extract meaningful content from embed
-                display_message = embed.get("description", "System notification")[:100]
+                # For notifications, extract the actual message content
+                # The description format is: "**Message:** {message}\n**Session:** ..."
+                description = embed.get("description", "System notification")
+                # Extract the message content after "**Message:** "
+                if "**Message:** " in description:
+                    message_start = description.find("**Message:** ") + len("**Message:** ")
+                    message_end = description.find("\n", message_start)
+                    if message_end == -1:
+                        display_message = description[message_start:]
+                    else:
+                        display_message = description[message_start:message_end]
+                else:
+                    # Fallback: use first line of description
+                    first_line = description.split("\n")[0]
+                    display_message = first_line[:100]
             else:  # Stop event
                 display_message = "Session ended"
 
