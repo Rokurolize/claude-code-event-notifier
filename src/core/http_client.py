@@ -2,7 +2,7 @@
 """HTTP client for Discord API interactions.
 
 This module provides a robust HTTP client for communicating with Discord's API,
-supporting both webhook and bot authentication methods.
+supporting bot authentication methods.
 """
 
 import json
@@ -30,6 +30,7 @@ class TimestampedField(BaseField):
 # Discord API response types
 class DiscordChannel(TypedDict, total=False):
     """Discord channel response structure."""
+
     id: str
     type: int
     name: str
@@ -42,6 +43,7 @@ class DiscordChannel(TypedDict, total=False):
 
 class DiscordThread(TypedDict, total=False):
     """Discord thread response structure."""
+
     id: str
     type: int
     name: str
@@ -109,11 +111,20 @@ class DiscordThreadMessage(DiscordMessageBase):
     thread_name: str | None
 
 
+class DiscordMessageResponse(TypedDict):
+    """Discord message response with ID."""
+
+    id: str
+    timestamp: str
+    author: dict[str, str]
+    content: str | None
+    embeds: list[DiscordEmbed] | None
+
+
 class HTTPClient:
     """HTTP client for Discord API calls.
 
     This client provides methods for various Discord API operations including:
-    - Sending messages via webhooks
     - Sending messages via bot API
     - Managing threads (create, archive, unarchive)
     - Listing and searching threads
@@ -131,26 +142,6 @@ class HTTPClient:
         self.logger = logger
         self.timeout = timeout
         self.headers_base = {"User-Agent": USER_AGENT}
-
-    def post_webhook(self, url: str, data: DiscordMessage) -> bool:
-        """Send message via Discord webhook.
-
-        Args:
-            url: Discord webhook URL
-            data: Message data to send
-
-        Returns:
-            True if successful, False otherwise
-
-        Raises:
-            DiscordAPIError: On API communication errors
-        """
-        headers = {
-            **self.headers_base,
-            "Content-Type": "application/json",
-        }
-
-        return self._make_request(url, data, headers, "Webhook", 204)
 
     def post_bot_api(self, url: str, data: DiscordMessage, token: str) -> bool:
         """Send message via Discord bot API.
@@ -173,6 +164,28 @@ class HTTPClient:
         }
 
         return self._make_request(url, data, headers, "Bot API", lambda s: 200 <= s < 300)
+
+    def post_bot_api_with_id(self, url: str, data: DiscordMessage, token: str) -> DiscordMessageResponse | None:
+        """Send message via Discord bot API and return message ID.
+
+        Args:
+            url: Discord API endpoint URL
+            data: Message data to send
+            token: Bot authentication token
+
+        Returns:
+            Message response with ID if successful, None otherwise
+
+        Raises:
+            DiscordAPIError: On API communication errors
+        """
+        headers = {
+            **self.headers_base,
+            "Content-Type": "application/json",
+            "Authorization": f"Bot {token}",
+        }
+
+        return self._make_request_with_response(url, data, headers, "Bot API", 200)
 
     def _make_request(
         self,
@@ -215,77 +228,67 @@ class HTTPClient:
         except urllib.error.URLError as e:
             self.logger.exception("%s URL error: %s", api_name, e.reason)
             raise DiscordAPIError(f"{api_name} connection failed: {e.reason}") from e
-        except Exception as e:
-            # Catch any other unexpected errors during HTTP operations
-            self.logger.exception("%s unexpected error: %s", api_name, type(e).__name__)
-            raise DiscordAPIError(f"{api_name} unexpected error: {e}") from e
 
-    def post_webhook_to_thread(self, url: str, data: DiscordMessage, thread_id: str) -> bool:
-        """Send message to existing thread via Discord webhook.
+    def _make_request_with_response(
+        self,
+        url: str,
+        data: DiscordMessage | DiscordThreadMessage | dict[str, str | int | bool],
+        headers: dict[str, str],
+        api_name: str,
+        success_status: int,
+    ) -> DiscordMessageResponse | None:
+        """Make HTTP request and return response data.
 
         Args:
-            url: Discord webhook URL
-            data: Message data to send
-            thread_id: Target thread ID
+            url: Request URL
+            data: Data to send
+            headers: HTTP headers
+            api_name: Name for logging
+            success_status: Expected success status code
 
         Returns:
-            True if successful, False otherwise
+            Discord message response if successful, None otherwise
 
         Raises:
             DiscordAPIError: On API communication errors
         """
-        thread_url = f"{url}?thread_id={thread_id}"
-        headers = {
-            **self.headers_base,
-            "Content-Type": "application/json",
-        }
-
-        return self._make_request(thread_url, data, headers, "Webhook Thread", 204)
-
-    def create_forum_thread(self, url: str, data: DiscordThreadMessage, thread_name: str) -> str | None:
-        """Create new forum thread via Discord webhook.
-
-        Args:
-            url: Discord webhook URL
-            data: Message data for thread
-            thread_name: Name for the new thread
-
-        Returns:
-            Thread ID if successful, None otherwise
-
-        Raises:
-            DiscordAPIError: On API communication errors
-        """
-        thread_data = {**data, "thread_name": thread_name}
-        headers = {
-            **self.headers_base,
-            "Content-Type": "application/json",
-        }
-
         try:
-            json_data = json.dumps(thread_data).encode("utf-8")
+            json_data = json.dumps(data).encode("utf-8")
             req = urllib.request.Request(url, data=json_data, headers=headers)  # noqa: S310
 
             with urllib.request.urlopen(req, timeout=self.timeout) as response:  # noqa: S310
                 status = response.status
-                self.logger.debug("Forum Thread Creation response: %s", status)
+                self.logger.debug("%s response: %s", api_name, status)
 
-                if status == 200:
-                    # Parse response to get thread_id
-                    response_data = json.loads(response.read().decode("utf-8"))
-                    return cast("str | None", response_data.get("id"))  # thread_id
-                return None
+                if status == success_status:
+                    # Read response data
+                    response_data = response.read().decode("utf-8")
+                    if response_data:
+                        message_data = json.loads(response_data)
+                        return cast(DiscordMessageResponse, {
+                            "id": message_data.get("id", ""),
+                            "timestamp": message_data.get("timestamp", ""),
+                            "author": message_data.get("author", {}),
+                            "content": message_data.get("content"),
+                            "embeds": message_data.get("embeds"),
+                        })
+                    else:
+                        self.logger.warning("%s success but no response data", api_name)
+                        return None
+                else:
+                    self.logger.warning("%s unexpected status: %s", api_name, status)
+                    return None
 
         except urllib.error.HTTPError as e:
-            self.logger.exception("Forum Thread Creation HTTP error %s: %s", e.code, e.reason)
-            raise DiscordAPIError(f"Forum thread creation failed: {e.code} {e.reason}") from e
+            self.logger.exception("%s HTTP error %s: %s", api_name, e.code, e.reason)
+            raise DiscordAPIError(f"{api_name} failed: {e.code} {e.reason}") from e
         except urllib.error.URLError as e:
-            self.logger.exception("Forum Thread Creation URL error: %s", e.reason)
-            raise DiscordAPIError(f"Forum thread creation connection failed: {e.reason}") from e
+            self.logger.exception("%s URL error: %s", api_name, e.reason)
+            raise DiscordAPIError(f"{api_name} connection failed: {e.reason}") from e
         except Exception as e:
-            # Catch any other unexpected errors during forum thread creation
-            self.logger.exception("Forum Thread Creation unexpected error: %s", type(e).__name__)
-            raise DiscordAPIError(f"Forum thread creation unexpected error: {e}") from e
+            # Catch any other unexpected errors during HTTP operations
+            self.logger.exception("%s unexpected error: %s", api_name, type(e).__name__)
+            raise DiscordAPIError(f"{api_name} unexpected error: {e}") from e
 
     def create_text_thread(self, channel_id: str, name: str, token: str) -> str | None:
         """Create new text channel thread via Discord bot API.

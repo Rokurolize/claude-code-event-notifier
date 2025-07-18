@@ -21,6 +21,7 @@ from src.utils.validation import is_list_tool
 # Type definitions for tool inputs and responses
 class BashToolInput(TypedDict, total=False):
     """Input structure for Bash tool."""
+
     command: str
     description: str
     timeout: int
@@ -28,6 +29,7 @@ class BashToolInput(TypedDict, total=False):
 
 class FileOperationInput(TypedDict, total=False):
     """Input structure for file operations."""
+
     file_path: str
     content: str
     old_string: str
@@ -39,6 +41,7 @@ class FileOperationInput(TypedDict, total=False):
 
 class SearchToolInput(TypedDict, total=False):
     """Input structure for search tools."""
+
     pattern: str
     path: str
     glob: str
@@ -47,13 +50,19 @@ class SearchToolInput(TypedDict, total=False):
 
 
 class TaskToolInput(TypedDict, total=False):
-    """Input structure for Task tool."""
+    """Input structure for Task tool - matches actual Claude Code Task tool format."""
+
+    description: str  # Task name/description
+    prompt: str  # Actual prompt/instructions content
+
+    # Legacy fields (may still be used)
     instructions: str
     parent: str
 
 
 class WebFetchInput(TypedDict, total=False):
     """Input structure for WebFetch tool."""
+
     url: str
     prompt: str
 
@@ -61,6 +70,7 @@ class WebFetchInput(TypedDict, total=False):
 # Response type definitions
 class BashToolResponse(TypedDict, total=False):
     """Response structure from Bash tool."""
+
     stdout: str
     stderr: str
     exit_code: int
@@ -69,6 +79,7 @@ class BashToolResponse(TypedDict, total=False):
 
 class FileOperationResponse(TypedDict, total=False):
     """Response structure from file operations."""
+
     success: bool
     message: str
     content: str
@@ -85,11 +96,7 @@ ToolInput = (
     | dict[str, str | int | float | bool]
 )
 ToolResponse = (
-    BashToolResponse
-    | FileOperationResponse
-    | str
-    | list[dict[str, str]]
-    | dict[str, str | int | float | bool]
+    BashToolResponse | FileOperationResponse | str | list[dict[str, str]] | dict[str, str | int | float | bool]
 )
 
 
@@ -164,6 +171,17 @@ def format_file_operation_pre_use(tool_name: str, tool_input: FileOperationInput
             else:
                 range_str = f"lines {start_line}-end"
             add_field(desc_parts, "Range", range_str)
+
+    elif tool_name == ToolNames.WRITE.value:
+        content = tool_input.get("content", "")
+        if content:
+            # Show content preview with appropriate truncation
+            truncated = truncate_string(content, TruncationLimits.STRING_PREVIEW)
+            suffix = get_truncation_suffix(len(content), TruncationLimits.STRING_PREVIEW)
+            add_field(desc_parts, "Content", f"{truncated}{suffix}", code=True)
+            
+            # Show content length for reference
+            add_field(desc_parts, "Content Length", f"{len(content)} characters")
 
     return desc_parts
 
@@ -276,12 +294,23 @@ def format_bash_post_use(tool_input: BashToolInput, tool_response: ToolResponse)
         interrupted = tool_response.get("interrupted", False)
 
         if stdout:
-            truncated_stdout = truncate_string(stdout, TruncationLimits.OUTPUT_PREVIEW)
-            desc_parts.append(f"**Output:**\n```\n{truncated_stdout}\n```")
+            # For very long output, use full content and let message splitting handle it
+            # Only truncate if content is within reasonable bounds
+            if len(stdout) > TruncationLimits.OUTPUT_PREVIEW * 2:  # 6000 chars
+                # Very long content - include full text for message splitting
+                desc_parts.append(f"**Output:** (Long output - {len(stdout)} chars)\n```\n{stdout}\n```")
+            else:
+                # Normal content - use existing truncation
+                truncated_stdout = truncate_string(stdout, TruncationLimits.OUTPUT_PREVIEW)
+                desc_parts.append(f"**Output:**\n```\n{truncated_stdout}\n```")
 
         if stderr:
-            truncated_stderr = truncate_string(stderr, TruncationLimits.ERROR_PREVIEW)
-            desc_parts.append(f"**Error:**\n```\n{truncated_stderr}\n```")
+            # Similar logic for stderr
+            if len(stderr) > TruncationLimits.ERROR_PREVIEW * 2:  # 5000 chars
+                desc_parts.append(f"**Error:** (Long error - {len(stderr)} chars)\n```\n{stderr}\n```")
+            else:
+                truncated_stderr = truncate_string(stderr, TruncationLimits.ERROR_PREVIEW)
+                desc_parts.append(f"**Error:**\n```\n{truncated_stderr}\n```")
 
         if interrupted:
             desc_parts.append("**Status:** ⚠️ Interrupted")

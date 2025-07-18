@@ -2,7 +2,7 @@
 """Discord message sender for Discord Notifier.
 
 This module handles sending formatted messages to Discord through
-various methods including webhooks, bot API, and thread management.
+bot API and thread management.
 """
 
 import logging
@@ -48,8 +48,6 @@ def _send_embed_to_thread(
     thread_message: DiscordMessage = {"embeds": message.get("embeds", [])}
 
     try:
-        if ctx.config["webhook_url"]:
-            return ctx.http_client.post_webhook_to_thread(ctx.config["webhook_url"], thread_message, thread_id)
         if ctx.config["bot_token"]:
             url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
             return ctx.http_client.post_bot_api(url, thread_message, ctx.config["bot_token"])
@@ -89,8 +87,6 @@ def _send_mention_to_channel(
     mention_message: DiscordMessage = {"content": f"<@{ctx.config['mention_user_id']}> {display_message}"}
 
     try:
-        if ctx.config["webhook_url"]:
-            return ctx.http_client.post_webhook(ctx.config["webhook_url"], mention_message)
         if ctx.config["bot_token"] and ctx.config["channel_id"]:
             url = f"https://discord.com/api/v10/channels/{ctx.config['channel_id']}/messages"
             return ctx.http_client.post_bot_api(url, mention_message, ctx.config["bot_token"])
@@ -144,12 +140,12 @@ def _handle_stop_notification_events(
     return success
 
 
-def _handle_thread_messaging(
+def _send_to_existing_thread(
     message: DiscordMessage,
     session_id: str,
     ctx: DiscordContext,
 ) -> bool | None:
-    """Handle thread-based messaging for regular events.
+    """Send message to existing thread using Bot API.
 
     Args:
         message: Discord message to send
@@ -161,32 +157,19 @@ def _handle_thread_messaging(
     """
     thread_id = get_or_create_thread(session_id, ctx.config, ctx.http_client, ctx.logger)
 
-    if thread_id:
-        # Send to existing thread
-        if ctx.config["webhook_url"]:
-            try:
-                return ctx.http_client.post_webhook_to_thread(ctx.config["webhook_url"], message, thread_id)
-            except DiscordAPIError:
-                ctx.logger.warning("Failed to send to thread, falling back to regular channel")
-                return None
-
-    elif ctx.config["channel_type"] == "forum" and ctx.config["webhook_url"]:
-        # Create forum thread with first message
-        thread_name = f"{ctx.config['thread_prefix']} {session_id[:8]}"
-        thread_message: DiscordThreadMessage = {
-            "embeds": message.get("embeds", []),
-            "thread_name": thread_name,
-        }
-
+    if thread_id and ctx.config["bot_token"]:
+        # Send to existing thread using Bot API
         try:
-            thread_id = ctx.http_client.create_forum_thread(ctx.config["webhook_url"], thread_message, thread_name)
-            if thread_id:
-                SESSION_THREAD_CACHE[session_id] = thread_id
-                ctx.logger.info("Created forum thread %s for session %s", thread_id, session_id)
-                return True
-            ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
+            url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
+            return ctx.http_client.post_bot_api(url, message, ctx.config["bot_token"])
         except DiscordAPIError:
-            ctx.logger.warning("Forum thread creation failed, falling back to regular channel")
+            ctx.logger.warning("Failed to send to thread, falling back to regular channel")
+            return None
+
+    # Forum channels are not supported without webhooks
+    if ctx.config["channel_type"] == "forum":
+        ctx.logger.warning("Forum channels not supported without webhooks, falling back to regular channel")
+        return None
 
     return None
 
@@ -197,7 +180,7 @@ def send_to_discord(
     session_id: str = "",
     event_type: str = "",
 ) -> bool:
-    """Send message to Discord via webhook or bot API, with optional thread support.
+    """Send message to Discord via bot API, with optional thread support.
 
     This function handles the complex logic of sending messages to Discord,
     including thread management, special handling for Stop/Notification events,
@@ -212,35 +195,67 @@ def send_to_discord(
     Returns:
         bool: True if message was successfully sent, False otherwise
     """
+    # Try to get message ID for verification
+    message_id = None
+    try:
+        message_id = send_to_discord_with_id(message, ctx, session_id, event_type)
+        if message_id:
+            ctx.logger.info("Message sent successfully with ID: %s", message_id)
+            return True
+        else:
+            ctx.logger.warning("Message sent but no ID returned")
+            return False
+    except Exception as e:
+        ctx.logger.error("Failed to send message with ID: %s", e)
+        return False
+
+
+def send_to_discord_with_id(
+    message: DiscordMessage,
+    ctx: DiscordContext,
+    session_id: str = "",
+    event_type: str = "",
+) -> str | None:
+    """Send message to Discord and return message ID.
+
+    Args:
+        message: Discord message to send containing embeds and optional content
+        ctx: Discord context with config, logger, and HTTP client
+        session_id: Optional session ID for thread management
+        event_type: Optional event type for special handling
+
+    Returns:
+        str | None: Message ID if successful, None otherwise
+    """
     # Special handling for Stop and Notification events
     if (
         event_type in [EventTypes.STOP.value, EventTypes.NOTIFICATION.value]
         and ctx.config["use_threads"]
         and session_id
     ):
-        return _handle_stop_notification_events(message, session_id, event_type, ctx)
+        # For Stop/Notification events, we don't support message ID yet
+        result = _handle_stop_notification_events(message, session_id, event_type, ctx)
+        return None if not result else "unknown"  # Temporary placeholder
 
     # Regular event handling with thread support
     if ctx.config["use_threads"] and session_id:
-        result = _handle_thread_messaging(message, session_id, ctx)
-        if result is not None:
-            return result
-        # If None, fall through to regular channel messaging
+        # Thread handling doesn't support message ID yet
+        result = _send_to_existing_thread(message, session_id, ctx)
+        if result:
+            return "unknown"  # Temporary placeholder
+        if result is None:
+            pass  # Fall through to regular messaging
+        else:
+            return None
 
-    # Regular channel messaging (no threads or fallback)
-    # Try webhook first
-    if ctx.config["webhook_url"]:
-        try:
-            return ctx.http_client.post_webhook(ctx.config["webhook_url"], message)
-        except DiscordAPIError:
-            pass  # Fall through to bot API
-
-    # Try bot API as fallback
+    # Regular channel messaging using Bot API only
     if ctx.config["bot_token"] and ctx.config["channel_id"]:
         try:
             url = f"https://discord.com/api/v10/channels/{ctx.config['channel_id']}/messages"
-            return ctx.http_client.post_bot_api(url, message, ctx.config["bot_token"])
+            response = ctx.http_client.post_bot_api_with_id(url, message, ctx.config["bot_token"])
+            if response and response.get("id"):
+                return response["id"]
         except DiscordAPIError:
             pass
 
-    return False
+    return None

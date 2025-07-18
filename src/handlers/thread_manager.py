@@ -20,6 +20,7 @@ from src.core.http_client import HTTPClient
 # Type definitions
 class ThreadDetails(TypedDict, total=False):
     """Discord thread details."""
+
     id: str
     name: str
     parent_id: str

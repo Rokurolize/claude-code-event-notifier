@@ -13,8 +13,8 @@ python3 configure_hooks.py
 ### 2. Set Up Discord Credentials
 
 ```bash
-cp ~/.claude/hooks/.env.discord.example ~/.claude/hooks/.env.discord
-# Edit the file with your Discord webhook URL or bot token
+cp .env.example ~/.claude/.env
+# Edit the file with your Discord bot token and channel ID
 ```
 
 ### 3. Restart Claude Code
@@ -23,14 +23,11 @@ That's it! You'll now receive Discord notifications for Claude Code events.
 
 ## Configuration
 
-Edit `~/.claude/hooks/.env.discord`:
+Edit `~/.claude/.env`:
 
 ```bash
-# Option 1: Webhook (recommended - easier)
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
-
-# Option 2: Bot Token (more features)
-DISCORD_TOKEN=your_bot_token_here
+# Discord Bot Token (required)
+DISCORD_BOT_TOKEN=your_bot_token_here
 DISCORD_CHANNEL_ID=your_channel_id_here
 
 # Optional: Enable debug logging
@@ -55,8 +52,8 @@ python3 configure_hooks.py --remove
 
 ## Troubleshooting
 
-- **No notifications?** Check your Discord credentials in `.env.discord`
-- **Debug mode:** Set `DISCORD_DEBUG=1` in `.env.discord`
+- **No notifications?** Check your Discord credentials in `~/.claude/.env`
+- **Debug mode:** Set `DISCORD_DEBUG=1` in `~/.claude/.env`
 - **Logs:** Check `~/.claude/hooks/logs/discord_notifier_*.log` when debug is enabled
 
 ## Architecture

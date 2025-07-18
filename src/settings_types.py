@@ -8,16 +8,11 @@ Claude Code's hook system configuration.
 
 from typing import (
     Literal,
+    ReadOnly,
     TypedDict,
 )
 
-# Python 3.13+ ReadOnly - use typing_extensions for compatibility
-try:
-    from typing import ReadOnly
-except ImportError:
-    from typing import ReadOnly
-
-# Python 3.13+ required - ReadOnly is now available for type safety
+# Python 3.13+ required - pure standard library, no external dependencies
 
 
 # Hook-related types
