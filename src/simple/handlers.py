@@ -4,6 +4,7 @@
 All event handlers in one beautiful, simple file.
 """
 
+import html
 import os
 from typing import Callable, Optional
 
@@ -200,17 +201,19 @@ def should_process_tool(tool_name: str, config: Config) -> bool:
 def format_tool_input(tool_name: str, tool_input: dict) -> str:
     """Format tool input for display."""
     if tool_name == "Write":
-        file_path = tool_input.get("file_path", "unknown")
+        file_path = html.escape(tool_input.get("file_path", "unknown"))
         content = tool_input.get("content", "")
         size = len(content)
         return f"**File**: `{file_path}`\n**Size**: {size:,} chars"
     
     elif tool_name == "Read":
-        file_path = tool_input.get("file_path", "unknown")
+        file_path = html.escape(tool_input.get("file_path", "unknown"))
         return f"**File**: `{file_path}`"
     
     elif tool_name == "Bash":
         command = tool_input.get("command", "")
+        # Escape for safety (even though Discord handles this)
+        command = html.escape(command)
         if len(command) > 100:
             command = command[:100] + "..."
         return f"**Command**: `{command}`"
@@ -225,7 +228,7 @@ def format_tool_input(tool_name: str, tool_input: dict) -> str:
 def format_tool_response(tool_name: str, tool_response: dict) -> str:
     """Format tool response for display."""
     if error := tool_response.get("error"):
-        return f"❌ **Error**: {error}"
+        return f"❌ **Error**: {html.escape(str(error))}"
     
     if tool_name == "Write":
         return "✅ File written successfully"

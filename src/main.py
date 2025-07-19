@@ -17,20 +17,20 @@ Architecture Integration:
 import sys
 
 # Check Python version before any other imports
-if sys.version_info < (3, 14):
+if sys.version_info < (3, 13):
     print(f"""
-ERROR: This project requires Python 3.14 or higher.
+ERROR: This project requires Python 3.13 or higher.
 Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
 
-Please run with Python 3.14+:
+Please run with Python 3.13+:
   Option 1: Use uv (recommended)
     CLAUDE_HOOK_EVENT=PreToolUse uv run python src/main.py
     
-  Option 2: Install Python 3.14
+  Option 2: Install Python 3.13
     Visit https://www.python.org/downloads/
     
-  Option 3: Use uv to install Python 3.14
-    uv python install 3.14
+  Option 3: Use uv to install Python 3.13
+    uv python install 3.13
 """, file=sys.stderr)
     sys.exit(1)
 

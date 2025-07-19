@@ -113,8 +113,9 @@ def main() -> int:
         
         if not args.remove:
             # Add new hook (WITHOUT CLAUDE_HOOK_EVENT)
-            python_cmd = get_python_command(source_script.absolute())
-            command = python_cmd  # No CLAUDE_HOOK_EVENT needed!
+            python_cmd_list = get_python_command(source_script.absolute())
+            # Convert list back to string for settings.json
+            command = " ".join(python_cmd_list)
             
             hook_config: HookConfig = {
                 "type": "command",
@@ -140,10 +141,14 @@ def main() -> int:
     return 0
 
 
-def get_python_command(script_path: Path) -> str:
+def get_python_command(script_path: Path) -> list[str]:
     """Get the Python command for executing the script."""
     # Always use uv run with Python 3.14
-    return f"cd {script_path.parent.parent.parent} && uv run --python 3.14 python {script_path}"
+    # Return as list for safe subprocess execution
+    return [
+        "uv", "run", "--python", "3.14", "--no-project",
+        "python", str(script_path)
+    ]
 
 
 def is_discord_notifier_hook(hook: Any) -> bool:
@@ -177,9 +182,9 @@ def test_discord_integration(script_path: Path) -> None:
         result = subprocess.run(
             python_cmd,
             input=json.dumps(test_event),
-            shell=True,
             text=True,
-            capture_output=True
+            capture_output=True,
+            cwd=script_path.parent.parent.parent  # Run from project root
         )
         
         if result.returncode == 0:

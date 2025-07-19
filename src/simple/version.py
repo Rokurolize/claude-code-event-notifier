@@ -12,8 +12,14 @@ RELEASE_DATE = "2025.07.19"
 def get_git_commit() -> str:
     """Get current git commit hash (short)."""
     try:
+        # Use shutil.which to find git executable
+        import shutil
+        git_path = shutil.which("git")
+        if not git_path:
+            return "unknown"
+            
         result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            [git_path, "rev-parse", "--short", "HEAD"],
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent.parent
