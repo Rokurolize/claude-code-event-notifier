@@ -510,9 +510,8 @@ def _handle_end_to_end_validation_command() -> int:
 
         # Execute hook with test event
         python_cmd = get_python_command(hook_script)
-        full_command = f"CLAUDE_HOOK_EVENT=PreToolUse {python_cmd}"
-
-        print(f"🚀 Executing: {full_command}")
+        
+        print(f"🚀 Executing: CLAUDE_HOOK_EVENT=PreToolUse {python_cmd}")
 
         # Run the hook with test event
         try:
@@ -521,14 +520,23 @@ def _handle_end_to_end_validation_command() -> int:
                 temp_file = f.name
 
             import subprocess
+            import shlex
+            
+            # Parse command safely
+            cmd_parts = shlex.split(python_cmd)
+            
+            # Set up environment with CLAUDE_HOOK_EVENT
+            env = os.environ.copy()
+            env["CLAUDE_HOOK_EVENT"] = "PreToolUse"
 
             result = subprocess.run(
-                full_command,
+                cmd_parts,
                 input=json_module.dumps(test_event),
                 text=True,
                 capture_output=True,
-                shell=True,
+                check=False,
                 timeout=30,
+                env=env,
             )
 
             if result.returncode == 0:

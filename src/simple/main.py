@@ -5,6 +5,18 @@ This is the thin dispatcher that ties everything together.
 """
 
 import sys
+
+# Check Python version before any other imports
+if sys.version_info < (3, 13):
+    print(f"""
+ERROR: This project requires Python 3.13 or higher.
+Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
+
+Please run with Python 3.13+:
+  uv run --python 3.13 python src/simple/main.py
+""", file=sys.stderr)
+    sys.exit(1)
+
 import json
 import logging
 from pathlib import Path
@@ -52,7 +64,7 @@ def main() -> None:
             logger.debug("No valid Discord config - exiting gracefully")
             sys.exit(0)
         
-        logger.debug(f"Config loaded successfully: {list(config.keys())}")
+        logger.debug("Config loaded successfully: %s", list(config.keys()))
         
         # Additional debug logging based on config
         if config.get("debug"):
@@ -64,47 +76,47 @@ def main() -> None:
             logger.debug("No input data - exiting")
             sys.exit(0)
         
-        logger.debug(f"Received input: {raw_input[:200]}...")
+        logger.debug("Received input: %s...", raw_input[:200])
         
         # Parse JSON
         try:
             event_data = json.loads(raw_input)
-            logger.debug(f"Parsed JSON event: {event_data.get('hook_event_name', 'Unknown')}")
+            logger.debug("Parsed JSON event: %s", event_data.get("hook_event_name", "Unknown"))
         except json.JSONDecodeError as e:
-            logger.debug(f"Invalid JSON - exiting gracefully: {e}")
+            logger.debug("Invalid JSON - exiting gracefully: %s", e)
             sys.exit(0)
         
         # Get event type
         event_type = event_data.get("hook_event_name", "Unknown")
         # Sanitize for logging (remove newlines and control characters)
-        safe_event_type = event_type.replace('\n', '\\n').replace('\r', '\\r')
-        logger.debug(f"Processing event type: {safe_event_type}")
+        safe_event_type = event_type.replace("\n", "\\n").replace("\r", "\\r")
+        logger.debug("Processing event type: %s", safe_event_type)
         
         # Check if event should be processed
         if not should_process_event(event_type, config):
-            logger.debug(f"Event {safe_event_type} filtered out by configuration")
+            logger.debug("Event %s filtered out by configuration", safe_event_type)
             sys.exit(0)
         
-        logger.debug(f"Event {safe_event_type} passed filter checks")
+        logger.debug("Event %s passed filter checks", safe_event_type)
         
         # For tool events, check if tool should be processed
         if event_type in ["PreToolUse", "PostToolUse"]:
             tool_name = event_data.get("tool_name", "")
             # Sanitize tool name for logging
-            safe_tool_name = tool_name.replace('\n', '\\n').replace('\r', '\\r')
-            logger.debug(f"Checking tool filter for: {safe_tool_name}")
+            safe_tool_name = tool_name.replace("\n", "\\n").replace("\r", "\\r")
+            logger.debug("Checking tool filter for: %s", safe_tool_name)
             if not should_process_tool(tool_name, config):
-                logger.debug(f"Tool {safe_tool_name} filtered out by configuration")
+                logger.debug("Tool %s filtered out by configuration", safe_tool_name)
                 sys.exit(0)
-            logger.debug(f"Tool {safe_tool_name} passed filter checks")
+            logger.debug("Tool %s passed filter checks", safe_tool_name)
         
         # Get handler
         handler = get_handler(event_type)
         if not handler:
-            logger.debug(f"No handler found for event type: {safe_event_type}")
+            logger.debug("No handler found for event type: %s", safe_event_type)
             sys.exit(0)
         
-        logger.debug(f"Handler found for {safe_event_type}")
+        logger.debug("Handler found for %s", safe_event_type)
         
         # Process event
         message = handler(event_data, config)
@@ -121,10 +133,9 @@ def main() -> None:
         else:
             logger.debug("Failed to send message to Discord")
         
-    except Exception as e:
+    except Exception:
         # Never let exceptions block Claude Code
-        logger.debug(f"Exception occurred: {e}")
-        pass
+        logger.exception("Unexpected error occurred")
     
     sys.exit(0)
 
