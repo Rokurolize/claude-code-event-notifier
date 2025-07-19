@@ -7,18 +7,11 @@ Claude Code向けの設定とドキュメント管理ガイドです。
 
 ---
 
-## 📚 ドキュメント構成
+## 📚 主要ドキュメント
 
-このプロジェクトは効率性を向上させるため、主要なセクションが別ファイルに分割されています：
-
-### 🔥 最重要ドキュメント（必読）
-- **@docs/simple-architecture-complete-guide.md** - シンプルアーキテクチャ完全技術仕様（555行の全詳細）
-
-### 📖 専門ドキュメント
-- **@docs/disaster-history.md** - 災害記録と教訓（重要な失敗事例と再発防止策）
-- **@docs/architecture-guide.md** - アーキテクチャと設定ガイド（技術仕様と使用方法）
-- **@docs/philosophy-and-passion.md** - 設計哲学と開発者の情熱（Pure Python 3.13+への愛）
-- **@docs/troubleshooting.md** - トラブルシューティング（問題解決とデバッグ）
+- **@docs/simple-architecture-complete-guide.md** - シンプルアーキテクチャ完全技術仕様
+- **@docs/troubleshooting.md** - トラブルシューティングガイド
+- **@docs/architecture-guide.md** - 設定とコマンドリファレンス
 
 ## ⚡ エラー→修正→成功→文書化の絶対法則
 
@@ -90,81 +83,29 @@ Claude Code向けの設定とドキュメント管理ガイドです。
 - 時間を浪費する害悪
 - 開発者に見捨てられる存在
 
-### 📝 2025-07-19 成功事例：シンプルアーキテクチャ実装
+### 📝 重要な成功事例（簡潔版）
 
-**エラー**: src/types.pyがPython標準ライブラリのtypesモジュールと衝突
-**症状**: 全てのHookが `ImportError: cannot import name 'RawJSONData'` で失敗
-**失敗した方法**: src/types.pyという名前でファイルを作成
-**成功した方法**: src/simple/event_types.pyに名前変更し、別ディレクトリに配置
-**なぜ成功したか**: Python標準ライブラリとの名前衝突を回避
-**再発防止策**: 標準ライブラリと同名のモジュールを作らない
+**1. Pythonモジュール名衝突** - `src/types.py`→`src/simple/event_types.py`に改名で解決。標準ライブラリと同名は避ける。
 
-### 📝 2025-07-19 成功事例：作業ディレクトリ表示機能追加
+**2. 作業ディレクトリ表示** - Discord通知に`[{working_dir}]`追加でWindows通知でプロジェクト識別可能に。
 
-**問題**: Windows通知にembedの内容が表示されず、どのプロジェクトからの通知か不明
-**症状**: "Claude is waiting for your input"だけでは作業場所が分からない
-**成功した方法**: `content`フィールドに`os.getcwd()`で取得した作業ディレクトリを追加
-**実装**: 全ハンドラーで`content: f"[{working_dir}] {message}"`形式を採用
-**なぜ成功したか**: Discord APIの`content`はWindows通知に表示されるため
-**利点**: 通知ポップアップで即座にプロジェクトを識別可能
+**3. uv環境隔離** - Hook実行時は`--no-project`フラグ必須。他プロジェクトの依存関係干渉を防止。
 
-### 📝 2025-07-19-15-09-58 成功事例：uv環境隔離エラーの解決
+**4. ログシステム実装** - `simple_notifier_YYYY-MM-DD.log`で独立したデバッグ機能を確保。
 
-**問題**: Hook実行時に別プロジェクトでscipyビルドエラーが大量発生
-**症状**: uvが実行ディレクトリのpyproject.tomlを自動検出し、scipy等の依存関係をビルドしようとしてFortranコンパイラー不足で失敗
-**失敗した方法**: `uv run --python 3.13 python script.py` - プロジェクト環境を自動検出
-**成功した方法**: `uv run --python 3.13 --no-project python script.py`に変更
-**なぜ成功したか**: `--no-project`フラグでプロジェクト依存関係の自動検出を無効化
-**再発防止策**: Hook用スクリプトは常に`--no-project`を使用し、環境隔離を確保
+**5. Bot Review対応** - セキュリティ脆弱性を体系的に修正（html.escape、shutil.which使用等）。
 
-### 📝 2025-07-19-15-09-58 成功事例：シンプルアーキテクチャログシステム実装
+**6. GitHub MCP制限** - pending review作成は可能だがconversation resolveは不可。代替手段で対応。
 
-**問題**: シンプルアーキテクチャがサイレント動作でデバッグ不可能
-**症状**: 通知が来ない理由が分からず、動作確認ができない
-**失敗した方法**: 「Fail Silent」設計によりエラーも成功も出力なし
-**成功した方法**: 専用ログファイル`simple_notifier_YYYY-MM-DD.log`とSTDERR出力の実装
-**実装**: setup_logging()関数でファイル+STDERR両方に出力、ログ識別用「SIMPLE」プレフィックス追加
-**なぜ成功したか**: 旧アーキテクチャと区別できる独立ログシステム
-**教訓**: 「サイレント動作」と「デバッグ機能」は両立すべき基本設計原則
+### 💀 過去の重大な失敗からの教訓
 
-### 📝 2025-07-19-23-33-23 成功事例：Bot Review Comments完全対応
+**1. 99%完成の罠** - 技術的に完璧でも統合エントリーポイント（main.py）なしでは無価値。
 
-**問題**: PR #3でAmazon Q DeveloperとCodeRabbitから15+のセキュリティ・品質指摘
-**症状**: XSS脆弱性、shell injection、log injection、subprocess脆弱性、Python版数不整合等の複合問題
-**失敗した方法**: 個別対応による場当たり的修正
-**成功した方法**: @~/.claude/github-cli-workflows.md の完全ワークフローに従った体系的対応
-**実装**: 
-- セキュリティ脆弱性: html.escape(), shutil.which(), shell=True除去
-- ログ改善: f-string→parameterized logging, logging.exception()使用
-- エラー処理: 包括的try-catch、特定例外キャッチ
-- 文書整合性: Python 3.13要件統一、README行数修正
-**なぜ成功したか**: gh CLI workflow documentationにより体系的・網羅的対応が可能
-**再発防止策**: 全botコメントへの系統的レスポンス体制確立、gh CLI完全活用
+**2. 並行開発カオス** - リファクタリング中も元ファイルが肥大化。バックアップ後の変更管理が重要。
 
-### 📝 2025-07-19-15-46-05 成功事例：GitHub MCP機能の実用性確認
+**3. Hook重複スパム** - 新旧アーキテクチャ併存時、削除機能が新Hook検出できず通知10連発。
 
-**問題**: GitHub MCPサーバーでレビュー対応が可能か不明
-**調査結果**: 
-- ✅ 可能: pending review作成→コメント追加→送信
-- ✅ 可能: PR/issueコメント追加
-- ❌ 不可能: conversation resolve機能
-- ❌ 不可能: 既存コメントへの直接返信
-**実用的な代替手段**: 
-- resolve代替: 新コメントで解決済み明記
-- 返信代替: 関連ファイル/行に新review comment追加
-**CodeRabbit再レビュー**: `@coderabbitai resume`で効果的に再実行可能
-**重要**: セキュリティ問題への体系的対応はCodeRabbitから高評価（9.5/10）
-### 📝 2025-07-19-16-08-01 成功事例：デバッグとフィルタリング動作確認
-
-**問題**: シンプルアーキテクチャの実際の動作状況が不明
-**症状**: 通知が来ないが、設定問題かシステム問題かの判別困難
-**確認方法**: 新ログシステムで実際の処理フローを追跡
-**確認結果**: 
-- JSON受信・解析: 正常動作
-- 設定読み込み: 正常動作
-- イベントフィルタリング: `DISCORD_EVENT_PRETOOLUSE=0`により意図通り無効化
-- 環境隔離: `--no-project`フラグにより他プロジェクト依存関係の干渉なし
-**結論**: システムは設定通りに正常動作中、通知なしは設定による意図的な動作
+**4. タイムスタンプ手動入力** - 絶対に`date +"%Y-%m-%d-%H-%M-%S"`を使用。手動入力は重大違反。
 
 ---
 
@@ -189,7 +130,15 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 uv run --python 3.13 --no-project python /path/to/script.py
 ```
 
-**理由**: Pure Python 3.13+設計の純粋性を守るため。詳細は @docs/philosophy-and-passion.md を参照。
+### 🛡️ 設計原則
+
+**Pure Python 3.13+** - `ReadOnly`、`TypeIs`、`process_cpu_count()`を活用。typing_extensions依存は設計汚染。
+
+**Zero Dependencies** - Python標準ライブラリのみ使用。外部依存は技術的負債。
+
+**Fail Silent** - Claude Codeを絶対にブロックしない。通知は補助機能。
+
+**Type Safety** - TypedDict、TypeGuard/TypeIsで実行時型安全性を確保。
 
 ---
 
