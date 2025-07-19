@@ -4,19 +4,19 @@
 This script sets up the integration between Claude Code's hook system
 and Discord notifications using the simple architecture.
 
-Usage: uv run --python 3.14 python configure_hooks_simple.py [--remove]
+Usage: uv run --python 3.13 python configure_hooks_simple.py [--remove]
 """
 
 import sys
 
 # Check Python version before any other imports
-if sys.version_info < (3, 14):
+if sys.version_info < (3, 13):
     print(f"""
-ERROR: This project requires Python 3.14 or higher.
+ERROR: This project requires Python 3.13 or higher.
 Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
 
-Please run with Python 3.14+:
-  uv run --python 3.14 python configure_hooks_simple.py
+Please run with Python 3.13+:
+  uv run --python 3.13 python configure_hooks_simple.py
 """, file=sys.stderr)
     sys.exit(1)
 
@@ -143,10 +143,10 @@ def main() -> int:
 
 def get_python_command(script_path: Path) -> list[str]:
     """Get the Python command for executing the script."""
-    # Always use uv run with Python 3.14
+    # Always use uv run with Python 3.13
     # Return as list for safe subprocess execution
     return [
-        "uv", "run", "--python", "3.14", "--no-project",
+        "uv", "run", "--python", "3.13", "--no-project",
         "python", str(script_path)
     ]
 

@@ -101,7 +101,7 @@ src/formatters/           # 新アーキテクチャ（完成済み、使用中�
     "PreToolUse": [{
         "hooks": [{
             "type": "command",
-            "command": "CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python /home/ubuntu/workbench/projects/claude-code-event-notifier/src/main.py"
+            "command": "CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python /home/ubuntu/workbench/projects/claude-code-event-notifier/src/main.py"
         }]
     }]
 }
@@ -203,10 +203,10 @@ The system includes comprehensive validation:
 
 ```bash
 # Test configuration validity
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload
 
 # Validate end-to-end functionality
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 ```
 
 ### 🛠️ Advanced Configuration Options
@@ -244,7 +244,7 @@ DISCORD_DEBUG=1
 
 **基本実行 - 即座に完全テスト開始**
 ```bash
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 ```
 
 このコマンドは、Discord API使って自分でメッセージ受信して検証する完全な統合テストを実行します。
@@ -307,14 +307,14 @@ echo 'DISCORD_BOT_TOKEN=your_bot_token_here' >> ~/.claude/.env
 #### 問題発生時の系統的診断
 ```bash
 # 1. 基本動作確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 
 # 2. 失敗時: 個別コンポーネント確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload  # 設定読み込み確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python utils/check_discord_access.py  # Discord API アクセス確認
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload  # 設定読み込み確認
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python utils/check_discord_access.py  # Discord API アクセス確認
 
 # 3. Hook単体実行テスト
-echo '{"session_id":"test","tool_name":"Test"}' | CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/main.py
+echo '{"session_id":"test","tool_name":"Test"}' | CLAUDE_HOOK_EVENT=PreToolUse cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/main.py
 
 # 4. 詳細ログ確認
 tail -f ~/.claude/hooks/logs/discord_notifier_*.log
@@ -354,7 +354,7 @@ Overall Result: 🎉 PASSED
 **Hook実行エラー**:
 ```
 ❌ Hook execution failed
-→ Python 3.14環境確認: uv run --python 3.14 python --version
+→ Python 3.13環境確認: uv run --python 3.13 python --version
 → src/main.py または src/discord_notifier.py の存在確認
 ```
 
@@ -370,16 +370,16 @@ Overall Result: 🎉 PASSED
 #### リアルタイム設定変更テスト
 ```bash
 # 1. ベースライン確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload
 
 # 2. 設定変更（例：無効化ツール変更）
 echo 'DISCORD_DISABLED_TOOLS=Write,Edit' >> ~/.claude/.env
 
 # 3. 変更の即座反映確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload
 
 # 4. 実際のHook動作での設定反映確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 ```
 
 ### 📊 既存Discord API Validator統合
@@ -392,7 +392,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 **使用例 - 直接API検証**:
 ```bash
 # 単体でDiscord API検証実行
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/discord_api_validator.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/discord_api_validator.py
 
 # 実行結果例
 🚀 Starting Discord API validation for channel 1391964875600822366
@@ -415,7 +415,7 @@ Discord Notifier Messages Found: True
 set -e
 
 echo "🔄 Running Discord Notifier End-to-End Validation..."
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 
 if [ $? -eq 0 ]; then
     echo "✅ All validation tests passed!"
@@ -428,7 +428,7 @@ fi
 #### 定期実行設定例
 ```bash
 # crontab設定例（毎時実行）
-0 * * * * cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end >> /tmp/discord-validation.log 2>&1
+0 * * * * cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end >> /tmp/discord-validation.log 2>&1
 ```
 
 ---
@@ -457,10 +457,10 @@ grep "DISCORD_DISABLED_TOOLS" ~/.claude/.env
 #### 1. Discord API経由での確認（推奨）
 ```bash
 # 既存のdiscord_api_validatorを使用
-uv run --python 3.14 python src/utils/discord_api_validator.py
+uv run --python 3.13 python src/utils/discord_api_validator.py
 
 # 最新メッセージを確認
-uv run --python 3.14 python -c "
+uv run --python 3.13 python -c "
 import sys
 sys.path.insert(0, '.')
 from src.utils.discord_api_validator import fetch_channel_messages
@@ -504,7 +504,7 @@ echo "Channel: $channel_id, Message: $message_id"
 #### 1. メッセージIDを取得して送信
 ```bash
 # メッセージID付きテスト送信
-uv run --python 3.14 python -c "
+uv run --python 3.13 python -c "
 import sys
 sys.path.insert(0, '.')
 from src.core.config import ConfigLoader
@@ -534,7 +534,7 @@ print(f'Message ID: {message_id}')
 ```bash
 # 特定のメッセージIDで検証
 MESSAGE_ID="1395109592484286679"  # 実際のメッセージID
-uv run --python 3.14 python -c "
+uv run --python 3.13 python -c "
 import sys
 sys.path.insert(0, '.')
 from src.core.config import ConfigLoader
@@ -583,7 +583,7 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log | grep "Message ID"
 MESSAGE_IDS="1395920855741104128,1395920856018063471,1395920857842454529"
 CHANNEL_ID="1391964875600822366"
 
-uv run --python 3.14 python -c "
+uv run --python 3.13 python -c "
 from pathlib import Path
 import urllib.request
 import json
@@ -648,22 +648,22 @@ thread_id = get_or_create_thread(session_id, config, http_client, logger)
 **ThreadStorage Manager 使用例**
 ```bash
 # 統計情報の取得
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py stats
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py stats
 
 # 古いスレッドのクリーンアップ
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py cleanup
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py cleanup
 
 # 健全性レポート
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py health
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py health
 
 # チャンネル内の全スレッド検索
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py find-channel 1391964875600822366
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py find-channel 1391964875600822366
 
 # 名前によるスレッド検索
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py find-name 1391964875600822366 "Session abc123"
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py find-name 1391964875600822366 "Session abc123"
 
 # セッションIDによるスレッド取得
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/thread_storage_manager.py get-session "abc123def456"
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/thread_storage_manager.py get-session "abc123def456"
 ```
 
 #### 設定オプション
@@ -743,16 +743,16 @@ MessageIDGeneratorは既に `src/formatters/event_formatters.py` で完全統合
 
 ```bash
 # 現在の実装をテストする
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py
 
 # Hookを削除する
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --remove
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --remove
 
 # すべてのテストを実行する
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python -m unittest discover -s tests -p "test_*.py"
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -m unittest discover -s tests -p "test_*.py"
 
 # 型チェックとリンティングを実行する
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python -m mypy src/ configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -m mypy src/ configure_hooks.py
 ruff check src/ configure_hooks.py utils/
 ruff format src/ configure_hooks.py utils/
 
@@ -761,21 +761,21 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 
 # 新アーキテクチャ用コマンド
 # 新アーキテクチャでのHook設定（main.py使用）
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py
 
 # 新アーキテクチャの動作テスト
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/main.py < test_event.json
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/main.py < test_event.json
 
 # 🚀 END-TO-END VALIDATION SYSTEM (完全統合テスト)
 # エンドツーエンド検証 - Hot Reload + Discord API 統合テスト
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 
 # 設定ホットリロード機能テスト
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload
 
 # 既存Discord API検証ツール単体実行
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python src/utils/discord_api_validator.py
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python utils/check_discord_access.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python src/utils/discord_api_validator.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python utils/check_discord_access.py
 ```
 
 ---

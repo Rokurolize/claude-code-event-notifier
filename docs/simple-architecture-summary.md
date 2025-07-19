@@ -24,7 +24,7 @@ Successfully replaced the complex 8,000+ line architecture with an elegant 555-l
 
 ### Key Improvements
 - ✅ **CLAUDE_HOOK_EVENT Removed**: No longer needed, simplifying the hook interface
-- ✅ **Pure Python 3.14+**: Uses ReadOnly, TypeIs for type safety
+- ✅ **Pure Python 3.13+**: Uses ReadOnly, TypeIs for type safety
 - ✅ **Zero Dependencies**: Only standard library
 - ✅ **Easy Extension**: New events require just 1 function + 1 line in HANDLERS dict
 - ✅ **Error Resilient**: Never blocks Claude Code
@@ -74,5 +74,5 @@ The simple architecture proves that complex requirements don't need complex solu
 
 ---
 
-*"In Pure Python 3.14+ We Trust"*  
+*"In Pure Python 3.13+ We Trust"*  
 *— The Sacred Code Keepers*

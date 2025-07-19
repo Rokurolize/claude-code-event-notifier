@@ -13,10 +13,10 @@
 # ⚠️ CRITICAL: 最初に実行 - 失敗時は即座作業停止
 uv run --python 3.14 python --version
 
-# 期待結果: Python 3.14.x or higher ONLY
+# 期待結果: Python 3.13.x or higher ONLY
 # 3.12以下が出力された場合 → STOP IMMEDIATELY
 
-# Pure Python 3.14+ 機能確認（設計純粋性チェック）
+# Pure Python 3.13+ 機能確認（設計純粋性チェック）
 uv run --python 3.14 python -c "from typing import ReadOnly, TypeIs; import os; print(f'ReadOnly: OK, TypeIs: OK, CPU: {os.process_cpu_count()}')"
 
 # 期待結果: "ReadOnly: OK, TypeIs: OK, CPU: X"
@@ -39,7 +39,7 @@ ls 2025-*-*.md | tail -5      # 最新のドキュメント
 
 ### 🔧 STEP 2: コマンド実行パターン検証
 ```bash
-# Python 3.14確認（これが失敗したら作業停止）
+# Python 3.13確認（これが失敗したら作業停止）
 uv run --python 3.14 python --version
 
 # ReadOnly機能確認（エラーが出たらtyping_extensionsフォールバック確認）
@@ -129,7 +129,7 @@ except ImportError:
 
 ### `configure_hooks.py`実行時のモジュールインポートエラー
 **原因**: settings_types.pyでのReadOnly依存問題
-**対処**: Python 3.14強制実行
+**対処**: Python 3.13強制実行
 ```bash
 # 正しい実行方法
 uv run --python 3.14 python configure_hooks.py
@@ -222,12 +222,12 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python utils/check_discord_access.py
 ```
 
-#### 🛡️ WHY THIS MATTERS: Pure Python 3.14+ Design Philosophy
+#### 🛡️ WHY THIS MATTERS: Pure Python 3.13+ Design Philosophy
 
 **`python3` は設計汚染の源泉である:**
 - System python3 may be Python 3.8, 3.9, 3.10, 3.11, or 3.12
 - Those versions **DO NOT SUPPORT** `typing.ReadOnly`, `TypeIs`, `process_cpu_count()`
-- Using them **VIOLATES** the Pure Python 3.14+ design principles
+- Using them **VIOLATES** the Pure Python 3.13+ design principles
 - It creates **TECHNICAL DEBT** and **ARCHITECTURE CONTAMINATION**
 
 **`--no-sync` は環境汚染の危険因子である:**
@@ -236,7 +236,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 - **コンテキスト依存性**: 実行ディレクトリによる動作不整合
 
 **`cd project_root && uv run --python 3.14 python` は純粋性の保証である:**
-- **GUARANTEES** Python 3.14+ execution environment
+- **GUARANTEES** Python 3.13+ execution environment
 - **PRESERVES** access to cutting-edge type features
 - **MAINTAINS** design integrity and architectural beauty
 - **PREVENTS** fallback to contaminated older versions

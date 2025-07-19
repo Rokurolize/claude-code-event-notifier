@@ -17,7 +17,7 @@ Claude Code向けの設定とドキュメント管理ガイドです。
 ### 📖 専門ドキュメント
 - **@docs/disaster-history.md** - 災害記録と教訓（重要な失敗事例と再発防止策）
 - **@docs/architecture-guide.md** - アーキテクチャと設定ガイド（技術仕様と使用方法）
-- **@docs/philosophy-and-passion.md** - 設計哲学と開発者の情熱（Pure Python 3.14+への愛）
+- **@docs/philosophy-and-passion.md** - 設計哲学と開発者の情熱（Pure Python 3.13+への愛）
 - **@docs/troubleshooting.md** - トラブルシューティング（問題解決とデバッグ）
 
 ## ⚡ エラー→修正→成功→文書化の絶対法則
@@ -112,8 +112,8 @@ Claude Code向けの設定とドキュメント管理ガイドです。
 
 **問題**: Hook実行時に別プロジェクトでscipyビルドエラーが大量発生
 **症状**: uvが実行ディレクトリのpyproject.tomlを自動検出し、scipy等の依存関係をビルドしようとしてFortranコンパイラー不足で失敗
-**失敗した方法**: `uv run --python 3.14 python script.py` - プロジェクト環境を自動検出
-**成功した方法**: `uv run --python 3.14 --no-project python script.py`に変更
+**失敗した方法**: `uv run --python 3.13 python script.py` - プロジェクト環境を自動検出
+**成功した方法**: `uv run --python 3.13 --no-project python script.py`に変更
 **なぜ成功したか**: `--no-project`フラグでプロジェクト依存関係の自動検出を無効化
 **再発防止策**: Hook用スクリプトは常に`--no-project`を使用し、環境隔離を確保
 
@@ -143,7 +143,7 @@ Claude Code向けの設定とドキュメント管理ガイドです。
 
 ## ⚠️ CRITICAL: PYTHON EXECUTION COMMANDS
 
-### 🚨 NEVER USE `python3` - ALWAYS USE `uv run --python 3.14 python`
+### 🚨 NEVER USE `python3` - ALWAYS USE `uv run --python 3.13 python`
 
 **FORBIDDEN** ❌:
 ```bash
@@ -154,15 +154,15 @@ python3 utils/check_discord_access.py         # ← DESIGN VIOLATION
 
 **REQUIRED** ✅:
 ```bash
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python -m mypy src/
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python utils/check_discord_access.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -m mypy src/
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python utils/check_discord_access.py
 
 # Hook実行時は環境隔離が必要（2025-07-19追加）
-uv run --python 3.14 --no-project python /path/to/script.py
+uv run --python 3.13 --no-project python /path/to/script.py
 ```
 
-**理由**: Pure Python 3.14+設計の純粋性を守るため。詳細は @docs/philosophy-and-passion.md を参照。
+**理由**: Pure Python 3.13+設計の純粋性を守るため。詳細は @docs/philosophy-and-passion.md を参照。
 
 ---
 
@@ -175,7 +175,7 @@ uv run --python 3.14 --no-project python /path/to/script.py
 - **コード削減**: 8,000行 → 555行（93%削減）
 - **Hook統合**: 全イベントタイプでシンプルアーキテクチャを使用
 - **CLAUDE_HOOK_EVENT**: 除去済み（JSON内のhook_event_nameを使用）
-- **Python 3.14**: 移行済み・ReadOnly/TypeIs/process_cpu_count()活用
+- **Python 3.13**: 移行済み・ReadOnly/TypeIs/process_cpu_count()活用
 - **Discord通知**: 設定に応じて動作
 - **ログシステム**: 独立したファイル`simple_notifier_YYYY-MM-DD.log`で動作追跡可能
 - **環境隔離**: `--no-project`フラグで他プロジェクト依存関係の干渉を防止
@@ -196,7 +196,7 @@ src/simple/
 - **エントリーポイント**: `src/simple/main.py`（CLAUDE_HOOK_EVENT不要）
 - **拡張性**: 新イベントは1関数 + HANDLERS辞書に1行追加で対応
 - **エラー耐性**: 例外が発生してもClaude Codeをブロックしない
-- **Pure Python 3.14+**: typing_extensions依存なし、標準ライブラリのみ
+- **Pure Python 3.13+**: typing_extensions依存なし、標準ライブラリのみ
 - **作業ディレクトリ表示**: Windows通知に`[/path/to/project]`形式で表示（v1.1新機能）
 
 ### ✅ パフォーマンス改善完了
@@ -220,13 +220,13 @@ src/simple/
 **End-to-End Validation**
 ```bash
 # 完全な統合テスト（推奨）
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 ```
 
 **設定ホットリロード**
 ```bash
 # 設定変更の即座反映
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --reload
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --reload
 ```
 
 ---
@@ -236,16 +236,16 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 ### セットアップと基本操作（シンプルアーキテクチャ）
 ```bash
 # セットアップ実行（シンプルアーキテクチャ版）
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks_simple.py
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks_simple.py
 
 # Hook削除
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks_simple.py --remove
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks_simple.py --remove
 
 # 設定検証
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks_simple.py --validate
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks_simple.py --validate
 
 # 旧アーキテクチャ版（8,000行版）も利用可能
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python configure_hooks.py --validate-end-to-end
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 ```
 
 ### デバッグとログ確認
@@ -257,7 +257,7 @@ tail -f ~/.claude/hooks/logs/discord_notifier_*.log
 @/home/ubuntu/.claude/.env
 
 # Python環境確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python --version
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python --version
 ```
 
 ---
@@ -307,10 +307,10 @@ ls src/simple/*.py
 @projects/claude-code-event-notifier/INSTRUCTIONS.md
 ```
 
-### Pure Python 3.14+の確認
+### Pure Python 3.13+の確認
 ```bash
 # 設計純粋性チェック
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.14 python -c "from typing import ReadOnly, TypeIs; import os; print(f'ReadOnly: OK, TypeIs: OK, CPU: {os.process_cpu_count()}')"
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -c "from typing import ReadOnly, TypeIs; import os; print(f'ReadOnly: OK, TypeIs: OK, CPU: {os.process_cpu_count()}')"
 ```
 
 ---
@@ -327,7 +327,7 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 ## 📝 Development Standards
 
 ### Python Requirements
-- **Python 3.14以降必須** - ReadOnly、TypeIs、process_cpu_count()使用
+- **Python 3.13以降必須** - ReadOnly、TypeIs、process_cpu_count()使用
 - **Zero dependencies原則** - Python標準ライブラリのみ使用
 - **型安全性の確保** - mypyによる完全な型チェック
 
@@ -353,12 +353,12 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
   - **環境隔離**: `--no-project`フラグで他プロジェクト依存関係との干渉を防止
   - **専用ログ**: `simple_notifier_YYYY-MM-DD.log`で旧アーキテクチャと区別
 - **ドキュメント状況**: パフォーマンス最適化のため5つの専門ドキュメントに分割完了
-- **設計原則**: Pure Python 3.14+設計原則が維持され、typing_extensions依存を完全除去済み
+- **設計原則**: Pure Python 3.13+設計原則が維持され、typing_extensions依存を完全除去済み
 
 ---
 
 *"Simplicity is the ultimate sophistication."*
 *— Leonardo da Vinci*
 
-*"In Pure Python 3.14+ We Trust"*
+*"In Pure Python 3.13+ We Trust"*
 *— The Sacred Code Keepers*

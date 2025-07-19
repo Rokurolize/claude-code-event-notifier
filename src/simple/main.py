@@ -17,7 +17,7 @@ from config import load_config
 from handlers import get_handler, should_process_event, should_process_tool
 from discord_client import send_to_discord
 
-# Python 3.14+ required
+# Python 3.13+ required
 
 # Setup simple architecture logging
 def setup_logging():

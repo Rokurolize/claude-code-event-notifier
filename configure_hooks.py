@@ -172,13 +172,13 @@ def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
 
 
 def get_python_command(script_path: Path) -> str:
-    """Get the appropriate Python command, preferring uv with Python 3.14+."""
+    """Get the appropriate Python command, preferring uv with Python 3.13+."""
     if check_uv_available():
-        # Use uv to ensure Python 3.14+ is used with context-independent execution
+        # Use uv to ensure Python 3.13+ is used with context-independent execution
         project_root = script_path.parent.parent  # Get project root from script path
-        return f"cd {project_root} && uv run --python 3.14 python {script_path}"
+        return f"cd {project_root} && uv run --python 3.13 python {script_path}"
     # Fall back to system python3
-    print("⚠️  Warning: uv not found, using system python3. Python 3.14+ required.")
+    print("⚠️  Warning: uv not found, using system python3. Python 3.13+ required.")
     return f"python3 {script_path}"
 
 

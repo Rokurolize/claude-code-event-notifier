@@ -39,7 +39,7 @@ src/simple/
 
 ### 特徴
 - **Zero Dependencies**: Python標準ライブラリのみ使用
-- **Pure Python 3.14+**: ReadOnly, TypeIs活用
+- **Pure Python 3.13+**: ReadOnly, TypeIs活用
 - **Fail Silent**: Claude Codeを絶対にブロックしない
 - **Easy Extension**: 新イベントは1関数+1行で追加
 
@@ -494,7 +494,7 @@ grep -A 3 "simple/main.py" ~/.claude/settings.json
 2. **完全な機能維持**
 3. **拡張の容易さ** (新イベント = 1関数 + 1行)
 4. **絶対的な安定性** (Claude Codeを妨げない)
-5. **Pure Python 3.14+** (依存関係ゼロ)
+5. **Pure Python 3.13+** (依存関係ゼロ)
 
 **設計哲学**: シンプルさこそ最高の洗練
 

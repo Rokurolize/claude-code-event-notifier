@@ -11,7 +11,7 @@ from typing import cast
 
 from event_types import Config
 
-# Python 3.14+ required - pure standard library
+# Python 3.13+ required - pure standard library
 
 
 def load_config() -> Config:
