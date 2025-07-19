@@ -52,8 +52,11 @@ def _load_env_file(env_file: Path, config: Config) -> None:
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
                     _set_config_value(config, key.strip(), value.strip())
-    except Exception:
-        # Silently ignore file read errors
+    except (IOError, OSError):
+        # Silently ignore file access errors
+        pass
+    except UnicodeDecodeError:
+        # Silently ignore encoding errors
         pass
 
 

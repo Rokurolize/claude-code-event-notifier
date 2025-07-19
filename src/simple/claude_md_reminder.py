@@ -36,16 +36,23 @@ def check_if_update_needed() -> Optional[str]:
     if not claude_md.exists():
         return "CLAUDE.md not found!"
     
-    # Get CLAUDE.md modification time
-    claude_md_mtime = claude_md.stat().st_mtime
+    try:
+        # Get CLAUDE.md modification time
+        claude_md_mtime = claude_md.stat().st_mtime
+    except (IOError, OSError) as e:
+        return f"Error accessing CLAUDE.md: {e}"
     
     # Check if any significant files were modified after CLAUDE.md
     newer_files = []
     for file_path in significant_files:
         full_path = project_root / file_path
-        if full_path.exists():
-            if full_path.stat().st_mtime > claude_md_mtime:
-                newer_files.append(file_path)
+        try:
+            if full_path.exists():
+                if full_path.stat().st_mtime > claude_md_mtime:
+                    newer_files.append(file_path)
+        except (IOError, OSError):
+            # Skip files we can't access
+            continue
     
     if newer_files:
         return f"Files modified after CLAUDE.md: {', '.join(newer_files)}"

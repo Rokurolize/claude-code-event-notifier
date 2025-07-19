@@ -66,9 +66,19 @@ def main() -> int:
     
     print("🔍 Checking for duplicate hooks...")
     
-    # Load settings
-    with open(settings_file, "r") as f:
-        settings = json.load(f)
+    try:
+        # Load settings
+        with open(settings_file, "r") as f:
+            settings = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ Settings file not found: {settings_file}")
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"❌ Invalid JSON in settings file: {e}")
+        return 1
+    except IOError as e:
+        print(f"❌ Error reading settings file: {e}")
+        return 1
     
     # Clean duplicates
     removed = clean_hooks(settings)
@@ -77,18 +87,26 @@ def main() -> int:
         print("✅ No duplicates found!")
         return 0
     
-    # Backup original
-    backup_file = settings_file.with_suffix(".json.backup")
-    with open(backup_file, "w") as f:
-        json.dump(json.loads(settings_file.read_text()), f, indent=2)
-    print(f"💾 Backed up original to {backup_file}")
-    
-    # Save cleaned settings
-    with open(settings_file, "w") as f:
-        json.dump(settings, f, indent=2)
-    
-    print(f"✨ Removed {removed} duplicate hook(s) total")
-    print("✅ Settings cleaned successfully!")
+    try:
+        # Backup original
+        backup_file = settings_file.with_suffix(".json.backup")
+        with open(backup_file, "w") as f:
+            json.dump(json.loads(settings_file.read_text()), f, indent=2)
+        print(f"💾 Backed up original to {backup_file}")
+        
+        # Save cleaned settings
+        with open(settings_file, "w") as f:
+            json.dump(settings, f, indent=2)
+        
+        print(f"✨ Removed {removed} duplicate hook(s) total")
+        print("✅ Settings cleaned successfully!")
+        
+    except IOError as e:
+        print(f"❌ Error writing files: {e}")
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"❌ Error processing JSON: {e}")
+        return 1
     
     return 0
 

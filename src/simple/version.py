@@ -26,7 +26,8 @@ def get_git_commit() -> str:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except Exception:
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        # Handle subprocess errors, OS errors, and missing git
         pass
     return "unknown"
 

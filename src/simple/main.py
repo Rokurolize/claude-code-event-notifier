@@ -76,31 +76,35 @@ def main() -> None:
         
         # Get event type
         event_type = event_data.get("hook_event_name", "Unknown")
-        logger.debug(f"Processing event type: {event_type}")
+        # Sanitize for logging (remove newlines and control characters)
+        safe_event_type = event_type.replace('\n', '\\n').replace('\r', '\\r')
+        logger.debug(f"Processing event type: {safe_event_type}")
         
         # Check if event should be processed
         if not should_process_event(event_type, config):
-            logger.debug(f"Event {event_type} filtered out by configuration")
+            logger.debug(f"Event {safe_event_type} filtered out by configuration")
             sys.exit(0)
         
-        logger.debug(f"Event {event_type} passed filter checks")
+        logger.debug(f"Event {safe_event_type} passed filter checks")
         
         # For tool events, check if tool should be processed
         if event_type in ["PreToolUse", "PostToolUse"]:
             tool_name = event_data.get("tool_name", "")
-            logger.debug(f"Checking tool filter for: {tool_name}")
+            # Sanitize tool name for logging
+            safe_tool_name = tool_name.replace('\n', '\\n').replace('\r', '\\r')
+            logger.debug(f"Checking tool filter for: {safe_tool_name}")
             if not should_process_tool(tool_name, config):
-                logger.debug(f"Tool {tool_name} filtered out by configuration")
+                logger.debug(f"Tool {safe_tool_name} filtered out by configuration")
                 sys.exit(0)
-            logger.debug(f"Tool {tool_name} passed filter checks")
+            logger.debug(f"Tool {safe_tool_name} passed filter checks")
         
         # Get handler
         handler = get_handler(event_type)
         if not handler:
-            logger.debug(f"No handler found for event type: {event_type}")
+            logger.debug(f"No handler found for event type: {safe_event_type}")
             sys.exit(0)
         
-        logger.debug(f"Handler found for {event_type}")
+        logger.debug(f"Handler found for {safe_event_type}")
         
         # Process event
         message = handler(event_data, config)
