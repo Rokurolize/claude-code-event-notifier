@@ -2,22 +2,41 @@
 
 Send Claude Code events to Discord. One file, no dependencies, simple setup.
 
+## Requirements
+
+- **Python 3.14 or higher** (required)
+- **uv** (recommended) - Install from https://github.com/astral-sh/uv
+
 ## Quick Start
 
-### 1. Configure Claude Code Hooks
+### 1. Install Python 3.14 (if not already installed)
 
 ```bash
-python3 configure_hooks.py
+# Option 1: Using uv (recommended)
+uv python install 3.14
+
+# Option 2: Download from Python.org
+# Visit https://www.python.org/downloads/
 ```
 
-### 2. Set Up Discord Credentials
+### 2. Configure Claude Code Hooks
+
+```bash
+# Using uv (recommended - automatically uses Python 3.14)
+uv run python configure_hooks.py
+
+# Or if you have Python 3.14 in your PATH
+python3.14 configure_hooks.py
+```
+
+### 3. Set Up Discord Credentials
 
 ```bash
 cp .env.example ~/.claude/.env
 # Edit the file with your Discord bot token and channel ID
 ```
 
-### 3. Restart Claude Code
+### 4. Restart Claude Code
 
 That's it! You'll now receive Discord notifications for Claude Code events.
 
@@ -47,7 +66,11 @@ DISCORD_DEBUG=1
 To remove the Discord notifier from Claude Code:
 
 ```bash
-python3 configure_hooks.py --remove
+# Using uv (recommended)
+uv run python configure_hooks.py --remove
+
+# Or if you have Python 3.14 in your PATH
+python3.14 configure_hooks.py --remove
 ```
 
 ## Troubleshooting
@@ -56,11 +79,26 @@ python3 configure_hooks.py --remove
 - **Debug mode:** Set `DISCORD_DEBUG=1` in `~/.claude/.env`
 - **Logs:** Check `~/.claude/hooks/logs/discord_notifier_*.log` when debug is enabled
 
+## Troubleshooting Python Version
+
+If you see an error about Python version:
+
+```text
+ERROR: This project requires Python 3.14 or higher.
+Current Python version: 3.12.3
+```
+
+This means you're running with an older Python. Solutions:
+
+1. **Use uv** (recommended): `uv run python configure_hooks.py`
+2. **Install Python 3.14**: `uv python install 3.14`
+3. **Check your Python**: `python3 --version` vs `uv run python --version`
+
 ## Architecture
 
 - **Modular design:** Core implementation in `src/` directory with 4 focused modules
 - **Comprehensive:** ~4,900 lines of Python code with advanced type safety
-- **Zero dependencies:** Uses only Python 3.13+ standard library
+- **Zero dependencies:** Uses only Python 3.14+ standard library
 - **Intelligent threading:** 4-tier thread management with persistent storage
 - **Type-safe:** Comprehensive TypedDict definitions and runtime validation
 - **Reliable:** Fails gracefully without blocking Claude Code

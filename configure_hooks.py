@@ -4,15 +4,34 @@
 This script sets up the integration between Claude Code's hook system
 and Discord notifications by modifying Claude Code's settings.json.
 
-Usage: python3 configure_hooks.py [--remove]
+Usage: uv run python configure_hooks.py [--remove]
 """
+
+import sys
+
+# Check Python version before any other imports
+if sys.version_info < (3, 14):
+    print(f"""
+ERROR: This project requires Python 3.14 or higher.
+Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
+
+Please run with Python 3.14+:
+  Option 1: Use uv (recommended)
+    uv run python configure_hooks.py
+    
+  Option 2: Install Python 3.14
+    Visit https://www.python.org/downloads/
+    
+  Option 3: Use uv to install Python 3.14
+    uv python install 3.14
+""", file=sys.stderr)
+    sys.exit(1)
 
 import argparse
 import contextlib
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeGuard, cast

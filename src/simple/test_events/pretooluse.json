@@ -1,0 +1,10 @@
+{
+  "session_id": "test-simple-architecture",
+  "transcript_path": "/home/ubuntu/.claude/test.jsonl",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/tmp/test.py",
+    "content": "def hello():\n    print('Hello from simple architecture!')"
+  }
+}

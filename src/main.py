@@ -5,7 +5,7 @@ This module serves as the entry point for the modularized Discord notification
 system, integrating all components from the new architecture.
 
 Usage:
-    CLAUDE_HOOK_EVENT=PreToolUse python3 main.py < event.json
+    CLAUDE_HOOK_EVENT=PreToolUse uv run python main.py < event.json
 
 Architecture Integration:
     - Configuration: src.core.config
@@ -14,9 +14,28 @@ Architecture Integration:
     - Discord Messaging: src.handlers.discord_sender
 """
 
+import sys
+
+# Check Python version before any other imports
+if sys.version_info < (3, 14):
+    print(f"""
+ERROR: This project requires Python 3.14 or higher.
+Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
+
+Please run with Python 3.14+:
+  Option 1: Use uv (recommended)
+    CLAUDE_HOOK_EVENT=PreToolUse uv run python src/main.py
+    
+  Option 2: Install Python 3.14
+    Visit https://www.python.org/downloads/
+    
+  Option 3: Use uv to install Python 3.14
+    uv python install 3.14
+""", file=sys.stderr)
+    sys.exit(1)
+
 import json
 import os
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
