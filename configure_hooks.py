@@ -4,15 +4,34 @@
 This script sets up the integration between Claude Code's hook system
 and Discord notifications by modifying Claude Code's settings.json.
 
-Usage: python3 configure_hooks.py [--remove]
+Usage: uv run python configure_hooks.py [--remove]
 """
+
+import sys
+
+# Check Python version before any other imports
+if sys.version_info < (3, 13):
+    print(f"""
+ERROR: This project requires Python 3.13 or higher.
+Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}
+
+Please run with Python 3.13+:
+  Option 1: Use uv (recommended)
+    uv run python configure_hooks.py
+    
+  Option 2: Install Python 3.13
+    Visit https://www.python.org/downloads/
+    
+  Option 3: Use uv to install Python 3.13
+    uv python install 3.13
+""", file=sys.stderr)
+    sys.exit(1)
 
 import argparse
 import contextlib
 import json
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypeGuard, cast
@@ -153,13 +172,13 @@ def filter_hooks(event_hooks: list[HookConfig]) -> list[HookConfig]:
 
 
 def get_python_command(script_path: Path) -> str:
-    """Get the appropriate Python command, preferring uv with Python 3.14+."""
+    """Get the appropriate Python command, preferring uv with Python 3.13+."""
     if check_uv_available():
-        # Use uv to ensure Python 3.14+ is used with context-independent execution
+        # Use uv to ensure Python 3.13+ is used with context-independent execution
         project_root = script_path.parent.parent  # Get project root from script path
-        return f"cd {project_root} && uv run --python 3.14 python {script_path}"
+        return f"cd {project_root} && uv run --python 3.13 python {script_path}"
     # Fall back to system python3
-    print("⚠️  Warning: uv not found, using system python3. Python 3.14+ required.")
+    print("⚠️  Warning: uv not found, using system python3. Python 3.13+ required.")
     return f"python3 {script_path}"
 
 
@@ -491,9 +510,8 @@ def _handle_end_to_end_validation_command() -> int:
 
         # Execute hook with test event
         python_cmd = get_python_command(hook_script)
-        full_command = f"CLAUDE_HOOK_EVENT=PreToolUse {python_cmd}"
-
-        print(f"🚀 Executing: {full_command}")
+        
+        print(f"🚀 Executing: CLAUDE_HOOK_EVENT=PreToolUse {python_cmd}")
 
         # Run the hook with test event
         try:
@@ -502,14 +520,23 @@ def _handle_end_to_end_validation_command() -> int:
                 temp_file = f.name
 
             import subprocess
+            import shlex
+            
+            # Parse command safely
+            cmd_parts = shlex.split(python_cmd)
+            
+            # Set up environment with CLAUDE_HOOK_EVENT
+            env = os.environ.copy()
+            env["CLAUDE_HOOK_EVENT"] = "PreToolUse"
 
             result = subprocess.run(
-                full_command,
+                cmd_parts,
                 input=json_module.dumps(test_event),
                 text=True,
                 capture_output=True,
-                shell=True,
+                check=False,
                 timeout=30,
+                env=env,
             )
 
             if result.returncode == 0:

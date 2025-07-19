@@ -65,36 +65,44 @@ def validate_hook_version() -> HookValidationResult:
     # Check Python path for potential conflicts
     python_path = sys.path.copy()
 
-    # Look for multiple discord_notifier modules
-    discord_notifier_paths = []
+    # Look for multiple main.py modules in potential Discord notifier locations
+    main_py_paths = []
+    seen_paths = set()
     for path in python_path:
-        potential_notifier = Path(path) / "discord_notifier.py"
-        if potential_notifier.exists():
-            discord_notifier_paths.append(str(potential_notifier))
+        potential_main = Path(path) / "src" / "main.py"
+        if potential_main.exists():
+            main_path_str = str(potential_main.resolve())
+            if main_path_str not in seen_paths:
+                main_py_paths.append(main_path_str)
+                seen_paths.add(main_path_str)
 
-    if len(discord_notifier_paths) > 1:
-        issues.append(f"Multiple discord_notifier modules found: {discord_notifier_paths}")
+    if len(main_py_paths) > 1:
+        issues.append(f"Multiple Discord notifier main.py modules found: {main_py_paths}")
 
     # Get file modification time
     try:
-        main_module_path = Path(module_path) / "discord_notifier.py"
+        main_module_path = Path(module_path) / "main.py"
         if main_module_path.exists():
             mtime = main_module_path.stat().st_mtime
             last_modified = datetime.fromtimestamp(mtime, timezone.utc).isoformat()
         else:
             last_modified = "file_not_found"
-            issues.append("Main discord_notifier.py not found")
+            issues.append("Main src/main.py not found")
     except OSError as e:
         last_modified = f"error: {e}"
         issues.append(f"Could not get file modification time: {e}")
 
-    # Check for module cache issues
-    discord_notifier_in_cache = "discord_notifier" in sys.modules
-    if discord_notifier_in_cache:
-        cached_module = sys.modules["discord_notifier"]
+    # Check for module cache issues (main.py architecture)
+    main_module_in_cache = "src.main" in sys.modules
+    if main_module_in_cache:
+        cached_module = sys.modules["src.main"]
         cached_file = getattr(cached_module, "__file__", "unknown")
         if cached_file != str(main_module_path):
             issues.append(f"Cached module path mismatch: {cached_file} vs {main_module_path}")
+    
+    # Legacy check - warn if old discord_notifier is still cached
+    if "discord_notifier" in sys.modules:
+        issues.append("Legacy discord_notifier module still in cache - should use new main.py architecture")
 
     # Determine if we're using the latest version
     is_latest = len(issues) == 0
@@ -112,15 +120,20 @@ def validate_hook_version() -> HookValidationResult:
 
 
 def clear_module_cache() -> bool:
-    """Clear Python module cache for discord_notifier.
+    """Clear Python module cache for Discord notifier modules.
 
     Returns:
         True if cache was cleared successfully
     """
     try:
         modules_to_clear = [
+            # Legacy modules (for cleanup)
             "discord_notifier",
             "src.discord_notifier",
+            # New architecture modules
+            "src.main",
+            "src.core.config",
+            "src.handlers.discord_sender",
             "src.formatters.event_formatters",
             "src.utils.version_info",
             "src.utils.hook_validation",
@@ -136,7 +149,7 @@ def clear_module_cache() -> bool:
 
 
 def force_reload_modules() -> bool:
-    """Force reload of discord_notifier modules.
+    """Force reload of Discord notifier modules.
 
     Returns:
         True if reload was successful
@@ -145,9 +158,10 @@ def force_reload_modules() -> bool:
         # Clear cache first
         clear_module_cache()
 
-        # Force reimport
-        if "src.discord_notifier" in sys.modules:
-            importlib.reload(sys.modules["src.discord_notifier"])
+        # Force reimport of new architecture modules
+        for module_name in ["src.main", "src.core.config", "src.handlers.discord_sender"]:
+            if module_name in sys.modules:
+                importlib.reload(sys.modules[module_name])
 
         return True
     except Exception:
