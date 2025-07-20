@@ -8,12 +8,14 @@ import html
 import os
 import re
 from pathlib import Path
-from typing import Callable
 
 from event_types import Config, DiscordMessage, EventData, HandlerFunction
 from version import VERSION_STRING
 
 # Python 3.14+ required - pure standard library
+
+# Pre-compiled regex pattern for better performance
+_MARKDOWN_PATTERN = re.compile(r"[*_`~|>#\-=\[\](){}]")
 
 
 # =============================================================================
@@ -159,7 +161,7 @@ def handle_stop(data: EventData, config: Config) -> DiscordMessage | None:
     }
 
 
-def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | None:
+def handle_subagent_stop(data: EventData, _config: Config) -> DiscordMessage | None:
     """Handle SubagentStop events."""
     # Get current working directory
     try:
@@ -224,10 +226,8 @@ def escape_discord_markdown(text: str | None) -> str:
     # Escape backslashes first to avoid double-escaping
     text = text.replace("\\", "\\\\")
 
-    # Escape Discord markdown characters using regex for efficiency
-    # Note: We escape most characters but preserve some formatting where appropriate
-    markdown_chars = r"[*_`~|>#\-=\[\](){}]"
-    return re.sub(markdown_chars, r"\\\g<0>", text)
+    # Escape Discord markdown characters using pre-compiled regex for efficiency
+    return _MARKDOWN_PATTERN.sub(r"\\\g<0>", text)
 
 def should_process_event(event_type: str, config: Config) -> bool:
     """Check if event type should be processed."""
