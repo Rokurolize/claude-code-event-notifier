@@ -74,10 +74,6 @@ tail -f ~/.claude/hooks/logs/simple_notifier_*.log
 ## ⚠️ セッション開始時チェック
 
 ```bash
-# 設定確認
-@/home/ubuntu/.claude/.env
-@/home/ubuntu/.claude/settings.json
-
 # アーキテクチャ確認  
 ls src/simple/*.py
 
@@ -91,7 +87,6 @@ cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python
 
 **状況**: シンプルアーキテクチャ（555行）稼働中  
 **コード削減**: 8,000行→555行（93%削減）  
-**エントリーポイント**: `src/simple/main.py`  
-**ログ**: `simple_notifier_YYYY-MM-DD.log`
+**エントリーポイント**: `src/simple/main.py`
 
 *"Simplicity is the ultimate sophistication."*
