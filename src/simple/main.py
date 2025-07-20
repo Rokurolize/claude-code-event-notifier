@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import load_config
 from handlers import get_handler, should_process_event, should_process_tool
 from discord_client import send_to_discord
+from debug_logger import save_debug_data
 
 # Python 3.13+ required
 
@@ -92,6 +93,11 @@ def main() -> None:
         safe_event_type = event_type.replace("\n", "\\n").replace("\r", "\\r")
         logger.debug("Processing event type: %s", safe_event_type)
         
+        # Save raw input for debugging if debug mode is enabled
+        if config.get("debug"):
+            logger.debug("Debug mode: Saving raw input data")
+            save_debug_data(raw_input, None, safe_event_type)
+        
         # Check if event should be processed
         if not should_process_event(event_type, config):
             logger.debug("Event %s filtered out by configuration", safe_event_type)
@@ -125,6 +131,11 @@ def main() -> None:
             sys.exit(0)
         
         logger.debug("Message generated, sending to Discord")
+        
+        # Save formatted output for debugging if debug mode is enabled
+        if config.get("debug"):
+            logger.debug("Debug mode: Saving formatted output data")
+            save_debug_data(raw_input, message, safe_event_type)
         
         # Send to Discord
         success = send_to_discord(message, config)

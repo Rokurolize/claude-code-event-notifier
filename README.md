@@ -79,6 +79,33 @@ python3.13 configure_hooks.py --remove
 - **Debug mode:** Set `DISCORD_DEBUG=1` in `~/.claude/.env`
 - **Logs:** Check `~/.claude/hooks/logs/discord_notifier_*.log` when debug is enabled
 
+## Debugging
+
+When `DISCORD_DEBUG=1` is set, the notifier saves raw input/output data for debugging:
+
+```
+~/.claude/hooks/debug/
+├── {timestamp}_{event_type}_raw_input.json      # Raw hook input data
+└── {timestamp}_{event_type}_formatted_output.json  # Discord message data
+```
+
+Features:
+- **Automatic cleanup**: Files older than 7 days are deleted automatically
+- **Privacy protection**: Tokens and sensitive data are masked with `***MASKED***`
+- **Easy analysis**: JSON format for easy inspection and debugging
+
+Example usage:
+```bash
+# Enable debug mode
+echo "DISCORD_DEBUG=1" >> ~/.claude/.env
+
+# View recent debug files
+ls -la ~/.claude/hooks/debug/
+
+# Inspect a specific event
+cat ~/.claude/hooks/debug/*_PreToolUse_raw_input.json | jq
+```
+
 ## Troubleshooting Python Version
 
 If you see an error about Python version:

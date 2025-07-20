@@ -17,6 +17,7 @@
 - **モジュール名衝突**: `src/types.py`→`src/simple/event_types.py` (標準ライブラリ回避)
 - **Hook環境隔離**: `uv run --python 3.13 --no-project` (依存関係干渉防止)
 - **タイムスタンプ**: `date +"%Y-%m-%d-%H-%M-%S"` (手動入力禁止)
+- **Discord通知最適化**: メッセージ部分でDiscordネイティブmarkdown(**太字**、*斜体*)使用、embed部分でコードブロック維持
 
 ---
 
@@ -38,11 +39,11 @@
 ### シンプルアーキテクチャ（555行、5ファイル）
 ```
 src/simple/
-├── event_types.py    # 型定義（94行）
-├── config.py         # 設定読み込み（117行）
-├── discord_client.py # Discord送信（71行）
-├── handlers.py       # イベントハンドラー（190行）
-└── main.py          # エントリーポイント（83行）
+├── event_types.py    # 型定義
+├── config.py         # 設定読み込み
+├── discord_client.py # Discord送信
+├── handlers.py       # イベントハンドラー
+└── main.py          # エントリーポイント
 ```
 
 **特徴**: Pure Python 3.13+、Zero Dependencies、93%コード削減（8000→555行）
@@ -52,11 +53,8 @@ src/simple/
 ## 🔧 必須コマンド
 
 ```bash
-# セットアップ
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks_simple.py
-
-# 検証
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
+# セットアップ & 検証
+uv run --python 3.13 python configure_hooks.py --validate-end-to-end
 
 # ログ確認
 tail -f ~/.claude/hooks/logs/simple_notifier_*.log
@@ -78,15 +76,31 @@ tail -f ~/.claude/hooks/logs/simple_notifier_*.log
 ls src/simple/*.py
 
 # Python 3.13+確認
-cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -c "from typing import ReadOnly, TypeIs; print('OK')"
+uv run --python 3.13 python -c "from typing import ReadOnly, TypeIs; print('OK')"
 ```
 
 ---
+
+## 🔍 Discord API開発ツール
+
+**統合されたDiscord APIツールセット**: `tools/discord_api/` ディレクトリに整理
+
+### 利用可能なツール
+
+1. **discord_api_basic_checker.py** - 基本アクセス・権限チェッカー
+2. **discord_api_advanced_validator.py** - 高度な検証・統計分析
+3. **discord_api_message_fetcher.py** - メッセージ取得・構造分析
+4. **discord_api_test_runner.py** - 包括的テストスイート
+
+詳細は各ツールの `--help` を参照：
+
+```bash
+cd tools/discord_api
+python discord_api_{basic_checker,advanced_validator,message_fetcher,test_runner}.py --help
+```
 
 ---
 
 **状況**: シンプルアーキテクチャ（555行）稼働中  
 **コード削減**: 8,000行→555行（93%削減）  
 **エントリーポイント**: `src/simple/main.py`
-
-*"Simplicity is the ultimate sophistication."*

@@ -334,6 +334,52 @@ echo '{"session_id":"test","tool_name":"Test"}' | CLAUDE_HOOK_EVENT=PreToolUse c
 
 ---
 
+## 🐛 デバッグデータ保存機能
+
+### 概要
+`DISCORD_DEBUG=1` が設定されている場合、すべてのHookイベントの入力データと出力データが自動的に保存されます。
+
+### 保存場所
+```
+~/.claude/hooks/debug/
+├── {timestamp}_{event_type}_raw_input.json         # フックから受信した生データ
+└── {timestamp}_{event_type}_formatted_output.json  # Discord送信用フォーマット済みデータ
+```
+
+### 主な機能
+
+1. **自動クリーンアップ**
+   - 7日以上古いファイルは自動削除
+   - ディスク容量の無駄遣いを防止
+
+2. **機密情報の自動マスキング**
+   - Discord Bot Token: `NzYz***MASKED***514` 
+   - Webhook URL: `***WEBHOOK_URL_MASKED***`
+   - その他の認証情報も安全にマスク
+
+3. **デバッグ分析コマンド**
+   ```bash
+   # 最新のデバッグファイルを確認
+   ls -lt ~/.claude/hooks/debug/ | head -10
+   
+   # 特定イベントタイプのみ表示
+   ls ~/.claude/hooks/debug/*Task* | tail -5
+   
+   # formatted_outputが存在しないケースを調査
+   for f in ~/.claude/hooks/debug/*_raw_input.json; do
+     output="${f/_raw_input.json/_formatted_output.json}"
+     [ ! -f "$output" ] && echo "No output for: $(basename $f)"
+   done
+   ```
+
+### トラブルシューティング例
+
+**Q: なぜ一部のイベントで `formatted_output.json` が作成されない？**
+A: 以下の理由が考えられます：
+- ツールがフィルタリングで無効化されている（例: `DISCORD_TOOL_BASH=0`）
+- イベントタイプが無効化されている（例: `DISCORD_EVENT_STOP=0`）
+- ハンドラーがメッセージ生成をスキップした
+
 ## 🔍 Raw JSON ログ分析機能
 
 ### 生JSONログの完全活用

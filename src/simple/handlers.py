@@ -48,19 +48,21 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
 
     tool_name_escaped = escape_discord_markdown(tool_name)
 
-    # Enhanced content formatting for important tools
+    # Enhanced content formatting for important tools using Discord native markdown
     if tool_name == "Task":
+        description = tool_input.get("description", "AI task execution")
         prompt = tool_input.get("prompt", "")
-        # Get first line or first 100 chars for preview
+        # Use Discord native markdown for better readability
+        # Get first meaningful line for preview, but use native formatting
         prompt_lines = prompt.split('\n')
-        prompt_preview = prompt_lines[0][:100] + "..." if len(prompt_lines[0]) > 100 else prompt_lines[0]
-        content = f"[{project_name}] Starting: {tool_name_escaped}\n```\n{prompt_preview}\n```"
+        prompt_preview = prompt_lines[0][:200] + "..." if len(prompt_lines[0]) > 200 else prompt_lines[0]
+        content = f"[{project_name}] Starting: **{tool_name_escaped}**\n**Description:** {description}\n*{prompt_preview}*"
     elif tool_name == "exit_plan_mode":
         plan = tool_input.get("plan", "")
-        # Get first line for preview
+        # Use Discord native markdown for plan preview
         plan_lines = plan.split('\n')
-        plan_preview = plan_lines[0][:100] + "..." if len(plan_lines[0]) > 100 else plan_lines[0]
-        content = f"[{project_name}] Starting: {tool_name_escaped}\n```\n{plan_preview}\n```"
+        plan_preview = plan_lines[0][:200] + "..." if len(plan_lines[0]) > 200 else plan_lines[0]
+        content = f"[{project_name}] Starting: **{tool_name_escaped}**\n**Plan:** *{plan_preview}*"
     else:
         content = f"[{project_name}] About to execute: {tool_name_escaped}"
 
@@ -101,16 +103,16 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
 
     tool_name_escaped = escape_discord_markdown(tool_name)
 
-    # Enhanced content formatting for important tools completion
+    # Enhanced content formatting for important tools completion using Discord native markdown
     if tool_name == "Task":
-        # For Task completion, show a brief result preview
+        # For Task completion, show a brief result preview with native markdown
         if tool_response.get("error"):
-            content = f"[{project_name}] Task Failed: {tool_name_escaped}\n❌ Execution error occurred"
+            content = f"[{project_name}] **Task Failed:** {tool_name_escaped}\n❌ *Execution error occurred*"
         else:
-            content = f"[{project_name}] Task Completed: {tool_name_escaped}\n✅ Successfully executed"
+            content = f"[{project_name}] **Task Completed:** {tool_name_escaped}\n✅ *Successfully executed*"
     elif tool_name == "exit_plan_mode":
-        # For exit_plan_mode completion
-        content = f"[{project_name}] Plan Approved: {tool_name_escaped}\n✅ Ready to execute"
+        # For exit_plan_mode completion with native markdown
+        content = f"[{project_name}] **Plan Approved:** {tool_name_escaped}\n✅ *Ready to execute*"
     else:
         content = f"[{project_name}] Completed: {tool_name_escaped}"
 
