@@ -6,8 +6,6 @@ All event handlers in one beautiful, simple file.
 
 from __future__ import annotations
 
-import html
-import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
