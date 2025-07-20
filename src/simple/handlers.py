@@ -8,7 +8,7 @@ import html
 import os
 import re
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 from event_types import Config, DiscordMessage, EventData, HandlerFunction
 from version import VERSION_STRING
@@ -20,7 +20,7 @@ from version import VERSION_STRING
 # Event Handlers - Simple, beautiful functions
 # =============================================================================
 
-def handle_pretooluse(data: EventData, config: Config) -> Optional[DiscordMessage]:
+def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle PreToolUse events."""
     tool_name = data.get("tool_name", "Unknown")
 
@@ -57,7 +57,7 @@ def handle_pretooluse(data: EventData, config: Config) -> Optional[DiscordMessag
     }
 
 
-def handle_posttooluse(data: EventData, config: Config) -> Optional[DiscordMessage]:
+def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle PostToolUse events."""
     tool_name = data.get("tool_name", "Unknown")
 
@@ -94,7 +94,7 @@ def handle_posttooluse(data: EventData, config: Config) -> Optional[DiscordMessa
     }
 
 
-def handle_notification(data: EventData, config: Config) -> Optional[DiscordMessage]:
+def handle_notification(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle Notification events."""
     message = data.get("message", "No message provided")
     message_escaped = escape_discord_markdown(message)
@@ -129,7 +129,7 @@ def handle_notification(data: EventData, config: Config) -> Optional[DiscordMess
     }
 
 
-def handle_stop(data: EventData, config: Config) -> Optional[DiscordMessage]:
+def handle_stop(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle Stop events."""
     # Get current working directory
     try:
@@ -159,7 +159,7 @@ def handle_stop(data: EventData, config: Config) -> Optional[DiscordMessage]:
     }
 
 
-def handle_subagent_stop(data: EventData, config: Config) -> Optional[DiscordMessage]:
+def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle SubagentStop events."""
     # Get current working directory
     try:
@@ -197,7 +197,7 @@ HANDLERS: dict[str, HandlerFunction] = {
 }
 
 
-def get_handler(event_type: str) -> Optional[HandlerFunction]:
+def get_handler(event_type: str) -> HandlerFunction | None:
     """Get handler for event type."""
     return HANDLERS.get(event_type)
 
@@ -227,16 +227,13 @@ def escape_discord_markdown(text: str | None) -> str:
     # Escape Discord markdown characters using regex for efficiency
     # Note: We escape most characters but preserve some formatting where appropriate
     markdown_chars = r"[*_`~|>#\-=\[\](){}]"
-    text = re.sub(markdown_chars, r"\\\g<0>", text)
-
-    return text
+    return re.sub(markdown_chars, r"\\\g<0>", text)
 
 def should_process_event(event_type: str, config: Config) -> bool:
     """Check if event type should be processed."""
     # Check individual event states (new style - highest priority)
-    if event_states := config.get("event_states"):
-        if event_type in event_states:
-            return event_states[event_type]
+    if (event_states := config.get("event_states")) and event_type in event_states:
+        return event_states[event_type]
 
     # Check enabled events (legacy whitelist)
     if enabled := config.get("enabled_events"):
@@ -253,9 +250,8 @@ def should_process_event(event_type: str, config: Config) -> bool:
 def should_process_tool(tool_name: str, config: Config) -> bool:
     """Check if tool should be processed."""
     # Check individual tool states (new style - highest priority)
-    if tool_states := config.get("tool_states"):
-        if tool_name in tool_states:
-            return tool_states[tool_name]
+    if (tool_states := config.get("tool_states")) and tool_name in tool_states:
+        return tool_states[tool_name]
 
     # Check disabled tools list (legacy)
     disabled_tools = config.get("disabled_tools", [])
