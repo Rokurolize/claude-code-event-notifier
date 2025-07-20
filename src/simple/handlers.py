@@ -48,8 +48,24 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
 
     tool_name_escaped = escape_discord_markdown(tool_name)
 
+    # Enhanced content formatting for important tools
+    if tool_name == "Task":
+        prompt = tool_input.get("prompt", "")
+        # Get first line or first 100 chars for preview
+        prompt_lines = prompt.split('\n')
+        prompt_preview = prompt_lines[0][:100] + "..." if len(prompt_lines[0]) > 100 else prompt_lines[0]
+        content = f"[{project_name}] Starting: {tool_name_escaped}\n```\n{prompt_preview}\n```"
+    elif tool_name == "exit_plan_mode":
+        plan = tool_input.get("plan", "")
+        # Get first line for preview
+        plan_lines = plan.split('\n')
+        plan_preview = plan_lines[0][:100] + "..." if len(plan_lines[0]) > 100 else plan_lines[0]
+        content = f"[{project_name}] Starting: {tool_name_escaped}\n```\n{plan_preview}\n```"
+    else:
+        content = f"[{project_name}] About to execute: {tool_name_escaped}"
+
     return {
-        "content": f"[{project_name}] About to execute: {tool_name_escaped}",
+        "content": content,
         "embeds": [{
             "title": f"🔵 Starting: {tool_name_escaped}",
             "description": description,
@@ -85,8 +101,21 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
 
     tool_name_escaped = escape_discord_markdown(tool_name)
 
+    # Enhanced content formatting for important tools completion
+    if tool_name == "Task":
+        # For Task completion, show a brief result preview
+        if tool_response.get("error"):
+            content = f"[{project_name}] Task Failed: {tool_name_escaped}\n❌ Execution error occurred"
+        else:
+            content = f"[{project_name}] Task Completed: {tool_name_escaped}\n✅ Successfully executed"
+    elif tool_name == "exit_plan_mode":
+        # For exit_plan_mode completion
+        content = f"[{project_name}] Plan Approved: {tool_name_escaped}\n✅ Ready to execute"
+    else:
+        content = f"[{project_name}] Completed: {tool_name_escaped}"
+
     return {
-        "content": f"[{project_name}] Completed: {tool_name_escaped}",
+        "content": content,
         "embeds": [{
             "title": f"✅ Completed: {tool_name_escaped}",
             "description": description,
@@ -280,6 +309,18 @@ def format_tool_input(tool_name: str, tool_input: dict) -> str:
         if len(command) > 100:
             command = command[:100] + "..."
         return f"**Command**: `{command}`"
+
+    if tool_name == "Task":
+        description = tool_input.get("description", "AI task execution")
+        prompt = tool_input.get("prompt", "No prompt provided")
+        # Format with code blocks for better readability and copy-paste functionality
+        description_escaped = escape_discord_markdown(description)
+        return f"**Description**: {description_escaped}\n```\n{prompt}\n```"
+
+    if tool_name == "exit_plan_mode":
+        plan = tool_input.get("plan", "No plan provided")
+        # Format plan content in code blocks for easy copying
+        return f"**Plan Content**:\n```\n{plan}\n```"
 
     # Default formatting
     formatted = escape_discord_markdown(str(tool_input))
