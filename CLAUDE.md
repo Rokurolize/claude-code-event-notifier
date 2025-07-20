@@ -18,6 +18,7 @@
 - **Hook環境隔離**: `uv run --python 3.13 --no-project` (依存関係干渉防止)
 - **タイムスタンプ**: `date +"%Y-%m-%d-%H-%M-%S"` (手動入力禁止)
 - **Discord通知最適化**: メッセージ部分でDiscordネイティブmarkdown(**太字**、*斜体*)使用、embed部分でコードブロック維持
+- **プロセス分離問題**: Claude Code Hooksは各イベントで別プロセス→永続ストレージ実装（2025-07-21）
 
 ---
 
@@ -36,7 +37,7 @@
 
 ## 🚨 現在の実装状況
 
-### シンプルアーキテクチャ（約900行、7ファイル）
+### シンプルアーキテクチャ（約900行、8ファイル）
 ```
 src/simple/
 ├── event_types.py       # 型定義
@@ -44,20 +45,23 @@ src/simple/
 ├── discord_client.py    # Discord送信（スレッド機能付き）
 ├── handlers.py          # イベントハンドラー
 ├── transcript_reader.py # トランスクリプト解析
-├── task_tracker.py      # タスク追跡システム (NEW)
+├── task_tracker.py      # タスク追跡システム
+├── task_storage.py      # 永続ストレージ (NEW 2025-07-21)
 └── main.py              # エントリーポイント
 ```
 
 **特徴**: Pure Python 3.13+、Zero Dependencies、89%コード削減（8000→900行）
 
-**新機能** (2025-07-20実装):
+**新機能** (2025-07-20-21実装):
 - Taskツール実行時に自動でDiscordスレッド作成
 - セッションベースのタスク追跡システム
 - `DISCORD_THREAD_FOR_TASK=1`で有効化
+- 永続ストレージによるプロセス間データ共有（2025-07-21解決）
 
-**既知の問題** (2025-07-21判明):
-- 並列タスク実行時のマッチング失敗（PostToolUseで結果投稿不可）
-- 原因: Claude Code Hookシステムの制約
+~~**既知の問題** (2025-07-21判明):~~ **→解決済み**
+- ~~並列タスク実行時のマッチング失敗（PostToolUseで結果投稿不可）~~
+- ~~原因: Claude Code Hookシステムの制約~~
+- **解決**: 永続ストレージ実装により完全動作
 
 ---
 
@@ -123,3 +127,4 @@ python discord_api_{basic_checker,advanced_validator,message_fetcher,test_runner
 - **@docs/2025-07-21-03-04-00-task-thread-implementation-report.md** - タスクスレッド実装レポート
 - **@docs/2025-07-21-03-07-00-discord-notification-flow-analysis.md** - 通知フロー分析
 - **@docs/2025-07-21-03-09-00-json-event-specification.md** - JSON仕様と改善提案
+- **@docs/2025-07-21-03-36-45-persistent-storage-implementation-report.md** - 永続ストレージ実装成功レポート
