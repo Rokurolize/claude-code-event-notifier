@@ -4,12 +4,17 @@
 All event handlers in one beautiful, simple file.
 """
 
+from __future__ import annotations
+
 import html
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from event_types import Config, DiscordMessage, EventData, HandlerFunction
+if TYPE_CHECKING:
+    from event_types import Config, DiscordMessage, EventData, HandlerFunction
+
 from version import VERSION_STRING
 
 # Python 3.14+ required - pure standard library
