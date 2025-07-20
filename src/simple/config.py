@@ -73,6 +73,8 @@ def _load_from_env(config: Config) -> None:
     # Features
     if val := os.environ.get("DISCORD_USE_THREADS"):
         config["use_threads"] = _parse_bool(val)
+    if val := os.environ.get("DISCORD_THREAD_FOR_TASK"):
+        config["thread_for_task"] = _parse_bool(val)
     if val := os.environ.get("DISCORD_MENTION_USER_ID"):
         config["mention_user_id"] = val
     if val := os.environ.get("DISCORD_DEBUG"):
@@ -141,6 +143,8 @@ def _set_config_value(config: Config, key: str, value: str) -> None:
         config["channel_id"] = value
     elif key == "DISCORD_USE_THREADS":
         config["use_threads"] = _parse_bool(value)
+    elif key == "DISCORD_THREAD_FOR_TASK":
+        config["thread_for_task"] = _parse_bool(value)
     elif key == "DISCORD_MENTION_USER_ID":
         config["mention_user_id"] = value
     elif key == "DISCORD_DEBUG":

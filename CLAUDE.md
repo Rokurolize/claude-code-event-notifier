@@ -36,17 +36,28 @@
 
 ## 🚨 現在の実装状況
 
-### シンプルアーキテクチャ（555行、5ファイル）
+### シンプルアーキテクチャ（約900行、7ファイル）
 ```
 src/simple/
-├── event_types.py    # 型定義
-├── config.py         # 設定読み込み
-├── discord_client.py # Discord送信
-├── handlers.py       # イベントハンドラー
-└── main.py          # エントリーポイント
+├── event_types.py       # 型定義
+├── config.py            # 設定読み込み
+├── discord_client.py    # Discord送信（スレッド機能付き）
+├── handlers.py          # イベントハンドラー
+├── transcript_reader.py # トランスクリプト解析
+├── task_tracker.py      # タスク追跡システム (NEW)
+└── main.py              # エントリーポイント
 ```
 
-**特徴**: Pure Python 3.13+、Zero Dependencies、93%コード削減（8000→555行）
+**特徴**: Pure Python 3.13+、Zero Dependencies、89%コード削減（8000→900行）
+
+**新機能** (2025-07-20実装):
+- Taskツール実行時に自動でDiscordスレッド作成
+- セッションベースのタスク追跡システム
+- `DISCORD_THREAD_FOR_TASK=1`で有効化
+
+**既知の問題** (2025-07-21判明):
+- 並列タスク実行時のマッチング失敗（PostToolUseで結果投稿不可）
+- 原因: Claude Code Hookシステムの制約
 
 ---
 
@@ -101,6 +112,14 @@ python discord_api_{basic_checker,advanced_validator,message_fetcher,test_runner
 
 ---
 
-**状況**: シンプルアーキテクチャ（555行）稼働中  
-**コード削減**: 8,000行→555行（93%削減）  
+**状況**: シンプルアーキテクチャ（900行）稼働中  
+**コード削減**: 8,000行→900行（89%削減）  
 **エントリーポイント**: `src/simple/main.py`
+
+---
+
+## 📄 2025-07-21 実装ドキュメント
+
+- **@docs/2025-07-21-03-04-00-task-thread-implementation-report.md** - タスクスレッド実装レポート
+- **@docs/2025-07-21-03-07-00-discord-notification-flow-analysis.md** - 通知フロー分析
+- **@docs/2025-07-21-03-09-00-json-event-specification.md** - JSON仕様と改善提案

@@ -7,6 +7,8 @@ All event handlers in one beautiful, simple file.
 from __future__ import annotations
 
 import re
+import logging
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +16,12 @@ if TYPE_CHECKING:
     from event_types import Config, DiscordMessage, EventData, HandlerFunction
 
 from version import VERSION_STRING
+from transcript_reader import read_subagent_messages, format_for_discord
+from discord_client import create_thread, send_to_thread
+from task_tracker import TaskTracker
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 # Python 3.14+ required - pure standard library
 
@@ -33,8 +41,16 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
     if not should_process_tool(tool_name, config):
         return None
 
-    # Format tool input
+    session_id = data.get("session_id", "unknown")
     tool_input = data.get("tool_input", {})
+    
+    # Track Task tool starts
+    task_id = None
+    if tool_name == "Task":
+        task_id = TaskTracker.track_task_start(session_id, tool_name, tool_input)
+        logger.debug(f"Tracked Task start with ID: {task_id}")
+
+    # Format tool input
     description = format_tool_input(tool_name, tool_input)
 
     # Get current working directory
@@ -57,6 +73,26 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
         prompt_lines = prompt.split('\n')
         prompt_preview = prompt_lines[0][:200] + "..." if len(prompt_lines[0]) > 200 else prompt_lines[0]
         content = f"[{project_name}] Starting: **{tool_name_escaped}**\n**Description:** {description}\n*{prompt_preview}*"
+        
+        # Create thread for Task execution if enabled
+        if config.get("thread_for_task") and config.get("bot_token") and config.get("channel_id") and task_id:
+            import datetime
+            thread_name = f"Task: {description[:50]} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            thread_id = create_thread(config["channel_id"], thread_name, config["bot_token"])
+            
+            if thread_id:
+                logger.debug(f"Created thread {thread_id} for task {task_id}")
+                TaskTracker.update_task_thread(session_id, task_id, thread_id)
+                
+                # Send initial message to thread
+                thread_message = {
+                    "content": f"## 🚀 Task Started\n\n**Description**: {description}\n\n**Prompt**:\n```\n{prompt[:1500]}\n```"
+                }
+                send_to_thread(thread_id, thread_message, config["bot_token"])
+                
+                # Update main message to include thread link
+                content += f"\n\n💬 **Thread**: <#{thread_id}>"
+        
     elif tool_name == "exit_plan_mode":
         plan = tool_input.get("plan", "")
         # Use Discord native markdown for plan preview
@@ -72,7 +108,7 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
             "title": f"🔵 Starting: {tool_name_escaped}",
             "description": description,
             "color": 0x3498db,  # Blue
-            "footer": {"text": f"Session: {data.get('session_id', 'unknown')} | Event: PreToolUse | {VERSION_STRING}"},
+            "footer": {"text": f"Session: {session_id} | Event: PreToolUse | {VERSION_STRING}"},
             "fields": [
                 {"name": "Cwd", "value": escape_discord_markdown(cwd_str), "inline": False}
             ]
@@ -88,8 +124,25 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
     if not should_process_tool(tool_name, config):
         return None
 
-    # Format tool response
+    session_id = data.get("session_id", "unknown")
     tool_response = data.get("tool_response", {})
+    tool_input = data.get("tool_input", {})
+    
+    # Track Task tool responses with content-based matching
+    task_id = None
+    if tool_name == "Task":
+        # Use content-based matching for better parallel task handling
+        task_id = TaskTracker.track_task_response_by_content(session_id, tool_name, tool_input, tool_response)
+        if task_id:
+            logger.debug(f"Tracked Task response with ID: {task_id} using content-based matching")
+        else:
+            logger.warning(f"Failed to track Task response for session {session_id}")
+            # Fallback to time-based matching if content matching fails
+            task_id = TaskTracker.track_task_response(session_id, tool_name, tool_response)
+            if task_id:
+                logger.debug(f"Tracked Task response with ID: {task_id} using fallback time-based matching")
+
+    # Format tool response
     description = format_tool_response(tool_name, tool_response)
 
     # Get current working directory
@@ -110,6 +163,37 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
             content = f"[{project_name}] **Task Failed:** {tool_name_escaped}\n❌ *Execution error occurred*"
         else:
             content = f"[{project_name}] **Task Completed:** {tool_name_escaped}\n✅ *Successfully executed*"
+            
+        # Post result to thread if available
+        if task_id and config.get("thread_for_task") and config.get("bot_token"):
+            task_info = TaskTracker.get_task_by_id(session_id, task_id)
+            if task_info and task_info.get("thread_id"):
+                thread_id = task_info["thread_id"]
+                
+                # Extract response content
+                response_text = "No response content"
+                if isinstance(tool_response, dict) and "content" in tool_response:
+                    content_list = tool_response.get("content", [])
+                    text_parts = []
+                    for item in content_list:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                    response_text = "\n".join(text_parts) if text_parts else "No text content"
+                
+                # Format execution time
+                duration_text = "Unknown"
+                if "totalDurationMs" in tool_response:
+                    duration_ms = tool_response["totalDurationMs"]
+                    duration_text = f"{duration_ms / 1000:.1f}s"
+                
+                # Send result to thread
+                thread_message = {
+                    "content": f"## ✅ Task Completed\n\n**Duration**: {duration_text}\n\n**Response**:\n```\n{response_text[:1500]}\n```"
+                }
+                if send_to_thread(thread_id, thread_message, config["bot_token"]):
+                    logger.debug(f"Posted Task result to thread {thread_id}")
+                    content += f"\n\n💬 **Result posted to thread**: <#{thread_id}>"
+                    
     elif tool_name == "exit_plan_mode":
         # For exit_plan_mode completion with native markdown
         content = f"[{project_name}] **Plan Approved:** {tool_name_escaped}\n✅ *Ready to execute*"
@@ -122,7 +206,7 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
             "title": f"✅ Completed: {tool_name_escaped}",
             "description": description,
             "color": 0x2ecc71,  # Green
-            "footer": {"text": f"Session: {data.get('session_id', 'unknown')} | Event: PostToolUse | {VERSION_STRING}"},
+            "footer": {"text": f"Session: {session_id} | Event: PostToolUse | {VERSION_STRING}"},
             "fields": [
                 {"name": "Cwd", "value": escape_discord_markdown(cwd_str), "inline": False}
             ]
@@ -195,29 +279,144 @@ def handle_stop(data: EventData, config: Config) -> DiscordMessage | None:
     }
 
 
-def handle_subagent_stop(data: EventData, _config: Config) -> DiscordMessage | None:
+def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | None:
     """Handle SubagentStop events."""
+    # Generate unique event ID for tracking
+    event_id = str(uuid.uuid4())[:8]
+    session_id = data.get('session_id', 'unknown')
+    logger.debug(f"[event-{event_id}] SubagentStop received for session {session_id}")
+    
     # Get current working directory
     try:
         cwd = Path.cwd()
         cwd_str = str(cwd)
         project_name = escape_discord_markdown(cwd.name)
-    except OSError:
+        logger.debug(f"[event-{event_id}] Working directory: {cwd_str}")
+    except OSError as e:
         cwd_str = "Unknown"
         project_name = "Unknown"
+        logger.debug(f"[event-{event_id}] OSError getting cwd: {e}")
 
-    return {
+    # Basic message for regular notification
+    basic_message = {
         "content": f"[{project_name}] Subagent Completed",
         "embeds": [{
             "title": "🤖 Subagent Completed",
             "description": "A subagent task has been completed.",
             "color": 0x9b59b6,  # Purple
-            "footer": {"text": f"Session: {data.get('session_id', 'unknown')} | Event: SubagentStop | {VERSION_STRING}"},
+            "footer": {"text": f"Session: {session_id} | Event: SubagentStop | {VERSION_STRING}"},
             "fields": [
                 {"name": "Cwd", "value": escape_discord_markdown(cwd_str), "inline": False}
             ]
         }]
     }
+    
+    # Check if thread posting is enabled
+    thread_for_task = config.get("thread_for_task")
+    logger.debug(f"[event-{event_id}] thread_for_task config: {thread_for_task}")
+    if not thread_for_task:
+        logger.debug(f"[event-{event_id}] Thread posting disabled, returning basic message")
+        return basic_message
+        
+    # Check if we have bot token for thread posting
+    bot_token = config.get("bot_token")
+    if not bot_token:
+        logger.debug(f"[event-{event_id}] Missing bot token for thread posting, returning basic message")
+        return basic_message
+        
+    # Get the latest task for this session from TaskTracker
+    latest_task = TaskTracker.get_latest_task(session_id)
+    if not latest_task:
+        logger.debug(f"[event-{event_id}] No tracked tasks found for session, returning basic message")
+        return basic_message
+    
+    logger.debug(f"[event-{event_id}] Found latest task: {latest_task.get('task_id')} - {latest_task.get('description')}")
+    
+    # Check if task has an associated thread
+    thread_id = latest_task.get("thread_id")
+    if not thread_id:
+        logger.debug(f"[event-{event_id}] No thread associated with task, returning basic message")
+        return basic_message
+        
+    logger.debug(f"[event-{event_id}] Found associated thread: {thread_id}")
+    
+    # Get transcript path for summary
+    transcript_path = data.get("transcript_path")
+    if transcript_path:
+        logger.debug(f"[event-{event_id}] Reading transcript for summary...")
+        subagent_data = read_subagent_messages(transcript_path)
+        
+        if subagent_data:
+            # Calculate execution metrics
+            import datetime
+            try:
+                start_time = datetime.datetime.fromisoformat(latest_task.get("start_time", ""))
+                end_time = datetime.datetime.fromisoformat(latest_task.get("end_time", datetime.datetime.now().isoformat()))
+                duration = end_time - start_time
+                duration_text = f"{duration.total_seconds():.1f}s"
+            except:
+                duration_text = "Unknown"
+            
+            # Count messages
+            task_messages = subagent_data.get("task_response_pairs", [])
+            message_count = len(task_messages)
+            
+            # Build summary message
+            summary_parts = [
+                f"## 📊 Task Summary",
+                f"",
+                f"**Task**: {latest_task.get('description', 'Unknown')}",
+                f"**Duration**: {duration_text}",
+                f"**Messages Exchanged**: {message_count}",
+                f"**Status**: {'✅ Completed' if latest_task.get('status') == 'completed' else '⚠️ ' + latest_task.get('status', 'Unknown')}",
+            ]
+            
+            # Add brief transcript summary if available
+            if task_messages:
+                summary_parts.extend([
+                    f"",
+                    f"### 📝 Conversation Highlights",
+                    f"```"
+                ])
+                
+                # Show first and last exchange
+                if len(task_messages) > 0:
+                    first_task = task_messages[0].get("task", {})
+                    first_response = task_messages[0].get("response", {})
+                    summary_parts.append(f"First Exchange:")
+                    summary_parts.append(f"Q: {first_task.get('prompt', '')[:100]}...")
+                    summary_parts.append(f"A: {first_response.get('content', '')[:100]}...")
+                    
+                if len(task_messages) > 1:
+                    last_task = task_messages[-1].get("task", {})
+                    last_response = task_messages[-1].get("response", {})
+                    summary_parts.append(f"")
+                    summary_parts.append(f"Final Exchange:")
+                    summary_parts.append(f"Q: {last_task.get('prompt', '')[:100]}...")
+                    summary_parts.append(f"A: {last_response.get('content', '')[:100]}...")
+                
+                summary_parts.append("```")
+            
+            # Send summary to thread
+            thread_message = {
+                "content": "\\n".join(summary_parts)[:2000]  # Discord message limit
+            }
+            
+            logger.debug(f"[event-{event_id}] Posting summary to thread...")
+            if send_to_thread(thread_id, thread_message, bot_token):
+                logger.debug(f"[event-{event_id}] Summary posted successfully")
+                # Update basic message to indicate summary was posted
+                basic_message["embeds"][0]["description"] = f"Task completed. Summary posted in thread: <#{thread_id}>"
+                basic_message["embeds"][0]["fields"].append({
+                    "name": "Thread",
+                    "value": f"<#{thread_id}>",
+                    "inline": True
+                })
+            else:
+                logger.debug(f"[event-{event_id}] Failed to post summary to thread")
+    
+    logger.debug(f"[event-{event_id}] Returning final message")
+    return basic_message
 
 
 # =============================================================================

@@ -1,0 +1,158 @@
+# CLAUDE.md - Discord Event Notifier
+
+シンプルアーキテクチャ（555行）のDiscord通知システム設定ガイド。
+
+## 📚 主要ドキュメント
+
+- **@docs/simple-architecture-complete-guide.md** - 技術仕様
+- **@docs/troubleshooting.md** - トラブルシューティング
+- **@~/.claude/discord-event-notifier-personal-config.md** - 個人設定
+
+## ⚡ エラー文書化の鉄則
+
+**エラー解決後は即座にCLAUDE.mdに記録する。これを怠る = 同じエラーの無限ループ。**
+
+### 📝 重要な教訓
+
+- **モジュール名衝突**: `src/types.py`→`src/simple/event_types.py` (標準ライブラリ回避)
+- **Hook環境隔離**: `uv run --python 3.13 --no-project` (依存関係干渉防止)
+- **タイムスタンプ**: `date +"%Y-%m-%d-%H-%M-%S"` (手動入力禁止)
+- **Discord通知最適化**: メッセージ部分でDiscordネイティブmarkdown(**太字**、*斜体*)使用、embed部分でコードブロック維持
+
+---
+
+## ⚠️ Python実行規則
+
+**必須**: `cd project_root && uv run --python 3.13 python script.py`  
+**Hook時**: `uv run --python 3.13 --no-project python /path/to/script.py`  
+**禁止**: `python3` の直接使用
+
+### 設計原則
+- **Pure Python 3.13+**: 標準ライブラリのみ、typing_extensions禁止
+- **Fail Silent**: Claude Codeをブロックしない
+- **Type Safety**: TypedDict、TypeIs使用
+
+---
+
+## 🚨 現在の実装状況
+
+### シンプルアーキテクチャ（555行、5ファイル）
+```
+src/simple/
+├── event_types.py    # 型定義（94行）
+├── config.py         # 設定読み込み（117行）
+├── discord_client.py # Discord送信（71行）
+├── handlers.py       # イベントハンドラー（190行）
+└── main.py          # エントリーポイント（83行）
+```
+
+**特徴**: Pure Python 3.13+、Zero Dependencies、93%コード削減（8000→555行）
+
+---
+
+## 🔧 必須コマンド
+
+```bash
+# セットアップ
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks_simple.py
+
+# 検証
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python configure_hooks.py --validate-end-to-end
+
+# ログ確認
+tail -f ~/.claude/hooks/logs/simple_notifier_*.log
+```
+
+---
+
+## 📁 設定ファイル
+
+- **@/home/ubuntu/.claude/.env** - Discord通知設定
+- **@/home/ubuntu/.claude/settings.json** - Hook設定
+
+---
+
+## 🐛 デバッグ機能
+`DISCORD_DEBUG=1` で生データ保存 → `~/.claude/hooks/debug/`
+詳細: @README.md#debugging または @docs/troubleshooting.md
+
+---
+
+## ⚠️ セッション開始時チェック
+
+```bash
+# アーキテクチャ確認  
+ls src/simple/*.py
+
+# Python 3.13+確認
+cd /home/ubuntu/workbench/projects/claude-code-event-notifier && uv run --python 3.13 python -c "from typing import ReadOnly, TypeIs; print('OK')"
+```
+
+---
+
+## 🔍 Discord API開発ツール
+
+**統合されたDiscord APIツールセット**: `tools/discord_api/` ディレクトリに整理
+
+### 利用可能なツール
+
+1. **discord_api_basic_checker.py** - 基本アクセス・権限チェッカー
+   - Bot認証とチャンネルアクセスの検証
+   - アーカイブスレッドとパーミッション分析
+   - 接続問題の迅速な診断
+
+2. **discord_api_advanced_validator.py** - 高度な検証・統計分析
+   - メッセージ取得の反復検証（信頼性テスト）
+   - Discord/Simple Notifierメッセージの検出
+   - チャンネル健全性の統計分析
+
+3. **discord_api_message_fetcher.py** - メッセージ取得・構造分析
+   - Discord URLから直接メッセージ取得
+   - embed、添付ファイル、リアクションの詳細分析
+   - Discord/Simple Notifier検出機能
+
+4. **discord_api_test_runner.py** - 包括的テストスイート
+   - 7つの自動テスト（設定、認証、権限、メッセージ等）
+   - --quickモードで必須テストのみ実行
+   - 成功率に基づく健全性評価
+
+### 🎯 重要：--helpコマンドの活用
+
+**各ツールの詳細な使い方は `--help` で確認することを強く推奨**：
+
+```bash
+cd tools/discord_api
+
+# 各ツールの使い方を確認
+python discord_api_basic_checker.py --help
+python discord_api_advanced_validator.py --help
+python discord_api_message_fetcher.py --help
+python discord_api_test_runner.py --help
+```
+
+**--helpの特徴**:
+- 具体的な使用例を複数掲載
+- 各オプションの詳細説明
+- 期待される出力内容
+- 設定方法（環境変数・設定ファイル）
+
+### クイックスタート
+
+```bash
+# 基本的な接続確認
+cd tools/discord_api && python discord_api_basic_checker.py
+
+# メッセージ分析（Discord URLを使用）
+cd tools/discord_api && python discord_api_message_fetcher.py --url "DISCORD_MESSAGE_URL"
+
+# 包括的な健全性チェック
+cd tools/discord_api && python discord_api_test_runner.py --quick
+```
+
+---
+
+**状況**: シンプルアーキテクチャ（555行）稼働中  
+**コード削減**: 8,000行→555行（93%削減）  
+**エントリーポイント**: `src/simple/main.py`
+
+*"Simplicity is the ultimate sophistication."*

@@ -1,0 +1,6 @@
+{
+  "session_id": "test-session-123",
+  "hook_event_name": "SubagentStop",
+  "transcript_path": "/home/ubuntu/.claude/test-transcript.jsonl",
+  "result": "Task completed successfully"
+}
