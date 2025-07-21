@@ -129,7 +129,7 @@ class TaskStorage:
     @staticmethod
     def _calculate_checksum(data: bytes) -> str:
         """Calculate checksum for data integrity."""
-        return hashlib.md5(data).hexdigest()
+        return hashlib.sha256(data).hexdigest()
     
     @staticmethod
     def _validate_json_data(data: Any) -> bool:
