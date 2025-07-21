@@ -26,8 +26,21 @@ def read_subagent_messages(transcript_path: str, event_timestamp: Optional[str] 
     """
     logger.debug(f"read_subagent_messages called with path: {transcript_path}, event_timestamp: {event_timestamp}")
     
+    # Validate transcript path is within expected directories
     try:
-        transcript_file = Path(transcript_path)
+        transcript_file = Path(transcript_path).resolve()
+        allowed_dirs = [
+            Path.home() / ".claude",
+            Path("/tmp"),  # Some systems may use tmp
+        ]
+        if not any(transcript_file.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs):
+            logger.error(f"Transcript path outside allowed directories: {transcript_path}")
+            return None
+    except Exception as e:
+        logger.error(f"Path validation error: {e}")
+        return None
+    
+    try:
         if not transcript_file.exists():
             logger.debug(f"Transcript file does not exist: {transcript_path}")
             return None

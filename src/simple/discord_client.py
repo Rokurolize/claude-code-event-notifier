@@ -56,8 +56,9 @@ def _send_via_webhook(message: DiscordMessage, webhook_url: str) -> bool:
         with urllib.request.urlopen(req, timeout=10) as response:
             return response.status == 204
             
-    except Exception:
-        # Silently fail - don't block Claude Code
+    except Exception as e:
+        # Log at debug level but don't block Claude Code
+        logger.debug(f"Discord webhook send failed: {type(e).__name__}: {e}")
         return False
 
 
@@ -80,8 +81,9 @@ def _send_via_bot_api(message: DiscordMessage, bot_token: str, channel_id: str) 
         with urllib.request.urlopen(req, timeout=10) as response:
             return 200 <= response.status < 300
             
-    except Exception:
-        # Silently fail - don't block Claude Code
+    except Exception as e:
+        # Log at debug level but don't block Claude Code
+        logger.debug(f"Discord bot API send failed: {type(e).__name__}: {e}")
         return False
 
 

@@ -399,7 +399,7 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
             
             # Send summary to thread
             thread_message = {
-                "content": "\\n".join(summary_parts)[:2000]  # Discord message limit
+                "content": "\n".join(summary_parts)[:2000]  # Discord message limit
             }
             
             logger.debug(f"[event-{event_id}] Posting summary to thread...")

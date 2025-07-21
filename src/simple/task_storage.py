@@ -9,6 +9,7 @@ import json
 import os
 import logging
 import time
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Any
@@ -51,8 +52,8 @@ class SimpleLock:
                 break
         
         if not self.acquired:
-            # Timeout or error, proceed without lock (best effort)
-            logger.debug("Proceeding without lock after timeout")
+            # Log warning but still proceed to maintain "fail silent" principle
+            logger.warning(f"Failed to acquire lock for {self.lock_file} within {self.timeout}s timeout")
         return self
     
     def __exit__(self, *args):
@@ -69,8 +70,8 @@ class TaskStorage:
     
     @staticmethod
     def _ensure_storage_dir():
-        """Ensure storage directory exists."""
-        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        """Ensure storage directory exists with restrictive permissions."""
+        STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     
     @staticmethod
     def _load_data() -> Dict[str, Dict[str, dict]]:
@@ -93,14 +94,32 @@ class TaskStorage:
         TaskStorage._ensure_storage_dir()
         
         try:
-            with open(STORAGE_FILE, 'w') as f:
+            # Write to temporary file first for atomic operation
+            temp_file = STORAGE_FILE.with_suffix('.tmp')
+            with open(temp_file, 'w', mode=0o600) as f:
                 json.dump(data, f, indent=2)
+            # Atomic rename
+            temp_file.replace(STORAGE_FILE)
         except OSError as e:
             logger.error(f"Failed to save task storage: {e}")
     
     @staticmethod
+    def _validate_session_id(session_id: str) -> bool:
+        """Validate session ID format (UUID-like pattern)."""
+        if not session_id or not isinstance(session_id, str):
+            return False
+        # Check for UUID-like pattern (8-4-4-4-12 hex characters)
+        uuid_pattern = r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+        return bool(re.match(uuid_pattern, session_id.lower()))
+    
+    @staticmethod
     def track_task_start(session_id: str, task_id: str, task_info: dict) -> bool:
         """Store task start information."""
+        # Validate input
+        if not TaskStorage._validate_session_id(session_id):
+            logger.error(f"Invalid session_id format: {session_id}")
+            return False
+            
         with SimpleLock(LOCK_FILE):
             data = TaskStorage._load_data()
             
