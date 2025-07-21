@@ -21,7 +21,8 @@ This directory contains the original Discord API tools that have been replaced b
 - ✅ Test suite consolidation
 - ✅ Basic Discord API checking
 
-**Pending:**
+## Pending
+
 - ⏳ Update `configure_hooks.py` to use new shared libraries
 - ⏳ Archive remaining legacy files
 
