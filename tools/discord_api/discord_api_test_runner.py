@@ -203,6 +203,12 @@ class DiscordAPITestSuite:
         }
         
         try:
+            # Validate script path to prevent path traversal
+            main_script = main_script.resolve()
+            if not main_script.is_relative_to(Path.cwd()):
+                result.set_failure("Script path validation failed")
+                return result
+            
             # Run the script with test data
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             process = subprocess.run(
@@ -211,6 +217,7 @@ class DiscordAPITestSuite:
                 text=True,
                 capture_output=True,
                 timeout=30,
+                check=False,
             )
             
             if process.returncode == 0:
