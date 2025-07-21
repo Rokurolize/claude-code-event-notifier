@@ -205,8 +205,9 @@ class DiscordAPITestSuite:
         
         try:
             # Run the script with test data
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             process = subprocess.run(
-                ["uv", "run", "--python", "3.13", "python", str(main_script)],
+                ["uv", "run", "--python", python_version, "python", str(main_script)],
                 input=json.dumps(test_event),
                 text=True,
                 capture_output=True,
