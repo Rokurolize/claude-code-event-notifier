@@ -7,20 +7,16 @@ via webhook or bot API.
 
 import json
 import logging
-import re
 import urllib.error
 import urllib.request
 
 from event_types import Config, DiscordMessage
+from utils import sanitize_log_input
 
 # Python 3.14+ required - pure standard library
 
 # Setup logger
 logger = logging.getLogger(__name__)
-
-def _sanitize_log_input(value: str) -> str:
-    """Sanitize input for logging to prevent log injection."""
-    return re.sub(r'[\n\r]', '', str(value))
 
 
 def send_to_discord(message: DiscordMessage, config: Config) -> bool:
@@ -102,7 +98,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
     Returns:
         Thread ID if successful, None otherwise
     """
-    logger.debug(f"create_thread called - channel_id: {_sanitize_log_input(channel_id)}, name: {_sanitize_log_input(name)}, token_length: {len(bot_token)}")
+    logger.debug(f"create_thread called - channel_id: {sanitize_log_input(channel_id)}, name: {sanitize_log_input(name)}, token_length: {len(bot_token)}")
     
     try:
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
@@ -126,7 +122,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
             }
         )
         
-        logger.debug(f"Sending POST request to: {_sanitize_log_input(url)}")
+        logger.debug(f"Sending POST request to: {sanitize_log_input(url)}")
         with urllib.request.urlopen(req, timeout=10) as response:
             status_code = response.status
             logger.debug(f"Discord API response status: {status_code}")
@@ -135,7 +131,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
                 response_data = response.read()
                 result = json.loads(response_data)
                 thread_id = result.get("id")
-                logger.debug(f"Thread created successfully - ID: {_sanitize_log_input(thread_id)}, response: {result}")
+                logger.debug(f"Thread created successfully - ID: {sanitize_log_input(thread_id)}, response: {result}")
                 return thread_id
             else:
                 logger.debug(f"Unexpected status code: {status_code}")
@@ -173,7 +169,7 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
     Returns:
         True if successful, False otherwise
     """
-    logger.debug(f"send_to_thread called - thread_id: {_sanitize_log_input(thread_id)}, message length: {len(str(message))}")
+    logger.debug(f"send_to_thread called - thread_id: {sanitize_log_input(thread_id)}, message length: {len(str(message))}")
     
     try:
         url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
@@ -190,7 +186,7 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
             }
         )
         
-        logger.debug(f"Sending POST request to: {_sanitize_log_input(url)}")
+        logger.debug(f"Sending POST request to: {sanitize_log_input(url)}")
         with urllib.request.urlopen(req, timeout=10) as response:
             status_code = response.status
             logger.debug(f"Discord API response status: {status_code}")

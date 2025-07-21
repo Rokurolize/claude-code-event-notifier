@@ -113,5 +113,5 @@ class Config(TypedDict, total=False):
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 
 # Handler function signature
-from typing import Callable, Optional
-HandlerFunction = Callable[[EventData, Config], Optional[DiscordMessage]]
+from typing import Callable
+HandlerFunction = Callable[[EventData, Config], DiscordMessage | None]

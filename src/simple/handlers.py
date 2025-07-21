@@ -19,6 +19,7 @@ from version import VERSION_STRING
 from transcript_reader import read_subagent_messages
 from discord_client import create_thread, send_to_thread
 from task_tracker import TaskTracker
+from utils import escape_discord_markdown
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -443,26 +444,6 @@ def get_handler(event_type: str) -> HandlerFunction | None:
 # Utility Functions
 # =============================================================================
 
-def escape_discord_markdown(text: str | None) -> str:
-    """Escape Discord markdown special characters.
-
-    Prevents Discord from interpreting markdown characters in user content
-    like file paths, commands, and error messages.
-    """
-    if text is None:
-        return ""
-
-    try:
-        if not isinstance(text, str):
-            text = str(text)
-    except (TypeError, ValueError):
-        return "Error: Unable to convert input to string"
-
-    # Escape backslashes first to avoid double-escaping
-    text = text.replace("\\", "\\\\")
-
-    # Escape Discord markdown characters using pre-compiled regex for efficiency
-    return _MARKDOWN_PATTERN.sub(r"\\\g<0>", text)
 
 def should_process_event(event_type: str, config: Config) -> bool:
     """Check if event type should be processed."""

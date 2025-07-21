@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import cast
 
 from event_types import Config
+from utils import parse_bool
 
 # Python 3.13+ required - pure standard library
 
@@ -75,51 +76,51 @@ def _load_from_env(config: Config) -> None:
     
     # Features
     if val := os.environ.get("DISCORD_USE_THREADS"):
-        config["use_threads"] = _parse_bool(val)
+        config["use_threads"] = parse_bool(val)
     if val := os.environ.get("DISCORD_THREAD_FOR_TASK"):
-        config["thread_for_task"] = _parse_bool(val)
+        config["thread_for_task"] = parse_bool(val)
     if val := os.environ.get("DISCORD_MENTION_USER_ID"):
         config["mention_user_id"] = val
     if val := os.environ.get("DISCORD_DEBUG"):
-        config["debug"] = _parse_bool(val)
+        config["debug"] = parse_bool(val)
     
     # Individual event control (new style - prioritized)
     event_states = {}
     if val := os.environ.get("DISCORD_EVENT_PRETOOLUSE"):
-        event_states["PreToolUse"] = _parse_bool(val)
+        event_states["PreToolUse"] = parse_bool(val)
     if val := os.environ.get("DISCORD_EVENT_POSTTOOLUSE"):
-        event_states["PostToolUse"] = _parse_bool(val)
+        event_states["PostToolUse"] = parse_bool(val)
     if val := os.environ.get("DISCORD_EVENT_NOTIFICATION"):
-        event_states["Notification"] = _parse_bool(val)
+        event_states["Notification"] = parse_bool(val)
     if val := os.environ.get("DISCORD_EVENT_STOP"):
-        event_states["Stop"] = _parse_bool(val)
+        event_states["Stop"] = parse_bool(val)
     if val := os.environ.get("DISCORD_EVENT_SUBAGENT_STOP"):
-        event_states["SubagentStop"] = _parse_bool(val)
+        event_states["SubagentStop"] = parse_bool(val)
     if event_states:
         config["event_states"] = event_states
     
     # Individual tool control (new style - prioritized)
     tool_states = {}
     if val := os.environ.get("DISCORD_TOOL_READ"):
-        tool_states["Read"] = _parse_bool(val)
+        tool_states["Read"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_EDIT"):
-        tool_states["Edit"] = _parse_bool(val)
+        tool_states["Edit"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_MULTIEDIT"):
-        tool_states["MultiEdit"] = _parse_bool(val)
+        tool_states["MultiEdit"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_TODOWRITE"):
-        tool_states["TodoWrite"] = _parse_bool(val)
+        tool_states["TodoWrite"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_GREP"):
-        tool_states["Grep"] = _parse_bool(val)
+        tool_states["Grep"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_GLOB"):
-        tool_states["Glob"] = _parse_bool(val)
+        tool_states["Glob"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_LS"):
-        tool_states["LS"] = _parse_bool(val)
+        tool_states["LS"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_BASH"):
-        tool_states["Bash"] = _parse_bool(val)
+        tool_states["Bash"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_TASK"):
-        tool_states["Task"] = _parse_bool(val)
+        tool_states["Task"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_WEBFETCH"):
-        tool_states["WebFetch"] = _parse_bool(val)
+        tool_states["WebFetch"] = parse_bool(val)
     if tool_states:
         config["tool_states"] = tool_states
     
@@ -145,77 +146,77 @@ def _set_config_value(config: Config, key: str, value: str) -> None:
     elif key == "DISCORD_CHANNEL_ID":
         config["channel_id"] = value
     elif key == "DISCORD_USE_THREADS":
-        config["use_threads"] = _parse_bool(value)
+        config["use_threads"] = parse_bool(value)
     elif key == "DISCORD_THREAD_FOR_TASK":
-        config["thread_for_task"] = _parse_bool(value)
+        config["thread_for_task"] = parse_bool(value)
     elif key == "DISCORD_MENTION_USER_ID":
         config["mention_user_id"] = value
     elif key == "DISCORD_DEBUG":
-        config["debug"] = _parse_bool(value)
+        config["debug"] = parse_bool(value)
     
     # Individual event control (new style - highest priority)
     elif key == "DISCORD_EVENT_PRETOOLUSE":
         if "event_states" not in config:
             config["event_states"] = {}
-        config["event_states"]["PreToolUse"] = _parse_bool(value)
+        config["event_states"]["PreToolUse"] = parse_bool(value)
     elif key == "DISCORD_EVENT_POSTTOOLUSE":
         if "event_states" not in config:
             config["event_states"] = {}
-        config["event_states"]["PostToolUse"] = _parse_bool(value)
+        config["event_states"]["PostToolUse"] = parse_bool(value)
     elif key == "DISCORD_EVENT_NOTIFICATION":
         if "event_states" not in config:
             config["event_states"] = {}
-        config["event_states"]["Notification"] = _parse_bool(value)
+        config["event_states"]["Notification"] = parse_bool(value)
     elif key == "DISCORD_EVENT_STOP":
         if "event_states" not in config:
             config["event_states"] = {}
-        config["event_states"]["Stop"] = _parse_bool(value)
+        config["event_states"]["Stop"] = parse_bool(value)
     elif key == "DISCORD_EVENT_SUBAGENT_STOP":
         if "event_states" not in config:
             config["event_states"] = {}
-        config["event_states"]["SubagentStop"] = _parse_bool(value)
+        config["event_states"]["SubagentStop"] = parse_bool(value)
     
     # Individual tool control (new style - highest priority)
     elif key == "DISCORD_TOOL_READ":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Read"] = _parse_bool(value)
+        config["tool_states"]["Read"] = parse_bool(value)
     elif key == "DISCORD_TOOL_EDIT":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Edit"] = _parse_bool(value)
+        config["tool_states"]["Edit"] = parse_bool(value)
     elif key == "DISCORD_TOOL_MULTIEDIT":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["MultiEdit"] = _parse_bool(value)
+        config["tool_states"]["MultiEdit"] = parse_bool(value)
     elif key == "DISCORD_TOOL_TODOWRITE":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["TodoWrite"] = _parse_bool(value)
+        config["tool_states"]["TodoWrite"] = parse_bool(value)
     elif key == "DISCORD_TOOL_GREP":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Grep"] = _parse_bool(value)
+        config["tool_states"]["Grep"] = parse_bool(value)
     elif key == "DISCORD_TOOL_GLOB":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Glob"] = _parse_bool(value)
+        config["tool_states"]["Glob"] = parse_bool(value)
     elif key == "DISCORD_TOOL_LS":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["LS"] = _parse_bool(value)
+        config["tool_states"]["LS"] = parse_bool(value)
     elif key == "DISCORD_TOOL_BASH":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Bash"] = _parse_bool(value)
+        config["tool_states"]["Bash"] = parse_bool(value)
     elif key == "DISCORD_TOOL_TASK":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["Task"] = _parse_bool(value)
+        config["tool_states"]["Task"] = parse_bool(value)
     elif key == "DISCORD_TOOL_WEBFETCH":
         if "tool_states" not in config:
             config["tool_states"] = {}
-        config["tool_states"]["WebFetch"] = _parse_bool(value)
+        config["tool_states"]["WebFetch"] = parse_bool(value)
     
     # Legacy settings (only loaded if new style not already set)
     elif key == "DISCORD_ENABLED_EVENTS" and "event_states" not in config:
@@ -225,10 +226,6 @@ def _set_config_value(config: Config, key: str, value: str) -> None:
     elif key == "DISCORD_DISABLED_TOOLS" and "tool_states" not in config:
         config["disabled_tools"] = [t.strip() for t in value.split(",") if t.strip()]
 
-
-def _parse_bool(value: str) -> bool:
-    """Parse string to boolean."""
-    return value.lower() in ("true", "1", "yes", "on")
 
 
 def _has_valid_credentials(config: Config) -> bool:

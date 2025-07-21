@@ -13,7 +13,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any, TypedDict, ClassVar
+from typing import TypedDict, ClassVar, Any
 from contextlib import contextmanager
 import hashlib
 
@@ -43,10 +43,10 @@ class TaskInfo(TypedDict, total=False):
     description: str
     prompt: str
     start_time: str
-    end_time: Optional[str]
+    end_time: str | None
     status: str
-    thread_id: Optional[str]
-    response: Optional[Any]
+    thread_id: str | None
+    response: Any | None
 
 
 class SimpleLock:
@@ -113,7 +113,7 @@ class TaskStorage:
     """Improved persistent task storage with better error handling and performance."""
     
     # Class-level cache to avoid global variable
-    _cache: ClassVar[Dict[str, Any]] = {"data": None, "timestamp": 0, "checksum": None}
+    _cache: ClassVar[dict[str, Any]] = {"data": None, "timestamp": 0, "checksum": None}
     
     @staticmethod
     def _ensure_storage_dir():
@@ -175,7 +175,7 @@ class TaskStorage:
             raise
     
     @staticmethod
-    def _load_data_with_cache() -> Dict[str, Dict[str, TaskInfo]]:
+    def _load_data_with_cache() -> dict[str, dict[str, TaskInfo]]:
         """Load task data with caching for better performance."""
         
         # Check cache validity
@@ -208,7 +208,7 @@ class TaskStorage:
         return data
     
     @staticmethod
-    def _load_data() -> Dict[str, Dict[str, TaskInfo]]:
+    def _load_data() -> dict[str, dict[str, TaskInfo]]:
         """Load task data from file with error recovery."""
         TaskStorage._ensure_storage_dir()
         
@@ -257,7 +257,7 @@ class TaskStorage:
         return {}
     
     @staticmethod
-    def _save_data(data: Dict[str, Dict[str, TaskInfo]]):
+    def _save_data(data: dict[str, dict[str, TaskInfo]]):
         """Save task data to file atomically with backup."""
         TaskStorage._ensure_storage_dir()
         
@@ -307,7 +307,7 @@ class TaskStorage:
             return False
     
     @staticmethod
-    def get_session_tasks(session_id: str) -> Dict[str, TaskInfo]:
+    def get_session_tasks(session_id: str) -> dict[str, TaskInfo]:
         """Get all tasks for a session with caching."""
         try:
             # Try cache first for read operations
@@ -318,7 +318,7 @@ class TaskStorage:
             return {}
     
     @staticmethod
-    def update_task(session_id: str, task_id: str, updates: Dict[str, Any]) -> bool:
+    def update_task(session_id: str, task_id: str, updates: dict[str, Any]) -> bool:
         """Update task information with validation."""
         try:
             with SimpleLock(LOCK_FILE):
@@ -343,7 +343,7 @@ class TaskStorage:
             return False
     
     @staticmethod
-    def get_task_by_content(session_id: str, description: str, prompt: str) -> Optional[TaskInfo]:
+    def get_task_by_content(session_id: str, description: str, prompt: str) -> TaskInfo | None:
         """Find a task by matching content with optimized search."""
         try:
             tasks = TaskStorage.get_session_tasks(session_id)
@@ -371,7 +371,7 @@ class TaskStorage:
             return None
     
     @staticmethod
-    def get_task_by_id(session_id: str, task_id: str) -> Optional[TaskInfo]:
+    def get_task_by_id(session_id: str, task_id: str) -> TaskInfo | None:
         """Get specific task info by ID with caching."""
         try:
             tasks = TaskStorage.get_session_tasks(session_id)
@@ -381,7 +381,7 @@ class TaskStorage:
             return None
     
     @staticmethod
-    def get_latest_task(session_id: str) -> Optional[TaskInfo]:
+    def get_latest_task(session_id: str) -> TaskInfo | None:
         """Get the most recent task for a session with optimized sorting."""
         try:
             tasks = TaskStorage.get_session_tasks(session_id)
@@ -403,7 +403,7 @@ class TaskStorage:
             return None
     
     @staticmethod
-    def _cleanup_old_sessions(data: Dict[str, Dict[str, TaskInfo]]):
+    def _cleanup_old_sessions(data: dict[str, dict[str, TaskInfo]]):
         """Remove sessions older than CLEANUP_AFTER_HOURS with better error handling."""
         try:
             cutoff_time = datetime.now() - timedelta(hours=CLEANUP_AFTER_HOURS)

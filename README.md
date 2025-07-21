@@ -1,5 +1,7 @@
 # Claude Code Discord Notifier
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/Rokurolize/claude-code-event-notifier?utm_source=oss&utm_medium=github&utm_campaign=Rokurolize%2Fclaude-code-event-notifier&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 Send Claude Code events to Discord. One file, no dependencies, simple setup.
 
 ## Requirements

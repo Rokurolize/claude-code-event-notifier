@@ -11,7 +11,7 @@ hooks run as separate processes.
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any
+from typing import Any
 
 # Import persistent storage
 from task_storage import TaskStorage
@@ -24,7 +24,7 @@ class TaskTracker:
     """Manages task tracking across sessions."""
     
     @staticmethod
-    def track_task_start(session_id: str, tool_name: str, tool_input: dict) -> Optional[str]:
+    def track_task_start(session_id: str, tool_name: str, tool_input: dict) -> str | None:
         """Track the start of a Task tool execution.
         
         Args:
@@ -81,7 +81,7 @@ class TaskTracker:
         return success
     
     @staticmethod
-    def track_task_response(session_id: str, tool_name: str, tool_response: dict) -> Optional[str]:
+    def track_task_response(session_id: str, tool_name: str, tool_response: dict) -> str | None:
         """Track the response of a Task tool execution.
         
         Args:
@@ -131,7 +131,7 @@ class TaskTracker:
             return None
     
     @staticmethod
-    def track_task_response_by_content(session_id: str, tool_name: str, tool_input: dict, tool_response: dict) -> Optional[str]:
+    def track_task_response_by_content(session_id: str, tool_name: str, tool_input: dict, tool_response: dict) -> str | None:
         """Track the response of a Task tool execution using content-based matching.
         
         This method matches tasks based on their input content (description and prompt),
@@ -181,7 +181,7 @@ class TaskTracker:
             return None
     
     @staticmethod
-    def get_latest_task(session_id: str) -> Optional[dict]:
+    def get_latest_task(session_id: str) -> dict | None:
         """Get the most recent task for a session.
         
         Args:
@@ -193,7 +193,7 @@ class TaskTracker:
         return TaskStorage.get_latest_task(session_id)
     
     @staticmethod
-    def get_task_by_id(session_id: str, task_id: str) -> Optional[dict]:
+    def get_task_by_id(session_id: str, task_id: str) -> dict | None:
         """Get specific task info.
         
         Args:
@@ -206,7 +206,7 @@ class TaskTracker:
         return TaskStorage.get_task_by_id(session_id, task_id)
     
     @staticmethod
-    def get_session_tasks(session_id: str) -> List[dict]:
+    def get_session_tasks(session_id: str) -> list[dict]:
         """Get all tasks for a session.
         
         Args:

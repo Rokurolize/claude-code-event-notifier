@@ -8,23 +8,12 @@ subagent task execution details.
 import json
 import logging
 import os
-import re
 from pathlib import Path
+
+from utils import sanitize_log_input
 
 # Setup logger
 logger = logging.getLogger(__name__)
-
-
-def _sanitize_log_input(input_str: str) -> str:
-    """Sanitize input for safe logging by removing newline characters.
-    
-    Prevents log injection attacks by removing characters that could
-    create fake log entries.
-    """
-    if not isinstance(input_str, str):
-        input_str = str(input_str)
-    # Remove newline and carriage return characters
-    return re.sub(r'[\n\r]', '', input_str)
 
 
 def read_subagent_messages(transcript_path: str, event_timestamp: str | None = None) -> dict | None:
@@ -37,8 +26,8 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
     Returns:
         Dict with task info and response, or None if not found
     """
-    safe_transcript_path = _sanitize_log_input(transcript_path)
-    safe_event_timestamp = _sanitize_log_input(str(event_timestamp))
+    safe_transcript_path = sanitize_log_input(transcript_path)
+    safe_event_timestamp = sanitize_log_input(str(event_timestamp))
     logger.debug(f"read_subagent_messages called with path: {safe_transcript_path}, event_timestamp: {safe_event_timestamp}")
     
     # Validate transcript path is within expected directories
@@ -51,7 +40,7 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
         if not any(os.path.commonpath([str(transcript_file), str(allowed_dir)]) == str(allowed_dir) for allowed_dir in allowed_dirs):
             logger.error(f"Transcript path outside allowed directories: {safe_transcript_path}")
             return None
-    except Exception as e:
+    except (OSError, ValueError, FileNotFoundError) as e:
         logger.error(f"Path validation error: {e}")
         return None
     

@@ -262,7 +262,8 @@ class TaskStorage:
                     if start_time > cutoff_time:
                         all_old = False
                         break
-                except:
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Invalid timestamp in task: {e}")
                     pass
             
             if all_old:
