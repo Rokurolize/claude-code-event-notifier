@@ -10,6 +10,7 @@ import os
 import logging
 import time
 import re
+import uuid
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
@@ -106,12 +107,15 @@ class TaskStorage:
     
     @staticmethod
     def _validate_session_id(session_id: str) -> bool:
-        """Validate session ID format (UUID-like pattern)."""
+        """Validate session ID format using uuid.UUID."""
         if not session_id or not isinstance(session_id, str):
             return False
-        # Check for UUID-like pattern (8-4-4-4-12 hex characters)
-        uuid_pattern = r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
-        return bool(re.match(uuid_pattern, session_id.lower()))
+        try:
+            # Attempt to parse the session_id as a UUID
+            uuid.UUID(session_id)
+            return True
+        except ValueError:
+            return False
     
     @staticmethod
     def track_task_start(session_id: str, task_id: str, task_info: dict) -> bool:
