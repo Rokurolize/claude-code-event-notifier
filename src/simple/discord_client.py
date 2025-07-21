@@ -7,9 +7,9 @@ via webhook or bot API.
 
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
-from typing import Any
 
 from event_types import Config, DiscordMessage
 
@@ -17,6 +17,10 @@ from event_types import Config, DiscordMessage
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+def _sanitize_log_input(value: str) -> str:
+    """Sanitize input for logging to prevent log injection."""
+    return re.sub(r'[\n\r]', '', str(value))
 
 
 def send_to_discord(message: DiscordMessage, config: Config) -> bool:
@@ -98,7 +102,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
     Returns:
         Thread ID if successful, None otherwise
     """
-    logger.debug(f"create_thread called - channel_id: {channel_id}, name: {name}, token_length: {len(bot_token)}")
+    logger.debug(f"create_thread called - channel_id: {_sanitize_log_input(channel_id)}, name: {_sanitize_log_input(name)}, token_length: {len(bot_token)}")
     
     try:
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
@@ -122,7 +126,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
             }
         )
         
-        logger.debug(f"Sending POST request to: {url}")
+        logger.debug(f"Sending POST request to: {_sanitize_log_input(url)}")
         with urllib.request.urlopen(req, timeout=10) as response:
             status_code = response.status
             logger.debug(f"Discord API response status: {status_code}")
@@ -131,7 +135,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
                 response_data = response.read()
                 result = json.loads(response_data)
                 thread_id = result.get("id")
-                logger.debug(f"Thread created successfully - ID: {thread_id}, response: {result}")
+                logger.debug(f"Thread created successfully - ID: {_sanitize_log_input(thread_id)}, response: {result}")
                 return thread_id
             else:
                 logger.debug(f"Unexpected status code: {status_code}")
@@ -146,13 +150,13 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
             error_json = json.loads(error_body)
             logger.error(f"Discord error message: {error_json.get('message', 'No message')}")
             logger.error(f"Discord error code: {error_json.get('code', 'No code')}")
-        except:
+        except json.JSONDecodeError:
             pass
             
     except urllib.error.URLError as e:
-        logger.error(f"URLError creating thread: {e.reason}")
+        logger.exception(f"URLError creating thread: {e.reason}")
     except Exception as e:
-        logger.error(f"Unexpected error creating thread: {type(e).__name__}: {e}")
+        logger.exception(f"Unexpected error creating thread: {type(e).__name__}: {e}")
     
     logger.debug("Thread creation failed, returning None")
     return None
@@ -169,7 +173,7 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
     Returns:
         True if successful, False otherwise
     """
-    logger.debug(f"send_to_thread called - thread_id: {thread_id}, message length: {len(str(message))}")
+    logger.debug(f"send_to_thread called - thread_id: {_sanitize_log_input(thread_id)}, message length: {len(str(message))}")
     
     try:
         url = f"https://discord.com/api/v10/channels/{thread_id}/messages"
@@ -186,13 +190,13 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
             }
         )
         
-        logger.debug(f"Sending POST request to: {url}")
+        logger.debug(f"Sending POST request to: {_sanitize_log_input(url)}")
         with urllib.request.urlopen(req, timeout=10) as response:
             status_code = response.status
             logger.debug(f"Discord API response status: {status_code}")
             
             if 200 <= status_code < 300:
-                logger.debug(f"Message sent to thread successfully")
+                logger.debug("Message sent to thread successfully")
                 return True
             else:
                 logger.debug(f"Unexpected status code: {status_code}")
@@ -208,7 +212,7 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
             error_json = json.loads(error_body)
             logger.error(f"Discord error message: {error_json.get('message', 'No message')}")
             logger.error(f"Discord error code: {error_json.get('code', 'No code')}")
-        except:
+        except json.JSONDecodeError:
             pass
             
     except urllib.error.URLError as e:

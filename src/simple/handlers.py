@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from event_types import Config, DiscordMessage, EventData, HandlerFunction
 
 from version import VERSION_STRING
-from transcript_reader import read_subagent_messages, format_for_discord
+from transcript_reader import read_subagent_messages
 from discord_client import create_thread, send_to_thread
 from task_tracker import TaskTracker
 
@@ -76,8 +76,8 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
         
         # Create thread for Task execution if enabled
         if config.get("thread_for_task") and config.get("bot_token") and config.get("channel_id") and task_id:
-            import datetime
-            thread_name = f"Task: {description[:50]} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            from datetime import datetime, timezone
+            thread_name = f"Task: {description[:50]} - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
             thread_id = create_thread(config["channel_id"], thread_name, config["bot_token"])
             
             if thread_id:
@@ -174,10 +174,11 @@ def handle_posttooluse(data: EventData, config: Config) -> DiscordMessage | None
                 response_text = "No response content"
                 if isinstance(tool_response, dict) and "content" in tool_response:
                     content_list = tool_response.get("content", [])
-                    text_parts = []
-                    for item in content_list:
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            text_parts.append(item.get("text", ""))
+                    text_parts = [
+                        item.get("text", "")
+                        for item in content_list
+                        if isinstance(item, dict) and item.get("type") == "text"
+                    ]
                     response_text = "\n".join(text_parts) if text_parts else "No text content"
                 
                 # Format execution time
@@ -348,13 +349,14 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
         
         if subagent_data:
             # Calculate execution metrics
-            import datetime
+            from datetime import datetime, timezone
             try:
-                start_time = datetime.datetime.fromisoformat(latest_task.get("start_time", ""))
-                end_time = datetime.datetime.fromisoformat(latest_task.get("end_time", datetime.datetime.now().isoformat()))
+                start_time = datetime.fromisoformat(latest_task.get("start_time", ""))
+                end_time = datetime.fromisoformat(latest_task.get("end_time", datetime.now(timezone.utc).isoformat()))
                 duration = end_time - start_time
                 duration_text = f"{duration.total_seconds():.1f}s"
-            except:
+            except (ValueError, TypeError) as e:
+                logger.debug(f"[event-{event_id}] Error calculating duration: {e}")
                 duration_text = "Unknown"
             
             # Count messages
@@ -363,8 +365,8 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
             
             # Build summary message
             summary_parts = [
-                f"## 📊 Task Summary",
-                f"",
+                "## 📊 Task Summary",
+                "",
                 f"**Task**: {latest_task.get('description', 'Unknown')}",
                 f"**Duration**: {duration_text}",
                 f"**Messages Exchanged**: {message_count}",
@@ -374,9 +376,9 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
             # Add brief transcript summary if available
             if task_messages:
                 summary_parts.extend([
-                    f"",
-                    f"### 📝 Conversation Highlights",
-                    f"```"
+                    "",
+                    "### 📝 Conversation Highlights",
+                    "```"
                 ])
                 
                 # Show first and last exchange

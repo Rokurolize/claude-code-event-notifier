@@ -11,8 +11,7 @@ import logging
 import time
 import re
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any
+from datetime import datetime, timedelta, timezone
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -61,8 +60,8 @@ class SimpleLock:
         if self.acquired:
             try:
                 self.lock_file.unlink()
-            except:
-                pass
+            except (FileNotFoundError, PermissionError) as e:
+                logger.debug(f"Failed to remove lock file: {e}")
 
 
 class TaskStorage:
@@ -74,7 +73,7 @@ class TaskStorage:
         STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     
     @staticmethod
-    def _load_data() -> Dict[str, Dict[str, dict]]:
+    def _load_data() -> dict[str, dict[str, dict]]:
         """Load task data from file."""
         TaskStorage._ensure_storage_dir()
         
@@ -82,22 +81,24 @@ class TaskStorage:
             return {}
         
         try:
-            with open(STORAGE_FILE, 'r') as f:
+            with STORAGE_FILE.open('r') as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError) as e:
             logger.error(f"Failed to load task storage: {e}")
             return {}
     
     @staticmethod
-    def _save_data(data: Dict[str, Dict[str, dict]]):
+    def _save_data(data: dict[str, dict[str, dict]]):
         """Save task data to file."""
         TaskStorage._ensure_storage_dir()
         
         try:
             # Write to temporary file first for atomic operation
             temp_file = STORAGE_FILE.with_suffix('.tmp')
-            with open(temp_file, 'w', mode=0o600) as f:
+            with temp_file.open('w') as f:
                 json.dump(data, f, indent=2)
+            # Set proper permissions
+            temp_file.chmod(0o600)
             # Atomic rename
             temp_file.replace(STORAGE_FILE)
         except OSError as e:
@@ -140,7 +141,7 @@ class TaskStorage:
             return True
     
     @staticmethod
-    def get_session_tasks(session_id: str) -> Dict[str, dict]:
+    def get_session_tasks(session_id: str) -> dict[str, dict]:
         """Get all tasks for a session."""
         with SimpleLock(LOCK_FILE):
             data = TaskStorage._load_data()
@@ -165,7 +166,7 @@ class TaskStorage:
             return True
     
     @staticmethod
-    def get_task_by_content(session_id: str, description: str, prompt: str) -> Optional[dict]:
+    def get_task_by_content(session_id: str, description: str, prompt: str) -> dict | None:
         """Find a task by matching content (description and prompt).
         
         Args:
@@ -200,7 +201,7 @@ class TaskStorage:
             return matching_tasks[0][1]
     
     @staticmethod
-    def get_task_by_id(session_id: str, task_id: str) -> Optional[dict]:
+    def get_task_by_id(session_id: str, task_id: str) -> dict | None:
         """Get specific task info by ID.
         
         Args:
@@ -218,7 +219,7 @@ class TaskStorage:
             return None
     
     @staticmethod
-    def get_latest_task(session_id: str) -> Optional[dict]:
+    def get_latest_task(session_id: str) -> dict | None:
         """Get the most recent task for a session.
         
         Args:
@@ -240,9 +241,9 @@ class TaskStorage:
             return tasks[0]
     
     @staticmethod
-    def _cleanup_old_sessions(data: Dict[str, Dict[str, dict]]):
+    def _cleanup_old_sessions(data: dict[str, dict[str, dict]]):
         """Remove sessions older than CLEANUP_AFTER_HOURS."""
-        cutoff_time = datetime.now() - timedelta(hours=CLEANUP_AFTER_HOURS)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=CLEANUP_AFTER_HOURS)
         sessions_to_remove = []
         
         for session_id, tasks in data.items():

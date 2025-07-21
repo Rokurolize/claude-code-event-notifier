@@ -8,13 +8,12 @@ subagent task execution details.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 # Setup logger
 logger = logging.getLogger(__name__)
 
 
-def read_subagent_messages(transcript_path: str, event_timestamp: Optional[str] = None) -> Optional[dict]:
+def read_subagent_messages(transcript_path: str, event_timestamp: str | None = None) -> dict | None:
     """Extract subagent task and response from transcript file.
     
     Args:
@@ -50,7 +49,7 @@ def read_subagent_messages(transcript_path: str, event_timestamp: Optional[str] 
             
         # Read file in reverse to find most recent task/response pair
         lines = []
-        with open(transcript_file, 'r', encoding='utf-8') as f:
+        with transcript_file.open('r', encoding='utf-8') as f:
             lines = f.readlines()
         
         logger.debug(f"Read {len(lines)} lines from transcript file")
@@ -153,8 +152,8 @@ def read_subagent_messages(transcript_path: str, event_timestamp: Optional[str] 
         
         return None
         
-    except Exception as e:
-        logger.error(f"Unexpected error reading transcript: {type(e).__name__}: {e}")
+    except (IOError, OSError) as e:
+        logger.exception("Unexpected error reading transcript")
         return None
 
 
@@ -182,8 +181,8 @@ def format_for_discord(subagent_data: dict) -> str:
             response_time = datetime.fromisoformat(response['timestamp'].replace('Z', '+00:00'))
             duration_seconds = (response_time - task_time).total_seconds()
             duration = f"{duration_seconds:.1f}s"
-        except:
-            pass
+        except (ValueError, AttributeError) as e:
+            logger.debug(f"Failed to calculate duration: {e}")
     
     # Format message with Discord markdown
     message = f"""## Task Execution Summary
