@@ -6,6 +6,7 @@ message validation, event simulation, and comprehensive analysis.
 Combines functionality from multiple test scripts into one tool.
 """
 
+import argparse
 import json
 import subprocess
 import sys
@@ -358,7 +359,6 @@ class DiscordAPITestSuite:
 
 def main() -> None:
     """Main entry point for test runner."""
-    import argparse
     
     description = """Discord API comprehensive test runner
 
