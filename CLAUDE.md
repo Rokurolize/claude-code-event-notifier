@@ -1,130 +1,237 @@
-# CLAUDE.md - Discord Event Notifier
+# CLAUDE.md
 
-シンプルアーキテクチャ（555行）のDiscord通知システム設定ガイド。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 📚 主要ドキュメント
+## Development Commands
 
-- **@docs/simple-architecture-complete-guide.md** - 技術仕様
-- **@docs/troubleshooting.md** - トラブルシューティング
-- **@~/.claude/discord-event-notifier-personal-config.md** - 個人設定
-
-## ⚡ エラー文書化の鉄則
-
-**エラー解決後は即座にCLAUDE.mdに記録する。これを怠る = 同じエラーの無限ループ。**
-
-### 📝 重要な教訓
-
-- **モジュール名衝突**: `src/types.py`→`src/simple/event_types.py` (標準ライブラリ回避)
-- **Hook環境隔離**: `uv run --python 3.13 --no-project` (依存関係干渉防止)
-- **タイムスタンプ**: `date +"%Y-%m-%d-%H-%M-%S"` (手動入力禁止)
-- **Discord通知最適化**: メッセージ部分でDiscordネイティブmarkdown(**太字**、*斜体*)使用、embed部分でコードブロック維持
-- **プロセス分離問題**: Claude Code Hooksは各イベントで別プロセス→永続ストレージ実装（2025-07-21）
-
----
-
-## ⚠️ Python実行規則
-
-**必須**: `cd project_root && uv run --python 3.13 python script.py`  
-**Hook時**: `uv run --python 3.13 --no-project python /path/to/script.py`  
-**禁止**: `python3` の直接使用
-
-### 設計原則
-- **Pure Python 3.13+**: 標準ライブラリのみ、typing_extensions禁止
-- **Fail Silent**: Claude Codeをブロックしない
-- **Type Safety**: TypedDict、TypeIs使用
-
----
-
-## 🚨 現在の実装状況
-
-### シンプルアーキテクチャ（約900行、8ファイル）
-```
-src/simple/
-├── event_types.py       # 型定義
-├── config.py            # 設定読み込み
-├── discord_client.py    # Discord送信（スレッド機能付き）
-├── handlers.py          # イベントハンドラー
-├── transcript_reader.py # トランスクリプト解析
-├── task_tracker.py      # タスク追跡システム
-├── task_storage.py      # 永続ストレージ (NEW 2025-07-21)
-└── main.py              # エントリーポイント
-```
-
-**特徴**: Pure Python 3.13+、Zero Dependencies、89%コード削減（8000→900行）
-
-**新機能** (2025-07-20-21実装):
-- Taskツール実行時に自動でDiscordスレッド作成
-- セッションベースのタスク追跡システム
-- `DISCORD_THREAD_FOR_TASK=1`で有効化
-- 永続ストレージによるプロセス間データ共有（2025-07-21解決）
-
-~~**既知の問題** (2025-07-21判明):~~ **→解決済み**
-- ~~並列タスク実行時のマッチング失敗（PostToolUseで結果投稿不可）~~
-- ~~原因: Claude Code Hookシステムの制約~~
-- **解決**: 永続ストレージ実装により完全動作
-
----
-
-## 🔧 必須コマンド
+### Python Environment
+**Critical**: This project requires Python 3.13+ and uses uv for dependency management.
 
 ```bash
-# セットアップ & 検証
-uv run --python 3.13 python configure_hooks.py --validate-end-to-end
+# Setup and development (always use uv)
+uv run python configure_hooks.py           # Configure Claude Code hooks
+uv run python configure_hooks.py --remove  # Remove hooks
+uv run python configure_hooks.py --validate-end-to-end  # Test everything
 
-# ログ確認
-tail -f ~/.claude/hooks/logs/simple_notifier_*.log
+# Testing
+uv run python -m pytest tests/unit/        # Run unit tests
+uv run python -m pytest tests/integration/ # Run integration tests
+uv run python -m pytest --cov=src         # Run with coverage
+
+# Code Quality
+uv run ruff check .                        # Lint code
+uv run ruff format .                       # Format code
+uv run mypy src/                          # Type checking
+
+# Debug Discord connectivity
+uv run python tools/discord_api/discord_api_test_runner.py --quick
+uv run python utils/check_discord_access.py
 ```
 
----
-
-## 📁 設定ファイル
-
-- **@/home/ubuntu/.claude/.env** - Discord通知設定
-- **@/home/ubuntu/.claude/settings.json** - Hook設定
-
----
-
-## ⚠️ セッション開始時チェック
+### Architecture-Specific Commands
 
 ```bash
-# アーキテクチャ確認  
-ls src/simple/*.py
+# Simple Architecture (main implementation)
+uv run python src/simple/main.py < test_event.json  # Test event processing
+uv run python configure_hooks_simple.py             # Configure simple hooks
 
-# Python 3.13+確認
-uv run --python 3.13 python -c "from typing import ReadOnly, TypeIs; print('OK')"
+# Full Architecture (legacy)
+uv run python src/main.py < test_event.json         # Test full architecture
 ```
 
----
+## Core Architecture
 
-## 🔍 Discord API開発ツール
+This project implements a **dual architecture system** for Discord notifications:
 
-**統合されたDiscord APIツールセット**: `tools/discord_api/` ディレクトリに整理
+### Simple Architecture (Primary - 900 lines)
+- **Location**: `src/simple/`
+- **Design**: Pure Python 3.13+, zero dependencies, fail-silent
+- **Entry Point**: `src/simple/main.py`
+- **Key Principle**: Never block Claude Code execution
 
-### 利用可能なツール
+```
+Claude Code Hook → JSON Event → Simple Dispatcher → Discord Message
+```
 
-1. **discord_api_basic_checker.py** - 基本アクセス・権限チェッカー
-2. **discord_api_advanced_validator.py** - 高度な検証・統計分析
-3. **discord_api_message_fetcher.py** - メッセージ取得・構造分析
-4. **discord_api_test_runner.py** - 包括的テストスイート
+**Core Files**:
+- `main.py` - Event dispatcher (83 lines)
+- `handlers.py` - Event processing logic (190 lines)
+- `config.py` - Configuration management (117 lines)
+- `discord_client.py` - Discord API client (71 lines)
+- `event_types.py` - Type definitions (94 lines)
+- `utils.py` - Shared utilities (sanitization, markdown escaping)
 
-詳細は各ツールの `--help` を参照：
+### Full Architecture (Legacy - 8000+ lines)
+- **Location**: `src/core/`, `src/handlers/`, `src/formatters/`
+- **Design**: Modular with advanced features
+- **Entry Point**: `src/main.py`
+
+### Hook Integration
+The system integrates with Claude Code via hooks defined in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{"type": "command", "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"}]
+  }
+}
+```
+
+## Key Design Patterns
+
+### 1. Fail-Silent Pattern
+All code must gracefully handle errors without blocking Claude Code:
+
+```python
+try:
+    # Discord notification logic
+except Exception:
+    # Never log errors or raise exceptions
+    pass
+sys.exit(0)  # Always exit successfully
+```
+
+### 2. Pure Python 3.13+ Types
+Uses modern type annotations exclusively:
+
+```python
+# Use this
+def function(data: dict[str, Any]) -> str | None:
+
+# Not this  
+def function(data: Dict[str, Any]) -> Optional[str]:
+```
+
+### 3. Configuration Priority
+1. Environment variables (highest)
+2. `~/.claude/.env` file
+3. Default values (lowest)
+
+### 4. Event Processing Flow
+1. Read JSON from stdin
+2. Parse event type from `hook_event_name`
+3. Apply filtering (events/tools)
+4. Route to appropriate handler
+5. Send to Discord (webhook or bot API)
+
+## Configuration Management
+
+### Primary Config File
+`~/.claude/.env` - Main configuration for Discord credentials and behavior
+
+### Key Settings
+```bash
+# Authentication (choose one)
+DISCORD_BOT_TOKEN=your_bot_token         # Bot API (recommended)
+DISCORD_WEBHOOK_URL=your_webhook_url     # Webhook (simpler)
+DISCORD_CHANNEL_ID=your_channel_id       # Required for bot API
+
+# Event Control (granular)
+DISCORD_EVENT_PRETOOLUSE=1               # Tool execution start
+DISCORD_EVENT_POSTTOOLUSE=1              # Tool execution end
+DISCORD_EVENT_NOTIFICATION=1             # System notifications
+DISCORD_EVENT_STOP=0                     # Session end
+DISCORD_EVENT_SUBAGENT_STOP=1            # Subagent completion
+
+# Tool Filtering
+DISCORD_TOOL_READ=0                      # Disable Read tool notifications
+DISCORD_TOOL_TASK=1                      # Enable Task tool notifications
+
+# Advanced Features
+DISCORD_THREAD_FOR_TASK=1                # Create threads for Task execution
+DISCORD_DEBUG=1                          # Enable debug logging
+```
+
+## Threading System
+
+The project implements **persistent task tracking** for complex Task tool executions:
+
+### Components
+- `TaskTracker` - Session-based task management
+- `TaskStorage` - Persistent JSON storage with file locking
+- `TranscriptReader` - Extract subagent conversations
+- Thread creation for long-running tasks
+
+### Storage Location
+- `~/.claude/hooks/task_tracking/tasks.json` - Persistent task data
+- `~/.claude/hooks/logs/` - Debug and operation logs
+
+## Testing Strategy
+
+### Test Structure
+```
+tests/
+├── unit/           # Fast, isolated tests
+├── integration/    # Discord API integration
+└── feature/        # Specific feature validation
+```
+
+### Running Tests
+```bash
+# Quick unit tests
+uv run python -m pytest tests/unit/ -x
+
+# Full test suite with coverage
+uv run python -m pytest --cov=src --cov-fail-under=85
+
+# Integration tests (requires Discord credentials)
+uv run python -m pytest tests/integration/ -m integration
+```
+
+## Debugging
+
+### Debug Mode
+Set `DISCORD_DEBUG=1` to enable comprehensive logging:
 
 ```bash
-cd tools/discord_api
-python discord_api_{basic_checker,advanced_validator,message_fetcher,test_runner}.py --help
+# Logs location
+~/.claude/hooks/logs/simple_notifier_*.log
+
+# Debug data (input/output JSON)
+~/.claude/hooks/debug/{timestamp}_{event}_raw_input.json
+~/.claude/hooks/debug/{timestamp}_{event}_formatted_output.json
 ```
 
----
+### Common Issues
+- **No notifications**: Check credentials in `~/.claude/.env`
+- **Import errors**: Ensure Python 3.13+ with `uv run python --version`
+- **Hook not firing**: Verify `~/.claude/settings.json` hook configuration
 
-**状況**: シンプルアーキテクチャ（900行）稼働中  
-**コード削減**: 8,000行→900行（89%削減）  
-**エントリーポイント**: `src/simple/main.py`
+## Security Considerations
 
----
+### Input Sanitization
+All user input is sanitized to prevent log injection attacks:
 
-## 📄 2025-07-21 実装ドキュメント
+```python
+from utils import sanitize_log_input
+safe_input = sanitize_log_input(user_input)  # Removes \n\r characters
+```
 
-- **@docs/2025-07-21-03-04-00-task-thread-implementation-report.md** - タスクスレッド実装レポート
-- **@docs/2025-07-21-03-07-00-discord-notification-flow-analysis.md** - 通知フロー分析
-- **@docs/2025-07-21-03-09-00-json-event-specification.md** - JSON仕様と改善提案
-- **@docs/2025-07-21-03-36-45-persistent-storage-implementation-report.md** - 永続ストレージ実装成功レポート
+### Path Validation
+File operations validate paths to prevent directory traversal:
+
+```python
+# Allowed directories only
+allowed_dirs = [(Path.home() / ".claude").resolve(strict=True)]
+if not any(os.path.commonpath([file_path, allowed_dir]) == str(allowed_dir) for allowed_dir in allowed_dirs):
+    return None
+```
+
+## Code Quality Standards
+
+### Type Safety
+- **mypy**: Ultra-strict configuration targeting Python 3.13+
+- **ruff**: Comprehensive linting with 30+ rule categories
+- **pytest**: 85%+ test coverage requirement
+
+### Python Version
+- **Minimum**: Python 3.13+
+- **Target**: Python 3.14 (pyproject.toml configured for latest features)
+- **Features**: Uses `ReadOnly`, `TypeIs`, modern union syntax (`str | None`)
+
+### Import Organization
+1. Standard library imports
+2. Third-party imports (none in simple architecture)
+3. Local imports
+
+Always use absolute imports from project root, except within the `src/simple/` package which uses relative imports for simplicity.
