@@ -7,6 +7,7 @@ subagent task execution details.
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -42,12 +43,12 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
     
     # Validate transcript path is within expected directories
     try:
-        transcript_file = Path(transcript_path).resolve()
+        transcript_file = Path(transcript_path).resolve(strict=True)
         allowed_dirs = [
-            Path.home() / ".claude",
-            Path("/tmp"),  # Some systems may use tmp
+            (Path.home() / ".claude").resolve(strict=True),
+            Path("/tmp").resolve(strict=True),  # Some systems may use tmp
         ]
-        if not any(transcript_file.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs):
+        if not any(os.path.commonpath([str(transcript_file), str(allowed_dir)]) == str(allowed_dir) for allowed_dir in allowed_dirs):
             logger.error(f"Transcript path outside allowed directories: {safe_transcript_path}")
             return None
     except Exception as e:
