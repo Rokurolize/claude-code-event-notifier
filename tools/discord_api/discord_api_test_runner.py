@@ -8,6 +8,7 @@ Combines functionality from multiple test scripts into one tool.
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -209,10 +210,16 @@ class DiscordAPITestSuite:
                 result.set_failure("Script path validation failed")
                 return result
 
+            # Get absolute path to uv executable for security
+            uv_path = shutil.which("uv")
+            if not uv_path:
+                result.set_failure("uv executable not found in PATH")
+                return result
+            
             # Run the script with test data
             python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             process = subprocess.run(
-                ["uv", "run", "--python", python_version, "python", str(main_script)],
+                [uv_path, "run", "--python", python_version, "python", str(main_script)],
                 input=json.dumps(test_event),
                 text=True,
                 capture_output=True,
