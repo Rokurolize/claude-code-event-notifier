@@ -40,6 +40,9 @@ def load_config() -> Config:
         # Return empty config - gracefully exit without Discord
         return {}
     
+    # Validate thread feature dependencies
+    _validate_thread_config(config)
+    
     return config
 
 
@@ -234,3 +237,24 @@ def _has_valid_credentials(config: Config) -> bool:
     has_webhook = bool(config.get("webhook_url"))
     has_bot = bool(config.get("bot_token") and config.get("channel_id"))
     return has_webhook or has_bot
+
+
+def _validate_thread_config(config: Config) -> None:
+    """Validate thread feature dependencies and disable if required settings are missing."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Check if thread features are enabled
+    thread_for_task = config.get("thread_for_task", False)
+    use_threads = config.get("use_threads", False)
+    
+    if thread_for_task or use_threads:
+        # Thread features require bot token and channel ID (webhooks don't support threads)
+        if not (config.get("bot_token") and config.get("channel_id")):
+            logger.warning(
+                "Thread features are enabled but bot_token and channel_id are not configured. "
+                "Disabling thread features. Please set DISCORD_BOT_TOKEN and DISCORD_CHANNEL_ID."
+            )
+            # Disable thread features to prevent runtime errors
+            config["thread_for_task"] = False
+            config["use_threads"] = False
