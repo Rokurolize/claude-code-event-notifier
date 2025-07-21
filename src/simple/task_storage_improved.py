@@ -35,7 +35,6 @@ MAX_FILE_SIZE_MB = 10  # Maximum allowed file size
 
 # Cache configuration
 CACHE_TTL_SECONDS = 60  # Cache data for 1 minute
-_cache = {"data": None, "timestamp": 0, "checksum": None}
 
 
 class TaskInfo(TypedDict, total=False):
@@ -113,6 +112,9 @@ class SimpleLock:
 class TaskStorage:
     """Improved persistent task storage with better error handling and performance."""
     
+    # Class-level cache to avoid global variable
+    _cache = {"data": None, "timestamp": 0, "checksum": None}
+    
     @staticmethod
     def _ensure_storage_dir():
         """Ensure storage directory exists with proper permissions."""
@@ -175,19 +177,18 @@ class TaskStorage:
     @staticmethod
     def _load_data_with_cache() -> Dict[str, Dict[str, TaskInfo]]:
         """Load task data with caching for better performance."""
-        global _cache
         
         # Check cache validity
-        if _cache["data"] is not None:
-            cache_age = time.time() - _cache["timestamp"]
+        if TaskStorage._cache["data"] is not None:
+            cache_age = time.time() - TaskStorage._cache["timestamp"]
             if cache_age < CACHE_TTL_SECONDS:
                 # Verify file hasn't changed
                 try:
                     if STORAGE_FILE.exists():
                         with open(STORAGE_FILE, 'rb') as f:
                             current_checksum = TaskStorage._calculate_checksum(f.read())
-                        if current_checksum == _cache["checksum"]:
-                            return _cache["data"].copy()
+                        if current_checksum == TaskStorage._cache["checksum"]:
+                            return TaskStorage._cache["data"].copy()
                 except OSError:
                     pass
         
@@ -198,9 +199,9 @@ class TaskStorage:
         if STORAGE_FILE.exists():
             try:
                 with open(STORAGE_FILE, 'rb') as f:
-                    _cache["checksum"] = TaskStorage._calculate_checksum(f.read())
-                _cache["data"] = data.copy()
-                _cache["timestamp"] = time.time()
+                    TaskStorage._cache["checksum"] = TaskStorage._calculate_checksum(f.read())
+                TaskStorage._cache["data"] = data.copy()
+                TaskStorage._cache["timestamp"] = time.time()
             except OSError:
                 pass
         
@@ -261,8 +262,7 @@ class TaskStorage:
         TaskStorage._ensure_storage_dir()
         
         # Invalidate cache
-        global _cache
-        _cache["data"] = None
+        TaskStorage._cache["data"] = None
         
         try:
             # Create backup of existing file

@@ -14,11 +14,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from shared import (
-    get_discord_bot_token,
     get_discord_channel_id,
     validate_discord_config,
     make_discord_request,
-    print_api_response,
 )
 
 

@@ -2,7 +2,7 @@
 
 **作成日時**: 2025-07-21-10-55-32  
 **最終更新**: 2025-07-21-13-07-53  
-**PR**: https://github.com/Rokurolize/claude-code-event-notifier/pull/10  
+**PR**: [#10](https://github.com/Rokurolize/claude-code-event-notifier/pull/10)  
 **タイトル**: feat: Discord thread creation with persistent task tracking
 
 ## 📋 PR概要

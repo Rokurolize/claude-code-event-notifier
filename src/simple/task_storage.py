@@ -9,7 +9,6 @@ import json
 import os
 import logging
 import time
-import re
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -89,7 +88,7 @@ class TaskStorage:
             return {}
     
     @staticmethod
-    def _save_data(data: dict[str, dict[str, dict]]):
+    def _save_data(data: dict[str, dict[str, dict]]) -> None:
         """Save task data to file."""
         TaskStorage._ensure_storage_dir()
         
@@ -245,7 +244,7 @@ class TaskStorage:
             return tasks[0]
     
     @staticmethod
-    def _cleanup_old_sessions(data: dict[str, dict[str, dict]]):
+    def _cleanup_old_sessions(data: dict[str, dict[str, dict]]) -> None:
         """Remove sessions older than CLEANUP_AFTER_HOURS."""
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=CLEANUP_AFTER_HOURS)
         sessions_to_remove = []

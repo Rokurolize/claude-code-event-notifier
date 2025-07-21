@@ -153,13 +153,13 @@ class TaskTracker:
         match_description = tool_input.get("description", "")
         match_prompt = tool_input.get("prompt", "")
         
-        logger.debug(f"Looking for task with description='{match_description}' in session {session_id}")
+        logger.debug(f"Looking for task with description=\"{match_description}\" in session {session_id}")
         
         # Find task by content using persistent storage
         task_info = TaskStorage.get_task_by_content(session_id, match_description, match_prompt)
         
         if not task_info:
-            logger.debug(f"No matching tasks found for description='{match_description}' in session {session_id}")
+            logger.debug(f"No matching tasks found for description=\"{match_description}\" in session {session_id}")
             return None
         
         task_id = task_info.get("task_id")
