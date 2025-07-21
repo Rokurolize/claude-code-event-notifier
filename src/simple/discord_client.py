@@ -108,7 +108,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
         url = f"https://discord.com/api/v10/channels/{channel_id}/threads"
         
         request_data = {
-            "name": name[:100],  # Discord limit is 100 chars
+            "name": (name[:97] + "...") if len(name) > 100 else name,  # Discord limit is 100 chars
             "auto_archive_duration": 1440,  # 24 hours
             "type": 11  # Public thread
         }
