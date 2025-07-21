@@ -49,7 +49,7 @@ This project implements a **dual architecture system** for Discord notifications
 - **Entry Point**: `src/simple/main.py`
 - **Key Principle**: Never block Claude Code execution
 
-```
+```text
 Claude Code Hook → JSON Event → Simple Dispatcher → Discord Message
 ```
 
@@ -159,7 +159,7 @@ The project implements **persistent task tracking** for complex Task tool execut
 ## Testing Strategy
 
 ### Test Structure
-```
+```text
 tests/
 ├── unit/           # Fast, isolated tests
 ├── integration/    # Discord API integration

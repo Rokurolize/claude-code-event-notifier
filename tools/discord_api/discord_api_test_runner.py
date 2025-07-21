@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from shared import (
     get_discord_channel_id,
@@ -20,24 +20,23 @@ from shared import (
     make_discord_request,
 )
 
-
 class TestResult:
     """Container for test results."""
     
     def __init__(self, name: str):
         self.name = name
         self.success = False
-        self.error_message: Optional[str] = None
+        self.error_message: str | None = None
         self.details: dict[str, Any] = {}
     
-    def set_success(self, details: Optional[dict[str, Any]] = None) -> None:
+    def set_success(self, details: dict[str, Any] | None = None) -> None:
         """Mark test as successful."""
         self.success = True
         self.error_message = None
         if details:
             self.details.update(details)
     
-    def set_failure(self, error: str, details: Optional[dict[str, Any]] = None) -> None:
+    def set_failure(self, error: str, details: dict[str, Any] | None = None) -> None:
         """Mark test as failed."""
         self.success = False
         self.error_message = error
@@ -51,11 +50,10 @@ class TestResult:
             result += f" - {self.error_message}"
         return result
 
-
 class DiscordAPITestSuite:
     """Comprehensive Discord API test suite."""
     
-    def __init__(self, channel_id: Optional[str] = None, quick_mode: bool = False):
+    def __init__(self, channel_id: str | None = None, quick_mode: bool = False):
         self.channel_id = channel_id or get_discord_channel_id()
         self.quick_mode = quick_mode
         self.results: list[TestResult] = []
@@ -231,8 +229,10 @@ class DiscordAPITestSuite:
         
         except subprocess.TimeoutExpired:
             result.set_failure("Script execution timed out")
-        except Exception as e:
+        except (subprocess.CalledProcessError, FileNotFoundError, PermissionError) as e:
             result.set_failure(f"Script execution error: {e}")
+        except Exception as e:
+            result.set_failure(f"Unexpected error: {e}")
         
         return result
     
@@ -307,9 +307,13 @@ class DiscordAPITestSuite:
             try:
                 result = test_func()
                 self.add_result(result)
-            except Exception as e:
+            except (RuntimeError, ValueError, TypeError) as e:
                 error_result = TestResult(test_func.__name__)
                 error_result.set_failure(f"Test execution error: {e}")
+                self.add_result(error_result)
+            except Exception as e:
+                error_result = TestResult(test_func.__name__)
+                error_result.set_failure(f"Unexpected test error: {e}")
                 self.add_result(error_result)
             
             print()
@@ -362,7 +366,6 @@ class DiscordAPITestSuite:
             return 1  # Good but with warnings
         else:
             return 2  # Issues detected
-
 
 def main() -> None:
     """Main entry point for test runner."""
@@ -475,7 +478,6 @@ Exit codes:
     except Exception as e:
         print(f"\n❌ Test suite error: {e}")
         sys.exit(4)
-
 
 if __name__ == "__main__":
     main()

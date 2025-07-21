@@ -83,8 +83,8 @@ class TaskStorage:
         try:
             with STORAGE_FILE.open('r') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.error(f"Failed to load task storage: {e}")
+        except (json.JSONDecodeError, OSError):
+            logger.exception("Failed to load task storage")
             return {}
     
     @staticmethod
@@ -101,8 +101,8 @@ class TaskStorage:
             temp_file.chmod(0o600)
             # Atomic rename
             temp_file.replace(STORAGE_FILE)
-        except OSError as e:
-            logger.error(f"Failed to save task storage: {e}")
+        except OSError:
+            logger.exception("Failed to save task storage")
     
     @staticmethod
     def _validate_session_id(session_id: str) -> bool:
