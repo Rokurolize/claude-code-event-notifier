@@ -13,7 +13,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any, TypedDict
+from typing import Dict, Optional, List, Any, TypedDict, ClassVar
 from contextlib import contextmanager
 import hashlib
 
@@ -113,7 +113,7 @@ class TaskStorage:
     """Improved persistent task storage with better error handling and performance."""
     
     # Class-level cache to avoid global variable
-    _cache = {"data": None, "timestamp": 0, "checksum": None}
+    _cache: ClassVar[Dict[str, Any]] = {"data": None, "timestamp": 0, "checksum": None}
     
     @staticmethod
     def _ensure_storage_dir():
