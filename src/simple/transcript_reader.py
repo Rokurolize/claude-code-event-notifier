@@ -7,10 +7,23 @@ subagent task execution details.
 
 import json
 import logging
+import re
 from pathlib import Path
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_log_input(input_str: str) -> str:
+    """Sanitize input for safe logging by removing newline characters.
+    
+    Prevents log injection attacks by removing characters that could
+    create fake log entries.
+    """
+    if not isinstance(input_str, str):
+        input_str = str(input_str)
+    # Remove newline and carriage return characters
+    return re.sub(r'[\n\r]', '', input_str)
 
 
 def read_subagent_messages(transcript_path: str, event_timestamp: str | None = None) -> dict | None:
@@ -23,7 +36,9 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
     Returns:
         Dict with task info and response, or None if not found
     """
-    logger.debug(f"read_subagent_messages called with path: {transcript_path}, event_timestamp: {event_timestamp}")
+    safe_transcript_path = _sanitize_log_input(transcript_path)
+    safe_event_timestamp = _sanitize_log_input(str(event_timestamp))
+    logger.debug(f"read_subagent_messages called with path: {safe_transcript_path}, event_timestamp: {safe_event_timestamp}")
     
     # Validate transcript path is within expected directories
     try:
@@ -33,7 +48,7 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
             Path("/tmp"),  # Some systems may use tmp
         ]
         if not any(transcript_file.is_relative_to(allowed_dir) for allowed_dir in allowed_dirs):
-            logger.error(f"Transcript path outside allowed directories: {transcript_path}")
+            logger.error(f"Transcript path outside allowed directories: {safe_transcript_path}")
             return None
     except Exception as e:
         logger.error(f"Path validation error: {e}")
@@ -41,7 +56,7 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
     
     try:
         if not transcript_file.exists():
-            logger.debug(f"Transcript file does not exist: {transcript_path}")
+            logger.debug(f"Transcript file does not exist: {safe_transcript_path}")
             return None
         
         file_size = transcript_file.stat().st_size
