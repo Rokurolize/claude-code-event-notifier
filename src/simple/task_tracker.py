@@ -9,10 +9,11 @@ hooks run as separate processes.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 # Import persistent storage
 from task_storage import TaskStorage
+from utils import sanitize_log_input
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -37,14 +38,14 @@ class TaskTracker:
             return None
 
         # Generate a simple task ID based on timestamp
-        task_id = f"task_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:20]}"
+        task_id = f"task_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S_%f')[:20]}"
 
         # Store task info using persistent storage
         task_info = {
             "task_id": task_id,
             "description": tool_input.get("description", "Unknown Task"),
             "prompt": tool_input.get("prompt", ""),
-            "start_time": datetime.now().isoformat(),
+            "start_time": datetime.now(UTC).isoformat(),
             "status": "started",
             "thread_id": None,
             "response": None,
@@ -111,7 +112,7 @@ class TaskTracker:
         task_id, task_info = started_tasks[0]
 
         # Update task info in persistent storage
-        updates = {"status": "completed", "end_time": datetime.now().isoformat(), "response": tool_response}
+        updates = {"status": "completed", "end_time": datetime.now(UTC).isoformat(), "response": tool_response}
 
         success = TaskStorage.update_task(session_id, task_id, updates)
         if success:
@@ -145,7 +146,9 @@ class TaskTracker:
         match_description = tool_input.get("description", "")
         match_prompt = tool_input.get("prompt", "")
 
-        logger.debug(f'Looking for task with description="{match_description}" in session {session_id}')
+        logger.debug(
+            f'Looking for task with description="{sanitize_log_input(match_description)}" in session {sanitize_log_input(session_id)}'
+        )
 
         # Find task by content using persistent storage
         task_info = TaskStorage.get_task_by_content(session_id, match_description, match_prompt)
@@ -158,7 +161,7 @@ class TaskTracker:
         logger.debug(f"Found matching task: {task_id}")
 
         # Update task info in persistent storage
-        updates = {"status": "completed", "end_time": datetime.now().isoformat(), "response": tool_response}
+        updates = {"status": "completed", "end_time": datetime.now(UTC).isoformat(), "response": tool_response}
 
         success = TaskStorage.update_task(session_id, task_id, updates)
         if success:

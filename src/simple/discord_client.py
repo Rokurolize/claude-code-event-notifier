@@ -48,17 +48,17 @@ def send_routed_message(
     message: DiscordMessage | RoutedMessage, config: Config, event_name: str | None = None, tool_name: str | None = None
 ) -> bool:
     """Send message to Discord with optional channel routing.
-    
+
     This function handles both regular DiscordMessage and RoutedMessage types.
     If routing is enabled and a target channel is specified, sends to that channel.
     Otherwise falls back to the default send_to_discord behavior.
-    
+
     Args:
         message: Discord message or routed message
         config: Configuration with Discord credentials and routing
         event_name: Claude Code event name for routing (optional)
         tool_name: Tool name for routing (optional)
-        
+
     Returns:
         True if successful, False otherwise
     """
@@ -110,9 +110,21 @@ def _send_via_webhook(message: DiscordMessage, webhook_url: str) -> bool:
         with urllib.request.urlopen(req, timeout=10) as response:
             return response.status == 204
 
+    except urllib.error.HTTPError as e:
+        # Log HTTP errors at debug level but don't block Claude Code
+        logger.debug(f"Discord webhook HTTP error: {e.code} - {e.reason}")
+        return False
+    except urllib.error.URLError as e:
+        # Log URL/connection errors at debug level but don't block Claude Code
+        logger.debug(f"Discord webhook URL error: {e.reason}")
+        return False
+    except (json.JSONEncodeError, UnicodeEncodeError) as e:
+        # Log encoding errors at debug level but don't block Claude Code
+        logger.debug(f"Discord webhook encoding error: {type(e).__name__}: {e}")
+        return False
     except Exception as e:
-        # Log at debug level but don't block Claude Code
-        logger.debug(f"Discord webhook send failed: {type(e).__name__}: {e}")
+        # Log unexpected errors at debug level but don't block Claude Code
+        logger.debug(f"Discord webhook unexpected error: {type(e).__name__}: {e}")
         return False
 
 
@@ -135,9 +147,21 @@ def _send_via_bot_api(message: DiscordMessage, bot_token: str, channel_id: str) 
         with urllib.request.urlopen(req, timeout=10) as response:
             return 200 <= response.status < 300
 
+    except urllib.error.HTTPError as e:
+        # Log HTTP errors at debug level but don't block Claude Code
+        logger.debug(f"Discord bot API HTTP error: {e.code} - {e.reason}")
+        return False
+    except urllib.error.URLError as e:
+        # Log URL/connection errors at debug level but don't block Claude Code
+        logger.debug(f"Discord bot API URL error: {e.reason}")
+        return False
+    except (json.JSONEncodeError, UnicodeEncodeError) as e:
+        # Log encoding errors at debug level but don't block Claude Code
+        logger.debug(f"Discord bot API encoding error: {type(e).__name__}: {e}")
+        return False
     except Exception as e:
-        # Log at debug level but don't block Claude Code
-        logger.debug(f"Discord bot API send failed: {type(e).__name__}: {e}")
+        # Log unexpected errors at debug level but don't block Claude Code
+        logger.debug(f"Discord bot API unexpected error: {type(e).__name__}: {e}")
         return False
 
 
@@ -189,7 +213,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
                 thread_id = result.get("id")
                 logger.debug(f"Thread created successfully - ID: {sanitize_log_input(thread_id)}, response: {result}")
                 return thread_id
-            logger.debug(f"Unexpected status code: {status_code}")
+            logger.debug(f"Unexpected status code: {sanitize_log_input(str(status_code))}")
 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="ignore")
@@ -251,7 +275,7 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
             if 200 <= status_code < 300:
                 logger.debug("Message sent to thread successfully")
                 return True
-            logger.debug(f"Unexpected status code: {status_code}")
+            logger.debug(f"Unexpected status code: {sanitize_log_input(str(status_code))}")
             return False
 
     except urllib.error.HTTPError as e:

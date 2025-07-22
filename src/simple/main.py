@@ -22,7 +22,7 @@ Please run with Python 3.13+:
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add current directory to path for imports
@@ -43,7 +43,7 @@ def setup_logging():
     log_dir = Path.home() / ".claude" / "hooks" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = log_dir / f"simple_notifier_{datetime.now().strftime('%Y-%m-%d')}.log"
+    log_file = log_dir / f"simple_notifier_{datetime.now(UTC).strftime('%Y-%m-%d')}.log"
 
     logging.basicConfig(
         level=logging.DEBUG,

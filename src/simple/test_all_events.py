@@ -42,7 +42,8 @@ for event in test_events:
     # Run main.py with event data
     process = subprocess.run(
         ["uv", "run", "--python", "3.14", "python", "src/simple/main.py"],
-        check=False, input=json.dumps(event["data"]),
+        check=False,
+        input=json.dumps(event["data"]),
         text=True,
         capture_output=True,
     )

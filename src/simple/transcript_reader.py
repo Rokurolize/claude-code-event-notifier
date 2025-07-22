@@ -184,11 +184,14 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
             if len(task_response_pairs) > 1:
                 logger.debug("Multiple task-response pairs found:")
                 for idx, pair in enumerate(task_response_pairs):
-                    logger.debug(f"  {idx + 1}. {pair['task']['description']}")
+                    safe_description = sanitize_log_input(pair["task"]["description"])
+                    logger.debug(f"  {idx + 1}. {safe_description}")
 
             # Return the most recent one (last in list since we read backwards)
             most_recent = task_response_pairs[-1]
-            logger.debug(f"Returning most recent task-response pair: {most_recent['task']['description']}")
+            logger.debug(
+                f"Returning most recent task-response pair: {sanitize_log_input(most_recent['task']['description'])}"
+            )
             return most_recent
         logger.debug("No complete task-response pairs found")
 
@@ -226,16 +229,22 @@ def format_for_discord(subagent_data: dict) -> str:
             logger.debug(f"Failed to calculate duration: {e}")
 
     # Format message with Discord markdown
+    from utils import escape_discord_markdown
+
+    safe_description = escape_discord_markdown(task.get("description", "Unknown"))
+    safe_prompt = escape_discord_markdown(task.get("prompt", "No prompt available")[:1000])
+    safe_response = escape_discord_markdown(response.get("content", "No response available")[:2000])
+
     return f"""## Task Execution Summary
 
-**Description**: {task.get("description", "Unknown")}
+**Description**: {safe_description}
 **Duration**: {duration}
 
 ### User Prompt
 ```
-{task.get("prompt", "No prompt available")[:1000]}
+{safe_prompt}
 ```
 
 ### Assistant Response
-{response.get("content", "No response available")[:2000]}
+{safe_response}
 """

@@ -7,7 +7,7 @@ Only active when DISCORD_DEBUG is enabled.
 
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +26,7 @@ def save_debug_data(raw_input: str, formatted_output: dict[str, Any] | None, eve
         debug_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
 
         # Save raw input
         raw_file = debug_dir / f"{timestamp}_{event_type}_raw_input.json"
@@ -96,7 +96,7 @@ def cleanup_old_files(debug_dir: Path, days: int = 7) -> None:
         days: Number of days to keep files (default: 7)
     """
     try:
-        cutoff_time = datetime.now() - timedelta(days=days)
+        cutoff_time = datetime.now(UTC) - timedelta(days=days)
 
         for file in debug_dir.glob("*_raw_input.json"):
             # Extract timestamp from filename

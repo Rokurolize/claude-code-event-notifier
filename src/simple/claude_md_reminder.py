@@ -6,7 +6,7 @@ when significant changes occur in the project.
 """
 
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Add parent directory for imports
@@ -78,7 +78,9 @@ def send_reminder(reason: str, config: Config) -> None:
                     "```"
                 ),
                 "color": 0xFFD700,  # Gold
-                "footer": {"text": "CLAUDE.md Auto-Update Reminder | " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                "footer": {
+                    "text": "CLAUDE.md Auto-Update Reminder | " + datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                },
             }
         ]
     }

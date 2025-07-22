@@ -13,9 +13,9 @@ import shutil
 import tempfile
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, ClassVar, TypedDict
+from typing import Any, ClassVar, Iterator, TypedDict
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -149,7 +149,7 @@ class TaskStorage:
 
     @staticmethod
     @contextmanager
-    def _atomic_write(filepath: Path):
+    def _atomic_write(filepath: Path) -> Iterator[int]:
         """Context manager for atomic file writes."""
         temp_fd, temp_path = tempfile.mkstemp(dir=filepath.parent, prefix=f".{filepath.name}.", suffix=".tmp")
 
@@ -249,7 +249,7 @@ class TaskStorage:
         return {}
 
     @staticmethod
-    def _save_data(data: dict[str, dict[str, TaskInfo]]):
+    def _save_data(data: dict[str, dict[str, TaskInfo]]) -> None:
         """Save task data to file atomically with backup."""
         TaskStorage._ensure_storage_dir()
 
@@ -282,7 +282,7 @@ class TaskStorage:
                     data[session_id] = {}
 
                 # Store task info with timestamp validation
-                task_info["start_time"] = task_info.get("start_time", datetime.now().isoformat())
+                task_info["start_time"] = task_info.get("start_time", datetime.now(UTC).isoformat())
                 data[session_id][task_id] = task_info
 
                 # Cleanup old sessions
@@ -321,7 +321,7 @@ class TaskStorage:
                     return False
 
                 # Update task with timestamp
-                updates["last_updated"] = datetime.now().isoformat()
+                updates["last_updated"] = datetime.now(UTC).isoformat()
                 data[session_id][task_id].update(updates)
 
                 # Save
@@ -393,10 +393,10 @@ class TaskStorage:
             return None
 
     @staticmethod
-    def _cleanup_old_sessions(data: dict[str, dict[str, TaskInfo]]):
+    def _cleanup_old_sessions(data: dict[str, dict[str, TaskInfo]]) -> None:
         """Remove sessions older than CLEANUP_AFTER_HOURS with better error handling."""
         try:
-            cutoff_time = datetime.now() - timedelta(hours=CLEANUP_AFTER_HOURS)
+            cutoff_time = datetime.now(UTC) - timedelta(hours=CLEANUP_AFTER_HOURS)
             sessions_to_remove = []
 
             for session_id, tasks in data.items():

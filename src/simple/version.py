@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Version information for Simple Architecture."""
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,15 +15,14 @@ def get_git_commit() -> str:
     """Get current git commit hash (short)."""
     try:
         # Use shutil.which to find git executable
-        import shutil
-
         git_path = shutil.which("git")
         if not git_path:
             return "unknown"
 
         result = subprocess.run(
             [git_path, "rev-parse", "--short", "HEAD"],
-            check=False, capture_output=True,
+            check=False,
+            capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent.parent,
         )

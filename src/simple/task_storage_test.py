@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -201,7 +201,7 @@ class TestTaskStorageImproved(unittest.TestCase):
     def test_cleanup_old_sessions(self):
         """Test automatic cleanup of old sessions."""
         # Create test data with old and new sessions
-        now = datetime.now()
+        now = datetime.now(UTC)
         old_time = (now - timedelta(hours=3)).isoformat()
         new_time = now.isoformat()
 

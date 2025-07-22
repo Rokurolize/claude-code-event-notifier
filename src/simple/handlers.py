@@ -22,7 +22,7 @@ from task_tracker import TaskTracker
 from transcript_reader import read_subagent_messages
 from version import VERSION_STRING
 
-from utils import escape_discord_markdown
+from utils import escape_discord_markdown, sanitize_log_input
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -340,7 +340,7 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
         return basic_message
 
     logger.debug(
-        f"[event-{event_id}] Found latest task: {latest_task.get('task_id')} - {latest_task.get('description')}"
+        f"[event-{event_id}] Found latest task: {sanitize_log_input(latest_task.get('task_id', ''))} - {sanitize_log_input(latest_task.get('description', ''))}"
     )
 
     # Check if task has an associated thread

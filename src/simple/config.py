@@ -50,7 +50,24 @@ def load_config() -> Config:
 def _load_env_file(env_file: Path, config: Config) -> None:
     """Load configuration from .env file."""
     try:
-        with open(env_file) as f:
+        # Validate that the file path is within expected directories for security
+        claude_dir = Path.home() / ".claude"
+        try:
+            # Resolve both paths to absolute paths and check if env_file is within claude_dir
+            env_file_resolved = env_file.resolve(strict=True)
+            claude_dir_resolved = claude_dir.resolve(strict=True)
+
+            # Check if the env_file is within the claude directory
+            try:
+                env_file_resolved.relative_to(claude_dir_resolved)
+            except ValueError:
+                # File is not within the .claude directory, skip loading
+                return
+        except OSError:
+            # File doesn't exist or can't be resolved, skip loading
+            return
+
+        with env_file.open() as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#") and "=" in line:
