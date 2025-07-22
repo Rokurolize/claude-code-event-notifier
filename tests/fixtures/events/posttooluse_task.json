@@ -1,0 +1,13 @@
+{
+  "session_id": "01935b48-0f7d-7f84-85f9-3b8f5e9c4d32",
+  "transcript_path": "/home/user/.claude/conversations/20250122-140523-test-task/transcript-20250122-140523.jsonl",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Task",
+  "tool_input": {
+    "description": "Search for configuration files",
+    "prompt": "Find all configuration files in the project that contain database connection settings. Look for files with extensions like .env, .config, .ini, .yaml, .json that might contain database URLs, credentials, or connection parameters."
+  },
+  "tool_response": {
+    "output": "Found 3 configuration files with database settings:\\n\\n1. `.env` - Contains DATABASE_URL environment variable\\n2. `config/database.yaml` - Full database configuration with host, port, credentials\\n3. `src/settings.json` - Application settings including database connection pool configuration\\n\\nAll files appear to be properly secured with appropriate permissions."
+  }
+}

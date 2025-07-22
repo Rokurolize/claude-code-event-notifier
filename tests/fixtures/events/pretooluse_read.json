@@ -1,0 +1,9 @@
+{
+  "session_id": "01935b48-0f7d-7f84-85f9-3b8f5e9c4d32",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Read",
+  "tool_input": {
+    "file_path": "/home/user/project/config/database.yaml",
+    "limit": 50
+  }
+}
