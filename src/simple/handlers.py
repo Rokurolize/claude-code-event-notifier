@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from event_types import Config, DiscordMessage, EventData, HandlerFunction
 
-from datetime import UTC
+from datetime import UTC, datetime
 
 from discord_client import create_thread, send_to_thread
 from task_tracker import TaskTracker
@@ -83,8 +83,6 @@ def handle_pretooluse(data: EventData, config: Config) -> DiscordMessage | None:
 
         # Create thread for Task execution if enabled
         if config.get("thread_for_task") and config.get("bot_token") and config.get("channel_id") and task_id:
-            from datetime import datetime
-
             thread_name = f"Task: {description[:50]} - {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}"
             thread_id = create_thread(config["channel_id"], thread_name, config["bot_token"])
 
@@ -359,8 +357,6 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
 
         if subagent_data:
             # Calculate execution metrics
-            from datetime import datetime
-
             try:
                 start_time = datetime.fromisoformat(latest_task.get("start_time", ""))
                 end_time = datetime.fromisoformat(latest_task.get("end_time", datetime.now(UTC).isoformat()))

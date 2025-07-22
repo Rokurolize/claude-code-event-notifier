@@ -14,6 +14,29 @@ from utils import parse_bool
 
 # Python 3.13+ required - pure standard library
 
+# Default routing rules (DRY principle - defined once, used in multiple functions)
+DEFAULT_EVENT_ROUTING = {
+    "PreToolUse": "tool_activity",
+    "PostToolUse": "tool_activity",
+    "Stop": "completion",
+    "SubagentStop": "completion",
+    "Notification": "tool_activity",
+}
+
+DEFAULT_TOOL_ROUTING = {
+    "Bash": "bash_commands",
+    "Read": "file_operations",
+    "Edit": "file_operations",
+    "Write": "file_operations",
+    "MultiEdit": "file_operations",
+    "Grep": "search_grep",
+    "Glob": "search_grep",
+    "LS": "file_operations",
+    "Task": "ai_interactions",
+    "WebFetch": "ai_interactions",
+    "TodoWrite": "ai_interactions",
+}
+
 
 def load_config() -> Config:
     """Load configuration from environment and .env file.
@@ -189,29 +212,9 @@ def _load_channel_routing_from_env(config: Config) -> None:
         routing["enabled"] = True
         routing["channels"] = channels
 
-        # Default routing rules (Phase 1)
-        routing["event_routing"] = {
-            "PreToolUse": "tool_activity",
-            "PostToolUse": "tool_activity",
-            "Stop": "completion",
-            "SubagentStop": "completion",
-            "Notification": "tool_activity",  # Default, can be overridden by tool routing
-        }
-
-        # Tool-specific routing (Phase 2)
-        routing["tool_routing"] = {
-            "Bash": "bash_commands",
-            "Read": "file_operations",
-            "Edit": "file_operations",
-            "Write": "file_operations",
-            "MultiEdit": "file_operations",
-            "Grep": "search_grep",
-            "Glob": "search_grep",
-            "LS": "file_operations",
-            "Task": "ai_interactions",
-            "WebFetch": "ai_interactions",
-            "TodoWrite": "ai_interactions",
-        }
+        # Default routing rules using module constants
+        routing["event_routing"] = DEFAULT_EVENT_ROUTING.copy()
+        routing["tool_routing"] = DEFAULT_TOOL_ROUTING.copy()
 
         config["channel_routing"] = routing
 
@@ -345,26 +348,8 @@ def _set_channel_config_value(config: Config, key: str, value: str) -> None:
     # Set routing as enabled and add default routing rules
     if channels:
         routing["enabled"] = True
-        routing["event_routing"] = {
-            "PreToolUse": "tool_activity",
-            "PostToolUse": "tool_activity",
-            "Stop": "completion",
-            "SubagentStop": "completion",
-            "Notification": "tool_activity",
-        }
-        routing["tool_routing"] = {
-            "Bash": "bash_commands",
-            "Read": "file_operations",
-            "Edit": "file_operations",
-            "Write": "file_operations",
-            "MultiEdit": "file_operations",
-            "Grep": "search_grep",
-            "Glob": "search_grep",
-            "LS": "file_operations",
-            "Task": "ai_interactions",
-            "WebFetch": "ai_interactions",
-            "TodoWrite": "ai_interactions",
-        }
+        routing["event_routing"] = DEFAULT_EVENT_ROUTING.copy()
+        routing["tool_routing"] = DEFAULT_TOOL_ROUTING.copy()
 
 
 def get_channel_for_event(event_name: str, tool_name: str | None, config: Config) -> str | None:

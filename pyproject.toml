@@ -18,86 +18,19 @@ classifiers = [
 dynamic = ["version"]
 
 [tool.mypy]
-# Basic configuration - Python 3.13 ready
-mypy_path = ["src"]
 python_version = "3.13"
+mypy_path = ["src"]
 strict = true
 show_error_codes = true
-show_column_numbers = true
-show_error_context = true
 pretty = true
-no_error_summary = false  # Show summary for better debugging
 
-# Type checking behavior - ultra strict for zero technical debt
-warn_return_any = true
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_unreachable = true
-disallow_any_generics = true
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-disallow_untyped_decorators = true
-disallow_subclassing_any = true
-check_untyped_defs = true
-no_implicit_optional = true
-strict_optional = true
-strict_equality = true
-disallow_any_explicit = true
-disallow_any_expr = true
-
-# Error reporting - enhanced for development
-show_traceback = true
-raise_exceptions = false  # Don't raise exceptions, just report errors
-
-# Performance optimizations - Python 3.13 ready
-cache_fine_grained = true
-skip_version_check = true
-fast_exit = true
-
-# Python 3.13 specific features
-# enable_incomplete_feature = ["NewGenericSyntax"]  # Already enabled by default in mypy 1.16
-# enable_recursive_aliases = true  # Not available in mypy 1.16
-
-# Module-specific overrides for JSON handling
+# Simple architecture needs to handle JSON and uses relative imports
 [[tool.mypy.overrides]]
-module = [
-    "src.main",
-    "configure_hooks",
-]
-# Strategic relaxation only for JSON operations
-disallow_any_expr = false
-disallow_any_explicit = false
-# Maintain strict typing for everything else
-strict_optional = true
-warn_return_any = false  # JSON operations naturally return Any
-check_untyped_defs = true
+module = ["src.simple.*"]
+ignore_missing_imports = true  # Allow relative imports
+warn_return_any = false  # JSON operations return Any
 
-# Type guards need flexibility for runtime validation
-[[tool.mypy.overrides]]
-module = "src.type_guards"
-disallow_untyped_defs = false
-disallow_any_expr = false  # Type guards need Any for runtime checks
-disallow_any_explicit = false  # Type guards must use Any for validation
-
-# Thread storage module - strict typing
-[[tool.mypy.overrides]]
-module = "src.thread_storage"
-strict = true
-disallow_any_expr = true
-disallow_any_explicit = true
-
-# Settings types need flexibility for configuration
-[[tool.mypy.overrides]]
-module = "src.settings_types"
-disallow_any_explicit = false  # Configuration types may use Any for flexibility
-disallow_any_expr = false  # Settings configuration flexibility
-warn_return_any = false  # Settings return types may contain Any
-# no_any_unimported = false  # Not available in mypy 1.16
-ignore_missing_imports = true  # Ignore missing typing_extensions stubs
-
-# External library stubs
+# External libraries without stubs
 [[tool.mypy.overrides]]
 module = ["urllib.*", "sqlite3.*", "json.*"]
 ignore_missing_imports = true

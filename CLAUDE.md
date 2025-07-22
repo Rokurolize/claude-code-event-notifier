@@ -140,6 +140,28 @@ DISCORD_TOOL_TASK=1                      # Enable Task tool notifications
 # Advanced Features
 DISCORD_THREAD_FOR_TASK=1                # Create threads for Task execution
 DISCORD_DEBUG=1                          # Enable debug logging
+
+# Channel Routing (new)
+DISCORD_CHANNEL_TOOL_ACTIVITY=123456789   # Channel for tool executions
+DISCORD_CHANNEL_COMPLETION=987654321      # Channel for completions
+DISCORD_CHANNEL_DEFAULT=555555555         # Fallback channel
+```
+
+### Channel Routing Feature
+The system supports routing notifications to different Discord channels based on event type and tool:
+
+```bash
+# Phase 1: Basic channel separation
+DISCORD_CHANNEL_TOOL_ACTIVITY=...    # PreToolUse/PostToolUse events
+DISCORD_CHANNEL_COMPLETION=...       # Stop/SubagentStop events  
+DISCORD_CHANNEL_ALERTS=...           # Errors and warnings
+DISCORD_CHANNEL_DEFAULT=...          # Fallback for unmatched events
+
+# Phase 2: Tool-specific routing (overrides event routing)
+DISCORD_CHANNEL_BASH_COMMANDS=...    # Bash tool notifications
+DISCORD_CHANNEL_FILE_OPERATIONS=...  # Read/Edit/Write notifications
+DISCORD_CHANNEL_SEARCH_GREP=...      # Grep/Glob/LS notifications
+DISCORD_CHANNEL_AI_INTERACTIONS=...  # Task/WebFetch/TodoWrite
 ```
 
 ## Threading System
@@ -176,6 +198,9 @@ uv run python -m pytest --cov=src --cov-fail-under=85
 
 # Integration tests (requires Discord credentials)
 uv run python -m pytest tests/integration/ -m integration
+
+# Test channel routing specifically
+cd src/simple && uv run python test_channel_routing.py
 ```
 
 ## Debugging
@@ -215,6 +240,14 @@ File operations validate paths to prevent directory traversal:
 allowed_dirs = [(Path.home() / ".claude").resolve(strict=True)]
 if not any(os.path.commonpath([file_path, allowed_dir]) == str(allowed_dir) for allowed_dir in allowed_dirs):
     return None
+```
+
+### Discord Content Escaping
+Discord markdown is escaped to prevent formatting exploits:
+
+```python
+from utils import escape_discord_markdown
+safe_content = escape_discord_markdown(user_content)
 ```
 
 ## Code Quality Standards

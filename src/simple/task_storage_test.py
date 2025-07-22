@@ -12,8 +12,10 @@ import time
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
+import task_storage_improved
 from task_storage_improved import SimpleLock, TaskStorage
 
 
@@ -24,23 +26,32 @@ class TestTaskStorageImproved(unittest.TestCase):
         """Set up test environment."""
         # Create temporary directory for testing
         self.test_dir = tempfile.mkdtemp()
-        self.original_storage_dir = TaskStorage._ensure_storage_dir.__globals__["STORAGE_DIR"]
 
-        # Patch storage locations
+        # Patch storage locations using unittest.mock.patch
         test_storage_dir = Path(self.test_dir) / "test_storage"
-        TaskStorage._ensure_storage_dir.__globals__["STORAGE_DIR"] = test_storage_dir
-        TaskStorage._ensure_storage_dir.__globals__["STORAGE_FILE"] = test_storage_dir / "tasks.json"
-        TaskStorage._ensure_storage_dir.__globals__["BACKUP_FILE"] = test_storage_dir / "tasks.json.backup"
-        TaskStorage._ensure_storage_dir.__globals__["LOCK_FILE"] = test_storage_dir / "tasks.json.lock"
+        self.storage_dir_patcher = patch.object(task_storage_improved, "STORAGE_DIR", test_storage_dir)
+        self.storage_file_patcher = patch.object(task_storage_improved, "STORAGE_FILE", test_storage_dir / "tasks.json")
+        self.backup_file_patcher = patch.object(
+            task_storage_improved, "BACKUP_FILE", test_storage_dir / "tasks.json.backup"
+        )
+        self.lock_file_patcher = patch.object(task_storage_improved, "LOCK_FILE", test_storage_dir / "tasks.json.lock")
 
-        # Clear cache
-        global _cache
-        _cache = {"data": None, "timestamp": 0, "checksum": None}
+        # Start all patches
+        self.storage_dir_patcher.start()
+        self.storage_file_patcher.start()
+        self.backup_file_patcher.start()
+        self.lock_file_patcher.start()
+
+        # Clear the actual TaskStorage cache
+        TaskStorage._cache = {"data": None, "timestamp": 0, "checksum": None}
 
     def tearDown(self):
         """Clean up test environment."""
-        # Restore original paths
-        TaskStorage._ensure_storage_dir.__globals__["STORAGE_DIR"] = self.original_storage_dir
+        # Stop all patches
+        self.storage_dir_patcher.stop()
+        self.storage_file_patcher.stop()
+        self.backup_file_patcher.stop()
+        self.lock_file_patcher.stop()
 
         # Remove test directory
         shutil.rmtree(self.test_dir, ignore_errors=True)
