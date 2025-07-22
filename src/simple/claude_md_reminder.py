@@ -8,7 +8,6 @@ when significant changes occur in the project.
 import sys
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
 
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -18,7 +17,7 @@ from discord_client import send_to_discord
 from event_types import Config, DiscordMessage
 
 
-def check_if_update_needed() -> Optional[str]:
+def check_if_update_needed() -> str | None:
     """Check if CLAUDE.md needs updating based on recent changes."""
     # Check for significant files that might indicate need for update
     significant_files = [

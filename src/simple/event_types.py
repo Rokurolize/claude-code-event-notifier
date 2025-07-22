@@ -5,6 +5,7 @@ This module provides clean type definitions for the simplified architecture,
 focusing on clarity and ease of use.
 """
 
+from collections.abc import Callable
 from typing import Any, Literal, ReadOnly, TypedDict
 
 # Python 3.14+ required - pure standard library, zero dependencies
@@ -113,5 +114,4 @@ class Config(TypedDict, total=False):
 EventType = Literal["PreToolUse", "PostToolUse", "Notification", "Stop", "SubagentStop"]
 
 # Handler function signature
-from typing import Callable, Optional
-HandlerFunction = Callable[[EventData, Config], Optional[DiscordMessage]]
+HandlerFunction = Callable[[EventData, Config], DiscordMessage | None]
