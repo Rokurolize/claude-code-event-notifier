@@ -10,6 +10,7 @@ import logging
 import urllib.error
 import urllib.request
 
+from config import get_channel_for_event, has_channel_routing
 from event_types import Config, DiscordMessage, RoutedMessage
 
 from utils import sanitize_log_input
@@ -62,9 +63,6 @@ def send_routed_message(
     Returns:
         True if successful, False otherwise
     """
-    # Import here to avoid circular imports
-    from config import get_channel_for_event, has_channel_routing
-
     # Extract actual message and routing info
     if isinstance(message, dict) and "message" in message:
         # This is a RoutedMessage
@@ -107,7 +105,7 @@ def _send_via_webhook(message: DiscordMessage, webhook_url: str) -> bool:
     if not webhook_url.startswith("https://discord.com/api/webhooks/"):
         logger.debug("Invalid webhook URL scheme - must start with 'https://discord.com/api/webhooks/'")
         return False
-    
+
     try:
         data = json.dumps(message).encode("utf-8")
         req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})
@@ -117,19 +115,19 @@ def _send_via_webhook(message: DiscordMessage, webhook_url: str) -> bool:
 
     except urllib.error.HTTPError as e:
         # Log HTTP errors at debug level but don't block Claude Code
-        logger.debug(f"Discord webhook HTTP error: {e.code} - {e.reason}")
+        logger.debug(f"Discord webhook HTTP error: {sanitize_log_input(str(e.code))} - {sanitize_log_input(str(e.reason))}")
         return False
     except urllib.error.URLError as e:
         # Log URL/connection errors at debug level but don't block Claude Code
-        logger.debug(f"Discord webhook URL error: {e.reason}")
+        logger.debug(f"Discord webhook URL error: {sanitize_log_input(str(e.reason))}")
         return False
     except (json.JSONEncodeError, UnicodeEncodeError) as e:
         # Log encoding errors at debug level but don't block Claude Code
-        logger.debug(f"Discord webhook encoding error: {type(e).__name__}: {e}")
+        logger.debug(f"Discord webhook encoding error: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
         return False
     except Exception as e:
         # Log unexpected errors at debug level but don't block Claude Code
-        logger.debug(f"Discord webhook unexpected error: {type(e).__name__}: {e}")
+        logger.debug(f"Discord webhook unexpected error: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
         return False
 
 
@@ -154,19 +152,19 @@ def _send_via_bot_api(message: DiscordMessage, bot_token: str, channel_id: str) 
 
     except urllib.error.HTTPError as e:
         # Log HTTP errors at debug level but don't block Claude Code
-        logger.debug(f"Discord bot API HTTP error: {e.code} - {e.reason}")
+        logger.debug(f"Discord bot API HTTP error: {sanitize_log_input(str(e.code))} - {sanitize_log_input(str(e.reason))}")
         return False
     except urllib.error.URLError as e:
         # Log URL/connection errors at debug level but don't block Claude Code
-        logger.debug(f"Discord bot API URL error: {e.reason}")
+        logger.debug(f"Discord bot API URL error: {sanitize_log_input(str(e.reason))}")
         return False
     except (json.JSONEncodeError, UnicodeEncodeError) as e:
         # Log encoding errors at debug level but don't block Claude Code
-        logger.debug(f"Discord bot API encoding error: {type(e).__name__}: {e}")
+        logger.debug(f"Discord bot API encoding error: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
         return False
     except Exception as e:
         # Log unexpected errors at debug level but don't block Claude Code
-        logger.debug(f"Discord bot API unexpected error: {type(e).__name__}: {e}")
+        logger.debug(f"Discord bot API unexpected error: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
         return False
 
 
@@ -193,7 +191,7 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
             "auto_archive_duration": 1440,  # 24 hours
             "type": 11,  # Public thread
         }
-        logger.debug(f"Thread creation request data: {request_data}")
+        logger.debug(f"Thread creation request data: {sanitize_log_input(str(request_data))}")
 
         data = json.dumps(request_data).encode("utf-8")
 
@@ -222,21 +220,21 @@ def create_thread(channel_id: str, name: str, bot_token: str) -> str | None:
 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="ignore")
-        logger.error(f"Discord API HTTPError: {e.code} - {e.reason}")
-        logger.error(f"Error response body: {error_body}")
+        logger.error(f"Discord API HTTPError: {sanitize_log_input(str(e.code))} - {sanitize_log_input(str(e.reason))}")
+        logger.error(f"Error response body: {sanitize_log_input(error_body)}")
 
         # Parse error details if possible
         try:
             error_json = json.loads(error_body)
-            logger.error(f"Discord error message: {error_json.get('message', 'No message')}")
-            logger.error(f"Discord error code: {error_json.get('code', 'No code')}")
+            logger.error(f"Discord error message: {sanitize_log_input(str(error_json.get('message', 'No message')))}")
+            logger.error(f"Discord error code: {sanitize_log_input(str(error_json.get('code', 'No code')))}")
         except json.JSONDecodeError:
             pass
 
     except urllib.error.URLError as e:
-        logger.exception(f"URLError creating thread: {e.reason}")
+        logger.exception(f"URLError creating thread: {sanitize_log_input(str(e.reason))}")
     except Exception as e:
-        logger.exception(f"Unexpected error creating thread: {type(e).__name__}: {e}")
+        logger.exception(f"Unexpected error creating thread: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
 
     logger.debug("Thread creation failed, returning None")
     return None
@@ -285,21 +283,21 @@ def send_to_thread(thread_id: str, message: DiscordMessage, bot_token: str) -> b
 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="ignore")
-        logger.error(f"Discord API HTTPError sending to thread: {e.code} - {e.reason}")
-        logger.error(f"Error response body: {error_body}")
+        logger.error(f"Discord API HTTPError sending to thread: {sanitize_log_input(str(e.code))} - {sanitize_log_input(str(e.reason))}")
+        logger.error(f"Error response body: {sanitize_log_input(error_body)}")
 
         # Parse error details if possible
         try:
             error_json = json.loads(error_body)
-            logger.error(f"Discord error message: {error_json.get('message', 'No message')}")
-            logger.error(f"Discord error code: {error_json.get('code', 'No code')}")
+            logger.error(f"Discord error message: {sanitize_log_input(str(error_json.get('message', 'No message')))}")
+            logger.error(f"Discord error code: {sanitize_log_input(str(error_json.get('code', 'No code')))}")
         except json.JSONDecodeError:
             pass
 
     except urllib.error.URLError as e:
-        logger.error(f"URLError sending to thread: {e.reason}")
+        logger.error(f"URLError sending to thread: {sanitize_log_input(str(e.reason))}")
     except Exception as e:
-        logger.error(f"Unexpected error sending to thread: {type(e).__name__}: {e}")
+        logger.error(f"Unexpected error sending to thread: {sanitize_log_input(type(e).__name__)}: {sanitize_log_input(str(e))}")
 
     logger.debug("Failed to send message to thread")
     return False
