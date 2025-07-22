@@ -18,9 +18,9 @@ classifiers = [
 dynamic = ["version"]
 
 [tool.mypy]
-# Basic configuration - Python 3.14 ready
+# Basic configuration - Python 3.13 ready
 mypy_path = ["src"]
-python_version = "3.14"
+python_version = "3.13"
 strict = true
 show_error_codes = true
 show_column_numbers = true
@@ -51,12 +51,12 @@ disallow_any_expr = true
 show_traceback = true
 raise_exceptions = false  # Don't raise exceptions, just report errors
 
-# Performance optimizations - Python 3.14 JIT ready
+# Performance optimizations - Python 3.13 ready
 cache_fine_grained = true
 skip_version_check = true
 fast_exit = true
 
-# Python 3.14 specific features
+# Python 3.13 specific features
 # enable_incomplete_feature = ["NewGenericSyntax"]  # Already enabled by default in mypy 1.16
 # enable_recursive_aliases = true  # Not available in mypy 1.16
 
@@ -103,7 +103,7 @@ module = ["urllib.*", "sqlite3.*", "json.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 line-length = 120
 
 [tool.ruff.format]
@@ -303,7 +303,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = [
-    # Type checking - latest for Python 3.14+ support
+    # Type checking - latest for Python 3.13+ support
     "mypy>=1.16.1",
     
     # Linting and formatting - latest with all rule categories
@@ -317,7 +317,7 @@ dev = [
     "pytest-xdist>=3.6.0",  # Parallel test execution
     "pytest-mock>=3.14.0",  # Enhanced mocking capabilities
     
-    # Python 3.14+ only - no external dependencies required
+    # Python 3.13+ only - no external dependencies required
 ]
 
 [tool.setuptools_scm]
