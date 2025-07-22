@@ -101,7 +101,11 @@ def main() -> None:
         # Save raw input for debugging if debug mode is enabled
         if config.get("debug"):
             logger.debug("Debug mode: Saving raw input data")
-            save_debug_data(raw_input, None, safe_event_type)
+            # Extract tool name for PreToolUse/PostToolUse events
+            tool_name_for_debug = None
+            if event_type in ["PreToolUse", "PostToolUse"]:
+                tool_name_for_debug = event_data.get("tool_name", "")
+            save_debug_data(raw_input, None, safe_event_type, tool_name_for_debug)
 
         # Check if event should be processed
         if not should_process_event(event_type, config):
@@ -140,7 +144,11 @@ def main() -> None:
         # Save formatted output for debugging if debug mode is enabled
         if config.get("debug"):
             logger.debug("Debug mode: Saving formatted output data")
-            save_debug_data(raw_input, message, safe_event_type)
+            # Extract tool name for PreToolUse/PostToolUse events
+            tool_name_for_debug = None
+            if event_type in ["PreToolUse", "PostToolUse"]:
+                tool_name_for_debug = event_data.get("tool_name", "")
+            save_debug_data(raw_input, message, safe_event_type, tool_name_for_debug)
 
         # Send to Discord with routing
         tool_name = event_data.get("tool_name") if event_type in ["PreToolUse", "PostToolUse"] else None

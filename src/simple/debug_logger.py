@@ -12,13 +12,16 @@ from pathlib import Path
 from typing import Any
 
 
-def save_debug_data(raw_input: str, formatted_output: dict[str, Any] | None, event_type: str) -> None:
+def save_debug_data(
+    raw_input: str, formatted_output: dict[str, Any] | None, event_type: str, tool_name: str | None = None
+) -> None:
     """Save raw input and formatted output data for debugging.
 
     Args:
         raw_input: Raw JSON string from stdin
         formatted_output: Formatted Discord message dict
         event_type: Type of event being processed
+        tool_name: Optional tool name for PreToolUse/PostToolUse events
     """
     try:
         # Create debug directory
@@ -28,15 +31,23 @@ def save_debug_data(raw_input: str, formatted_output: dict[str, Any] | None, eve
         # Generate timestamp
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
 
+        # Generate filename with optional tool name
+        if tool_name and event_type in ["PreToolUse", "PostToolUse"]:
+            # Include tool name for tool-related events
+            filename_base = f"{timestamp}_{event_type}_{tool_name}"
+        else:
+            # Use original format for other events
+            filename_base = f"{timestamp}_{event_type}"
+
         # Save raw input
-        raw_file = debug_dir / f"{timestamp}_{event_type}_raw_input.json"
+        raw_file = debug_dir / f"{filename_base}_raw_input.json"
         raw_data = json.loads(raw_input) if isinstance(raw_input, str) else raw_input
         masked_raw = mask_sensitive_data(raw_data)
         raw_file.write_text(json.dumps(masked_raw, indent=2))
 
         # Save formatted output if present
         if formatted_output:
-            output_file = debug_dir / f"{timestamp}_{event_type}_formatted_output.json"
+            output_file = debug_dir / f"{filename_base}_formatted_output.json"
             masked_output = mask_sensitive_data(formatted_output)
             output_file.write_text(json.dumps(masked_output, indent=2))
 
@@ -101,8 +112,13 @@ def cleanup_old_files(debug_dir: Path, days: int = 7) -> None:
         for file in debug_dir.glob("*_raw_input.json"):
             # Extract timestamp from filename
             try:
-                timestamp_str = file.stem.split("_")[0] + file.stem.split("_")[1]
-                file_time = datetime.strptime(timestamp_str, "%Y%m%d%H%M%S")
+                # Filename can be either:
+                # - {timestamp}_{event_type}_raw_input
+                # - {timestamp}_{event_type}_{tool_name}_raw_input
+                parts = file.stem.split("_")
+                if len(parts) >= 2:
+                    timestamp_str = parts[0] + parts[1]
+                    file_time = datetime.strptime(timestamp_str, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
 
                 if file_time < cutoff_time:
                     file.unlink()
