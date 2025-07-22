@@ -8,6 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Critical**: This project requires Python 3.13+ and uses uv for dependency management.
 
 ```bash
+# Development environment setup
+uv install --dev  # Install all dev dependencies (mypy, ruff, pytest, etc.)
+
 # Setup and development (always use uv)
 uv run python configure_hooks.py           # Configure Claude Code hooks
 uv run python configure_hooks.py --remove  # Remove hooks
@@ -17,6 +20,7 @@ uv run python configure_hooks.py --validate-end-to-end  # Test everything
 uv run python -m pytest tests/unit/        # Run unit tests
 uv run python -m pytest tests/integration/ # Run integration tests
 uv run python -m pytest --cov=src         # Run with coverage
+uv run python -m pytest -x                # Stop on first failure
 
 # Code Quality
 uv run ruff check .                        # Lint code
@@ -34,6 +38,10 @@ uv run python utils/check_discord_access.py
 # Simple Architecture (main implementation)
 uv run python src/simple/main.py < test_event.json  # Test event processing
 uv run python configure_hooks_simple.py             # Configure simple hooks
+
+# Simple architecture-specific testing
+cd src/simple && uv run python test_channel_routing.py  # Test channel routing
+cd src/simple && uv run python test_all_events.py       # Test all event types
 
 # Full Architecture (legacy)
 uv run python src/main.py < test_event.json         # Test full architecture
@@ -54,12 +62,16 @@ Claude Code Hook → JSON Event → Simple Dispatcher → Discord Message
 ```
 
 **Core Files**:
-- `main.py` - Event dispatcher (83 lines)
-- `handlers.py` - Event processing logic (190 lines)
-- `config.py` - Configuration management (117 lines)
-- `discord_client.py` - Discord API client (71 lines)
-- `event_types.py` - Type definitions (94 lines)
+- `main.py` - Event dispatcher and entry point
+- `handlers.py` - Event processing logic for all Claude Code events
+- `config.py` - Configuration management with channel routing constants
+- `discord_client.py` - Discord API client (webhook & bot API support)
+- `event_types.py` - TypedDict definitions for all data structures
 - `utils.py` - Shared utilities (sanitization, markdown escaping)
+- `task_tracker.py` - Task session management for threading features
+- `task_storage_improved.py` - Persistent JSON storage with file locking
+- `transcript_reader.py` - Subagent conversation extraction for summaries
+- `debug_logger.py` - Debug data logging with automatic cleanup
 
 ### Full Architecture (Legacy - 8000+ lines)
 - **Location**: `src/core/`, `src/handlers/`, `src/formatters/`
@@ -212,9 +224,19 @@ Set `DISCORD_DEBUG=1` to enable comprehensive logging:
 # Logs location
 ~/.claude/hooks/logs/simple_notifier_*.log
 
-# Debug data (input/output JSON)
+# Debug data with improved filename format (includes tool names)
+# For tool-related events (PreToolUse/PostToolUse):
+~/.claude/hooks/debug/{timestamp}_{event}_{tool}_raw_input.json
+~/.claude/hooks/debug/{timestamp}_{event}_{tool}_formatted_output.json
+
+# For other events (Stop, Notification, SubagentStop):
 ~/.claude/hooks/debug/{timestamp}_{event}_raw_input.json
 ~/.claude/hooks/debug/{timestamp}_{event}_formatted_output.json
+
+# Examples:
+# - 20250722_143025_123_PreToolUse_Bash_raw_input.json
+# - 20250722_143027_456_PostToolUse_Read_formatted_output.json
+# - 20250722_143030_789_Stop_raw_input.json
 ```
 
 ### Common Issues
@@ -248,6 +270,17 @@ Discord markdown is escaped to prevent formatting exploits:
 ```python
 from utils import escape_discord_markdown
 safe_content = escape_discord_markdown(user_content)
+```
+
+### Comprehensive Log Sanitization
+All logger calls that include user or API-controlled data use sanitization:
+
+```python
+# Exception handling example
+logger.error(f"Discord API error: {sanitize_log_input(str(e.code))} - {sanitize_log_input(str(e.reason))}")
+
+# Thread name sanitization example
+safe_description = sanitize_log_input(description[:50]).replace('\n', ' ').replace('\r', ' ')
 ```
 
 ## Code Quality Standards
