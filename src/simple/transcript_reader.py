@@ -31,7 +31,10 @@ def _validate_and_resolve_path(transcript_path: str) -> Path | None:
         allowed_dirs = [
             (Path.home() / ".claude").resolve(strict=True),
         ]
-        if not any(os.path.commonpath([str(transcript_file), str(allowed_dir)]) == str(allowed_dir) for allowed_dir in allowed_dirs):
+        if not any(
+            os.path.commonpath([str(transcript_file), str(allowed_dir)]) == str(allowed_dir)
+            for allowed_dir in allowed_dirs
+        ):
             safe_path = sanitize_log_input(transcript_path)
             logger.error(f"Transcript path outside allowed directories: {safe_path}")
             return None
@@ -88,9 +91,7 @@ def _match_task_response_pairs(lines: list[str]) -> list[dict]:
             continue
 
         # Found subagent response
-        if (entry.get("isSidechain") is True and
-            entry.get("type") == "assistant"):
-
+        if entry.get("isSidechain") is True and entry.get("type") == "assistant":
             message = entry.get("message", {})
             content = message.get("content", [])
             response_text = ""
@@ -100,20 +101,14 @@ def _match_task_response_pairs(lines: list[str]) -> list[dict]:
                     response_text += item.get("text", "")
 
             if response_text:
-                response_info = {
-                    "content": response_text,
-                    "timestamp": entry.get("timestamp", "")
-                }
+                response_info = {"content": response_text, "timestamp": entry.get("timestamp", "")}
 
                 # For simple tasks, match the most recent task
                 if current_tasks:
                     # Get the most recently added task (last in dict)
                     task_id = list(current_tasks.keys())[-1]
                     task_info = current_tasks[task_id]
-                    task_response_pairs.append({
-                        "task": task_info,
-                        "response": response_info
-                    })
+                    task_response_pairs.append({"task": task_info, "response": response_info})
                     logger.debug(f"Matched task-response pair: {task_info['description']}")
                     # Remove matched task to avoid duplicate matching
                     del current_tasks[task_id]
@@ -126,17 +121,14 @@ def _match_task_response_pairs(lines: list[str]) -> list[dict]:
             content = message.get("content", [])
             if isinstance(content, list):
                 for item in content:
-                    if (isinstance(item, dict) and
-                        item.get("type") == "tool_use" and
-                        item.get("name") == "Task"):
-
+                    if isinstance(item, dict) and item.get("type") == "tool_use" and item.get("name") == "Task":
                         tool_id = item.get("id")
                         tool_input = item.get("input", {})
                         task_info = {
                             "description": tool_input.get("description", "Unknown Task"),
                             "prompt": tool_input.get("prompt", ""),
                             "timestamp": entry.get("timestamp", ""),
-                            "tool_id": tool_id
+                            "tool_id": tool_id,
                         }
 
                         if tool_id:
@@ -159,7 +151,9 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
     """
     safe_transcript_path = sanitize_log_input(transcript_path)
     safe_event_timestamp = sanitize_log_input(str(event_timestamp))
-    logger.debug(f"read_subagent_messages called with path: {safe_transcript_path}, event_timestamp: {safe_event_timestamp}")
+    logger.debug(
+        f"read_subagent_messages called with path: {safe_transcript_path}, event_timestamp: {safe_event_timestamp}"
+    )
 
     # Validate transcript path is within expected directories
     transcript_file = _validate_and_resolve_path(transcript_path)
@@ -190,7 +184,7 @@ def read_subagent_messages(transcript_path: str, event_timestamp: str | None = N
             if len(task_response_pairs) > 1:
                 logger.debug("Multiple task-response pairs found:")
                 for idx, pair in enumerate(task_response_pairs):
-                    logger.debug(f"  {idx+1}. {pair['task']['description']}")
+                    logger.debug(f"  {idx + 1}. {pair['task']['description']}")
 
             # Return the most recent one (last in list since we read backwards)
             most_recent = task_response_pairs[-1]
@@ -234,15 +228,14 @@ def format_for_discord(subagent_data: dict) -> str:
     # Format message with Discord markdown
     return f"""## Task Execution Summary
 
-**Description**: {task.get('description', 'Unknown')}
+**Description**: {task.get("description", "Unknown")}
 **Duration**: {duration}
 
 ### User Prompt
 ```
-{task.get('prompt', 'No prompt available')[:1000]}
+{task.get("prompt", "No prompt available")[:1000]}
 ```
 
 ### Assistant Response
-{response.get('content', 'No response available')[:2000]}
+{response.get("content", "No response available")[:2000]}
 """
-

@@ -205,9 +205,11 @@ class TaskStorage:
             # Find tasks that match the content
             matching_tasks = []
             for task_id, task_info in data[session_id].items():
-                if (task_info.get("status") == "started" and
-                    task_info.get("description") == description and
-                    task_info.get("prompt") == prompt):
+                if (
+                    task_info.get("status") == "started"
+                    and task_info.get("description") == description
+                    and task_info.get("prompt") == prompt
+                ):
                     matching_tasks.append((task_id, task_info))
 
             if not matching_tasks:

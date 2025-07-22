@@ -9,20 +9,22 @@ from pathlib import Path
 VERSION = "1.1"
 RELEASE_DATE = "2025.07.19"
 
+
 def get_git_commit() -> str:
     """Get current git commit hash (short)."""
     try:
         # Use shutil.which to find git executable
         import shutil
+
         git_path = shutil.which("git")
         if not git_path:
             return "unknown"
-            
+
         result = subprocess.run(
             [git_path, "rev-parse", "--short", "HEAD"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
-            cwd=Path(__file__).parent.parent.parent
+            cwd=Path(__file__).parent.parent.parent,
         )
         if result.returncode == 0:
             return result.stdout.strip()
@@ -31,12 +33,14 @@ def get_git_commit() -> str:
         pass
     return "unknown"
 
+
 def get_version_string() -> str:
     """Get full version string."""
     git_commit = get_git_commit()
     python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    
+
     return f"Simple Notifier v{RELEASE_DATE}-{git_commit} • Python {python_version}"
+
 
 # Pre-computed version string for performance
 VERSION_STRING = get_version_string()
