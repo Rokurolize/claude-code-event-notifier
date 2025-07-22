@@ -81,9 +81,9 @@ def mask_sensitive_data(data: Any) -> Any:
             else:
                 masked[key] = mask_sensitive_data(value)
         return masked
-    if isinstance(data, list):
+    elif isinstance(data, list):
         return [mask_sensitive_data(item) for item in data]
-    if isinstance(data, str):
+    elif isinstance(data, str):
         # Mask Discord tokens in strings (they have a specific pattern)
         # Discord bot tokens: <user_id>.<timestamp>.<hmac>
         token_pattern = r"\b[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{27,}\b"

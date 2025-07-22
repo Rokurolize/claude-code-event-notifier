@@ -337,8 +337,10 @@ def handle_subagent_stop(data: EventData, config: Config) -> DiscordMessage | No
         logger.debug(f"[event-{event_id}] No tracked tasks found for session, returning basic message")
         return basic_message
 
+    task_id_safe = sanitize_log_input(latest_task.get('task_id', ''))
+    description_safe = sanitize_log_input(latest_task.get('description', ''))
     logger.debug(
-        f"[event-{event_id}] Found latest task: {sanitize_log_input(latest_task.get('task_id', ''))} - {sanitize_log_input(latest_task.get('description', ''))}"
+        f"[event-{event_id}] Found latest task: {task_id_safe} - {description_safe}"
     )
 
     # Check if task has an associated thread

@@ -137,7 +137,7 @@ python3.13 configure_hooks.py --remove
 
 When `DISCORD_DEBUG=1` is set, the notifier saves raw input/output data for debugging:
 
-```
+```text
 ~/.claude/hooks/debug/
 # For tool-related events (PreToolUse/PostToolUse):
 ├── {timestamp}_{event_type}_{tool_name}_raw_input.json      # Raw hook input data

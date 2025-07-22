@@ -154,7 +154,7 @@ class TaskTracker:
         task_info = TaskStorage.get_task_by_content(session_id, match_description, match_prompt)
 
         if not task_info:
-            logger.debug(f'No matching tasks found for description="{match_description}" in session {session_id}')
+            logger.debug(f'No matching tasks found for description="{sanitize_log_input(match_description)}" in session {sanitize_log_input(session_id)}')
             return None
 
         task_id = task_info.get("task_id")

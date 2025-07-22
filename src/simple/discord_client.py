@@ -103,6 +103,11 @@ def send_routed_message(
 
 def _send_via_webhook(message: DiscordMessage, webhook_url: str) -> bool:
     """Send message via Discord webhook."""
+    # Validate webhook URL scheme for security
+    if not webhook_url.startswith("https://discord.com/api/webhooks/"):
+        logger.debug("Invalid webhook URL scheme - must start with 'https://discord.com/api/webhooks/'")
+        return False
+    
     try:
         data = json.dumps(message).encode("utf-8")
         req = urllib.request.Request(webhook_url, data=data, headers={"Content-Type": "application/json"})

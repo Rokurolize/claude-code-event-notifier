@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from utils import sanitize_log_input
+from utils import escape_discord_markdown, sanitize_log_input
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -229,8 +229,6 @@ def format_for_discord(subagent_data: dict) -> str:
             logger.debug(f"Failed to calculate duration: {e}")
 
     # Format message with Discord markdown
-    from utils import escape_discord_markdown
-
     safe_description = escape_discord_markdown(task.get("description", "Unknown"))
     safe_prompt = escape_discord_markdown(task.get("prompt", "No prompt available")[:1000])
     safe_response = escape_discord_markdown(response.get("content", "No response available")[:2000])
