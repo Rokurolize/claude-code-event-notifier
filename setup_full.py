@@ -221,15 +221,19 @@ class FullHookSetup:
             "message": "✅ Discord notifier is working! (Full Architecture)"
         }
         
-        # Use shell command since we need cd
-        cmd = f"cd {self.project_root} && echo '{json.dumps(test_event)}' | uv run --python 3.13 python {self.script_path.absolute()}"
+        # Use secure subprocess execution like in setup_simple.py
+        command = [
+            "uv", "run", "--python", "3.13",
+            "python", str(self.script_path.absolute())
+        ]
         
         try:
             result = subprocess.run(
-                cmd,
-                shell=True,
+                command,
+                input=json.dumps(test_event),
+                text=True,
                 capture_output=True,
-                text=True
+                cwd=self.project_root
             )
             
             if result.returncode == 0:
