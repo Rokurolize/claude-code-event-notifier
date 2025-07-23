@@ -83,10 +83,13 @@ class FullHookSetup:
         """Check if required dependencies are available."""
         print("🔍 Checking dependencies...")
         
+        import importlib.util
+        
         try:
-            # Try importing key modules to verify installation
-            import src.settings_types
-            import src.core.discord_client
+            # Check if key modules are available without importing
+            if (importlib.util.find_spec("src.settings_types") is None or
+                importlib.util.find_spec("src.core.discord_client") is None):
+                raise ImportError("Required modules not found")
             print("✅ Dependencies verified")
             return True
         except ImportError as e:
@@ -101,7 +104,7 @@ class FullHookSetup:
         
         if self.settings_file.exists():
             print("📖 Loading existing settings...")
-            with open(self.settings_file, "r") as f:
+            with open(self.settings_file) as f:
                 return json.load(f)
         else:
             print("📝 Creating new settings file...")

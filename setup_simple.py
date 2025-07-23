@@ -80,7 +80,7 @@ class SimpleHookSetup:
         
         if self.settings_file.exists():
             print("📖 Loading existing settings...")
-            with open(self.settings_file, "r") as f:
+            with open(self.settings_file) as f:
                 return json.load(f)
         else:
             print("📝 Creating new settings file...")
