@@ -228,6 +228,21 @@ def _main_impl() -> int:
 
 
 def main() -> int:
+    print("""
+⚠️  DEPRECATION WARNING ⚠️
+
+This script (configure_hooks.py) is deprecated and will be removed in a future version.
+
+Please use one of the new setup scripts:
+  • setup_simple.py  - For simple architecture (recommended)
+  • setup_full.py    - For full architecture  
+  • setup_guide.py   - Interactive setup guide
+
+Run: uv run python setup_guide.py
+
+Continuing with legacy setup...
+""")
+    input("Press Enter to continue or Ctrl+C to exit...")
     """Configure Claude Code hooks for Discord notifications."""
     # Split into smaller functions to reduce complexity
     return _main_impl()

@@ -22,6 +22,9 @@ Please run with Python 3.13+:
 
 import json
 import logging
+import os
+import platform
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,7 +37,44 @@ from discord_client import send_routed_message
 
 from handlers import get_handler, should_process_event, should_process_tool
 
+try:
+    from __version__ import __version__, __git_commit__
+except ImportError:
+    __version__ = "unknown"
+    __git_commit__ = None
+
 # Python 3.13+ required
+
+
+def get_git_commit_hash():
+    """Get current git commit hash."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()[:8]
+    except Exception:
+        pass
+    return "(not available)"
+
+
+def log_environment_info(logger):
+    """Log complete environment information at startup."""
+    logger.info("=" * 60)
+    logger.info("Discord Event Notifier - Environment Information")
+    logger.info("=" * 60)
+    logger.info(f"Version: {__version__}")
+    logger.info(f"Git Commit: {get_git_commit_hash()}")
+    logger.info(f"Python Version: {sys.version}")
+    logger.info(f"Python Executable: {sys.executable}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Working Directory: {os.getcwd()}")
+    logger.info(f"Script Path: {Path(__file__).resolve()}")
+    logger.info("=" * 60)
 
 
 # Setup simple architecture logging
@@ -54,7 +94,12 @@ def setup_logging():
         ],
     )
 
-    return logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
+    
+    # Log environment info on startup
+    log_environment_info(logger)
+    
+    return logger
 
 
 def main() -> None:

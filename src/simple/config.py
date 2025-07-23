@@ -14,27 +14,21 @@ from utils import parse_bool
 
 # Python 3.13+ required - pure standard library
 
-# Default routing rules (DRY principle - defined once, used in multiple functions)
+# Official Claude Code event routing (1:1 mapping to dedicated channels)
 DEFAULT_EVENT_ROUTING = {
-    "PreToolUse": "tool_activity",
-    "PostToolUse": "tool_activity",
-    "Stop": "completion",
-    "SubagentStop": "completion",
-    "Notification": "tool_activity",
+    "PreToolUse": "pretooluse",
+    "PostToolUse": "posttooluse", 
+    "Notification": "notification",
+    "UserPromptSubmit": "userpromptsubmit",
+    "Stop": "stop",
+    "SubagentStop": "subagentstop",
+    "PreCompact": "precompact",
 }
 
+# Tool-specific routing can override event routing
 DEFAULT_TOOL_ROUTING = {
-    "Bash": "bash_commands",
-    "Read": "file_operations",
-    "Edit": "file_operations",
-    "Write": "file_operations",
-    "MultiEdit": "file_operations",
-    "Grep": "search_grep",
-    "Glob": "search_grep",
-    "LS": "file_operations",
-    "Task": "ai_interactions",
-    "WebFetch": "ai_interactions",
-    "TodoWrite": "ai_interactions",
+    # Tools will be added as needed (枝番 sub-numbers)
+    # For now, all tools go through their respective event channels
 }
 
 
@@ -145,6 +139,8 @@ def _load_from_env(config: Config) -> None:
         tool_states["Read"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_EDIT"):
         tool_states["Edit"] = parse_bool(val)
+    if val := os.environ.get("DISCORD_TOOL_WRITE"):
+        tool_states["Write"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_MULTIEDIT"):
         tool_states["MultiEdit"] = parse_bool(val)
     if val := os.environ.get("DISCORD_TOOL_TODOWRITE"):
@@ -185,27 +181,23 @@ def _load_channel_routing_from_env(config: Config) -> None:
     routing: ChannelRouting = {}
     channels: ChannelMapping = {}
 
-    # Phase 1: Basic channels
-    if val := os.environ.get("DISCORD_CHANNEL_TOOL_ACTIVITY"):
-        channels["tool_activity"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_COMPLETION"):
-        channels["completion"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_ALERTS"):
-        channels["alerts"] = val
+    # Official Claude Code events (1:1 mapping)
+    if val := os.environ.get("DISCORD_CHANNEL_PRETOOLUSE"):
+        channels["pretooluse"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_POSTTOOLUSE"):
+        channels["posttooluse"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_NOTIFICATION"):
+        channels["notification"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_USERPROMPTSUBMIT"):
+        channels["userpromptsubmit"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_STOP"):
+        channels["stop"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_SUBAGENTSTOP"):
+        channels["subagentstop"] = val
+    if val := os.environ.get("DISCORD_CHANNEL_PRECOMPACT"):
+        channels["precompact"] = val
     if val := os.environ.get("DISCORD_CHANNEL_DEFAULT"):
         channels["default"] = val
-
-    # Phase 2: Detailed channels
-    if val := os.environ.get("DISCORD_CHANNEL_BASH_COMMANDS"):
-        channels["bash_commands"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_FILE_OPERATIONS"):
-        channels["file_operations"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_SEARCH_GREP"):
-        channels["search_grep"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_AI_INTERACTIONS"):
-        channels["ai_interactions"] = val
-    if val := os.environ.get("DISCORD_CHANNEL_SYSTEM_NOTICES"):
-        channels["system_notices"] = val
 
     # Enable routing if any channels are configured
     if channels:
@@ -267,6 +259,10 @@ def _set_config_value(config: Config, key: str, value: str) -> None:
         if "tool_states" not in config:
             config["tool_states"] = {}
         config["tool_states"]["Edit"] = parse_bool(value)
+    elif key == "DISCORD_TOOL_WRITE":
+        if "tool_states" not in config:
+            config["tool_states"] = {}
+        config["tool_states"]["Write"] = parse_bool(value)
     elif key == "DISCORD_TOOL_MULTIEDIT":
         if "tool_states" not in config:
             config["tool_states"] = {}
@@ -324,26 +320,23 @@ def _set_channel_config_value(config: Config, key: str, value: str) -> None:
     routing = config["channel_routing"]
     channels = routing["channels"]
 
-    # Phase 1: Basic channels
-    if key == "DISCORD_CHANNEL_TOOL_ACTIVITY":
-        channels["tool_activity"] = value
-    elif key == "DISCORD_CHANNEL_COMPLETION":
-        channels["completion"] = value
-    elif key == "DISCORD_CHANNEL_ALERTS":
-        channels["alerts"] = value
+    # Official Claude Code event channels
+    if key == "DISCORD_CHANNEL_PRETOOLUSE":
+        channels["pretooluse"] = value
+    elif key == "DISCORD_CHANNEL_POSTTOOLUSE":
+        channels["posttooluse"] = value
+    elif key == "DISCORD_CHANNEL_NOTIFICATION":
+        channels["notification"] = value
+    elif key == "DISCORD_CHANNEL_USERPROMPTSUBMIT":
+        channels["userpromptsubmit"] = value
+    elif key == "DISCORD_CHANNEL_STOP":
+        channels["stop"] = value
+    elif key == "DISCORD_CHANNEL_SUBAGENTSTOP":
+        channels["subagentstop"] = value
+    elif key == "DISCORD_CHANNEL_PRECOMPACT":
+        channels["precompact"] = value
     elif key == "DISCORD_CHANNEL_DEFAULT":
         channels["default"] = value
-    # Phase 2: Detailed channels
-    elif key == "DISCORD_CHANNEL_BASH_COMMANDS":
-        channels["bash_commands"] = value
-    elif key == "DISCORD_CHANNEL_FILE_OPERATIONS":
-        channels["file_operations"] = value
-    elif key == "DISCORD_CHANNEL_SEARCH_GREP":
-        channels["search_grep"] = value
-    elif key == "DISCORD_CHANNEL_AI_INTERACTIONS":
-        channels["ai_interactions"] = value
-    elif key == "DISCORD_CHANNEL_SYSTEM_NOTICES":
-        channels["system_notices"] = value
 
     # Set routing as enabled and add default routing rules
     if channels:

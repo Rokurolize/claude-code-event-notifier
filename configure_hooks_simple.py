@@ -44,6 +44,20 @@ class CommandHook(TypedDict):
 
 def main() -> int:
     """Main entry point."""
+    print("""
+⚠️  DEPRECATION WARNING ⚠️
+
+This script (configure_hooks_simple.py) is deprecated.
+
+Please use the new setup script:
+  • setup_simple.py  - For simple architecture setup
+
+Run: uv run python setup_simple.py
+
+Continuing with legacy setup...
+""")
+    input("Press Enter to continue or Ctrl+C to exit...")
+    
     parser = argparse.ArgumentParser(
         description="Configure Claude Code hooks for Discord notifications (Simple Architecture)"
     )
