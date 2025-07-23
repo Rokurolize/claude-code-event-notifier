@@ -9,8 +9,10 @@ from unittest.mock import patch, MagicMock
 
 # Import the config module
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-from src.simple.config import get_config, load_env_config
+# Add simple directory to path for imports
+simple_dir = Path(__file__).parent.parent.parent.parent / "src" / "simple"
+sys.path.insert(0, str(simple_dir))
+from config import load_config
 
 
 class TestConfig(unittest.TestCase):
@@ -29,7 +31,7 @@ class TestConfig(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
     
-    def test_get_config_with_env_vars(self):
+    def test_load_config_with_env_vars(self):
         """Test config loading from environment variables."""
         # Set test environment variables
         os.environ["DISCORD_WEBHOOK_URL"] = "https://discord.com/api/webhooks/test"
@@ -38,7 +40,7 @@ class TestConfig(unittest.TestCase):
         os.environ["DISCORD_THREAD_FOR_TASK"] = "1"
         os.environ["DISCORD_DEBUG"] = "true"
         
-        config = get_config()
+        config = load_config()
         
         self.assertEqual(config["webhook_url"], "https://discord.com/api/webhooks/test")
         self.assertEqual(config["bot_token"], "test_bot_token")
@@ -46,7 +48,7 @@ class TestConfig(unittest.TestCase):
         self.assertTrue(config["use_threads"])
         self.assertTrue(config["debug"])
     
-    def test_get_config_with_env_file(self):
+    def test_load_config_with_env_file(self):
         """Test config loading from .env file."""
         # Create temporary .env file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
@@ -61,7 +63,7 @@ class TestConfig(unittest.TestCase):
             with patch.object(Path, 'home', return_value=Path(env_file).parent.parent):
                 with patch.object(Path, 'exists', return_value=True):
                     with patch('builtins.open', MagicMock(return_value=open(env_file))):
-                        config = get_config()
+                        config = load_config()
             
             self.assertEqual(config["webhook_url"], "https://discord.com/api/webhooks/file")
             self.assertEqual(config["bot_token"], "file_bot_token")
@@ -84,7 +86,7 @@ class TestConfig(unittest.TestCase):
             with patch.object(Path, 'home', return_value=Path(env_file).parent.parent):
                 with patch.object(Path, 'exists', return_value=True):
                     with patch('builtins.open', MagicMock(return_value=open(env_file))):
-                        config = get_config()
+                        config = load_config()
             
             # Environment variable should take precedence
             self.assertEqual(config["webhook_url"], "https://discord.com/api/webhooks/env")
@@ -98,7 +100,7 @@ class TestConfig(unittest.TestCase):
         os.environ["DISCORD_EVENT_NOTIFICATION"] = "true"
         os.environ["DISCORD_EVENT_STOP"] = "false"
         
-        config = get_config()
+        config = load_config()
         
         self.assertIn("PostToolUse", config["enabled_events"])
         self.assertIn("Notification", config["enabled_events"])
@@ -112,7 +114,7 @@ class TestConfig(unittest.TestCase):
         os.environ["DISCORD_TOOL_BASH"] = "false"
         os.environ["DISCORD_TOOL_TASK"] = "true"
         
-        config = get_config()
+        config = load_config()
         
         self.assertIn("Write", config["enabled_tools"])
         self.assertIn("Task", config["enabled_tools"])
@@ -121,7 +123,7 @@ class TestConfig(unittest.TestCase):
     
     def test_default_values(self):
         """Test default configuration values."""
-        config = get_config()
+        config = load_config()
         
         # Check defaults
         self.assertIsNone(config.get("webhook_url"))
