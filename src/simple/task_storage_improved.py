@@ -15,7 +15,8 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, ClassVar, Iterator, TypedDict
+from typing import Any, ClassVar, TypedDict
+from collections.abc import Iterator
 
 # Setup logger
 logger = logging.getLogger(__name__)
