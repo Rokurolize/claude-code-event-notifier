@@ -11,10 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Development environment setup
 uv install --dev  # Install all dev dependencies (mypy, ruff, pytest, etc.)
 
-# Setup and development (always use uv)
-uv run python configure_hooks.py           # Configure Claude Code hooks
-uv run python configure_hooks.py --remove  # Remove hooks
-uv run python configure_hooks.py --validate-end-to-end  # Test everything
+# Setup hooks (NEW - use architecture-specific scripts)
+uv run python setup_guide.py        # Interactive setup guide (recommended)
+uv run python setup_simple.py       # Setup simple architecture directly
+uv run python setup_full.py         # Setup full architecture directly
+
+# Remove hooks
+uv run python setup_simple.py --remove  # Remove simple architecture hooks
+uv run python setup_full.py --remove    # Remove full architecture hooks
 
 # Testing
 uv run python -m pytest tests/unit/        # Run unit tests
@@ -26,6 +30,11 @@ uv run python -m pytest -x                # Stop on first failure
 uv run ruff check .                        # Lint code
 uv run ruff format .                       # Format code
 uv run mypy src/                          # Type checking
+
+# Pre-PR Checklist
+uv run ruff check src/simple/              # Essential lint checks only
+uv run python -m pytest tests/unit/ -x     # Unit tests (stop on first failure)
+git diff --check                           # Check for whitespace errors
 
 # Debug Discord connectivity
 uv run python tools/discord_api/discord_api_test_runner.py --quick
@@ -84,10 +93,58 @@ The system integrates with Claude Code via hooks defined in `~/.claude/settings.
 ```json
 {
   "hooks": {
-    "PreToolUse": [{"type": "command", "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"}]
+    "PreToolUse": [
+      {
+        "matcher": "Bash",  // Optional: filter by tool name (regex supported)
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|MultiEdit|Write",  // Regex pattern for multiple tools
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"
+          }
+        ]
+      }
+    ],
+    "Notification": [  // Events without tool filtering
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [  // Session completion event
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --python 3.13 --no-project python /path/to/src/simple/main.py"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
+
+**Important Notes**:
+- For tool-specific events (PreToolUse/PostToolUse), use `matcher` to filter by tool name
+- For non-tool events (Notification/Stop/SubagentStop), omit the `matcher` field
+- `matcher` supports regex patterns (e.g., `"Edit|Write"`, `"Notebook.*"`)
+- Empty string `""` or omitted `matcher` matches all tools
+- `"matcher": "*"` is invalid syntax
 
 ## Key Design Patterns
 

@@ -108,14 +108,10 @@ class TestTaskStorageImproved(unittest.TestCase):
         TaskStorage._save_data(test_data)
 
         # First read (cache miss)
-        start_time = time.time()
         data1 = TaskStorage._load_data_with_cache()
-        first_read_time = time.time() - start_time
 
         # Second read (cache hit)
-        start_time = time.time()
         data2 = TaskStorage._load_data_with_cache()
-        second_read_time = time.time() - start_time
 
         # Cache should make second read faster
         self.assertEqual(data1, data2)

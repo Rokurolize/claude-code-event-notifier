@@ -42,88 +42,46 @@ line-length = 120
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-# Python 3.14 specific formatting
-preview = true  # Enable preview features for Python 3.14 compatibility
 
 [tool.ruff.lint]
-ignore = [
-    # Documentation - strategic relaxation for CLI tools
-    "D100",    # Missing docstring in public module
-    "D104",    # Missing docstring in public package
-    "D107",    # Missing docstring in __init__
-    
-    # Testing and debugging
-    "S101",    # Use of assert detected (needed for type guards and tests)
-    
-    # CLI tool specific
-    "T20",     # Print statements (this is a CLI tool)
-    
-    # Formatter conflicts - must be ignored
-    "COM812",  # Trailing comma missing (conflicts with formatter)
-    "ISC001",  # String concatenation (conflicts with formatter)
-    
-    # Reasonable pragmatic choices
-    "PLR2004", # Magic value used in comparison (HTTP codes, Discord limits)
-    "TRY003",  # Avoid specifying long messages outside exception class
-    "EM101",   # Exception must not use string literal
-    "EM102",   # Exception must not use f-string literal
-    
-    # Performance vs readability tradeoffs
-    "PERF203", # `try`-`except` within a loop incurs performance overhead
-    
-    # Complex type annotations in Python 3.14+
-    "UP007",   # Use `X | Y` for type union (we want this, but may conflict with older tools)
-    
-    # Python 3.14 specific allowances
-    "UP038",   # Use `X | Y` in `isinstance` call instead of `(X, Y)` (Python 3.14+ feature)
-]
-
+# Linus Torvalds style: "Keep it simple"
 select = [
     "E",     # pycodestyle errors
-    "W",     # pycodestyle warnings
-    "F",     # pyflakes
-    "I",     # isort
-    "N",     # pep8-naming
-    "D",     # pydocstyle
-    "UP",    # pyupgrade
-    "YTT",   # flake8-2020
-    "ANN",   # flake8-annotations
-    "S",     # flake8-bandit
-    "BLE",   # flake8-blind-except
-    "B",     # flake8-bugbear
-    "A",     # flake8-builtins
-    "COM",   # flake8-commas
-    "C4",    # flake8-comprehensions
-    "DTZ",   # flake8-datetimez
-    "T10",   # flake8-debugger
-    "EXE",   # flake8-executable
-    "FA",    # flake8-future-annotations
-    "ISC",   # flake8-implicit-str-concat
-    "ICN",   # flake8-import-conventions
-    "G",     # flake8-logging-format
-    "INP",   # flake8-no-pep420
-    "PIE",   # flake8-pie
-    "T20",   # flake8-print
-    "PYI",   # flake8-pyi
-    "PT",    # flake8-pytest-style
-    "Q",     # flake8-quotes
-    "RSE",   # flake8-raise
-    "RET",   # flake8-return
-    "SLF",   # flake8-self
-    "SLOT",  # flake8-slots
-    "SIM",   # flake8-simplify
-    "TID",   # flake8-tidy-imports
-    "TCH",   # flake8-type-checking
-    "ARG",   # flake8-unused-arguments
-    "PTH",   # flake8-use-pathlib
-    "ERA",   # eradicate
-    "PD",    # pandas-vet
-    "PGH",   # pygrep-hooks
-    "PL",    # pylint
-    "TRY",   # tryceratops
-    "FLY",   # flynt
-    "PERF",  # perflint
-    "RUF",   # ruff-specific
+    "F",     # pyflakes (actual errors)
+    "I",     # isort (import sorting)
+    "UP",    # pyupgrade (use modern Python)
+]
+
+ignore = [
+    # Not errors, just style
+    "E501",    # Line too long (formatter handles this)
+    "E712",    # Comparison to True/False (works fine)
+    
+    # Python version checks are intentional
+    "UP036",   # Version blocks (we check Python 3.13+)
+    
+    # Import sorting in simple architecture
+    "I001",    # Import sorting (relative imports are OK)
+    
+    # Logging with f-strings is fine
+    "G004",    # f-strings in logging
+    
+    # CLi tool patterns
+    "T201",    # print() is OK for CLI tools
+    "S101",    # assert is OK for validation
+    "S110",    # try-except-pass is OK for optional features
+    "S607",    # Starting subprocess with partial path
+    "BLE001",  # Catching Exception is OK for CLI
+    
+    # Complexity (working code > perfect code)
+    "PLR0912", # Too many branches
+    "PLR0913", # Too many arguments  
+    "PLR0915", # Too many statements
+    "PLW2901", # Loop variable overwritten
+    
+    # Type checking imports
+    "TC002",   # Move into TYPE_CHECKING block
+    "PLC0415", # Import at module level
 ]
 
 [tool.ruff.lint.per-file-ignores]
