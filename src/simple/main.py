@@ -38,7 +38,7 @@ from discord_client import send_routed_message
 from handlers import get_handler, should_process_event, should_process_tool
 
 try:
-    from __version__ import __version__, __git_commit__
+    from __version__ import __git_commit__, __version__
 except ImportError:
     __version__ = "unknown"
     __git_commit__ = None
@@ -51,7 +51,7 @@ def get_git_commit_hash():
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            capture_output=True,
+            check=False, capture_output=True,
             text=True,
             cwd=Path(__file__).parent,
         )
@@ -95,10 +95,10 @@ def setup_logging():
     )
 
     logger = logging.getLogger(__name__)
-    
+
     # Log environment info on startup
     log_environment_info(logger)
-    
+
     return logger
 
 

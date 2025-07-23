@@ -3,14 +3,13 @@
 
 import copy
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
 from config import get_channel_for_event, has_channel_routing, load_config
-from event_types import Config
 
 
 def test_channel_routing():
@@ -26,7 +25,7 @@ def test_channel_routing():
             "enabled": True,
             "channels": {
                 "pretooluse": "123456789",
-                "posttooluse": "234567890", 
+                "posttooluse": "234567890",
                 "notification": "345678901",
                 "stop": "456789012",
                 "subagentstop": "567890123",
@@ -160,7 +159,7 @@ def test_environment_variable_loading():
         pretooluse_channel = get_channel_for_event("PreToolUse", None, config)
         notification_channel = get_channel_for_event("Notification", None, config)
         subagentstop_channel = get_channel_for_event("SubagentStop", None, config)
-        
+
         assert pretooluse_channel == "env_pretooluse"
         assert notification_channel == "env_notification"
         assert subagentstop_channel == "env_subagentstop"
@@ -181,7 +180,7 @@ if __name__ == "__main__":
     try:
         test_channel_routing()
         test_environment_variable_loading()
-        print(f"\n✨ All tests completed successfully!")
+        print("\n✨ All tests completed successfully!")
     except Exception as e:
         import traceback
 

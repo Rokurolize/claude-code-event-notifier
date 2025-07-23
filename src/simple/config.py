@@ -17,7 +17,7 @@ from utils import parse_bool
 # Official Claude Code event routing (1:1 mapping to dedicated channels)
 DEFAULT_EVENT_ROUTING = {
     "PreToolUse": "pretooluse",
-    "PostToolUse": "posttooluse", 
+    "PostToolUse": "posttooluse",
     "Notification": "notification",
     "UserPromptSubmit": "userpromptsubmit",
     "Stop": "stop",
