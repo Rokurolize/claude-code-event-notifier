@@ -31,6 +31,11 @@ uv run ruff check .                        # Lint code
 uv run ruff format .                       # Format code
 uv run mypy src/                          # Type checking
 
+# Pre-PR Checklist
+uv run ruff check src/simple/              # Essential lint checks only
+uv run python -m pytest tests/unit/ -x     # Unit tests (stop on first failure)
+git diff --check                           # Check for whitespace errors
+
 # Debug Discord connectivity
 uv run python tools/discord_api/discord_api_test_runner.py --quick
 uv run python utils/check_discord_access.py
